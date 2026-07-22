@@ -1,0 +1,29 @@
+# Python
+backend/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Env
+.env
+*.env.local
+
+# Node / Expo
+node_modules/
+app/.expo/
+app/dist/
+app/web-build/
+*.orig.*
+.expo-shared/
+
+# iOS / Android build artifacts
+app/ios/
+app/android/
+
+# Editors / OS
+.DS_Store
+.vscode/
+.idea/
+
+# Docker
+postgres-data/
