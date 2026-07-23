@@ -30,3 +30,28 @@
 - Node is v22.9.0; several Expo SDK 57 / React Native 0.86 packages request `^22.13.0+`
   (`EBADENGINE` warnings during `npm install`, non-fatal so far). Consider upgrading Node if
   real issues show up later.
+
+## Phase 1 — Health endpoint + DB schema + migrations
+
+**Built:**
+- `backend/app/config.py`: `Settings` (pydantic-settings) reads `DATABASE_URL` from `backend/.env`
+  (git-ignored, created locally — not committed, matches `docker-compose.yml` credentials).
+- `backend/app/db.py`: SQLAlchemy engine/session (`SessionLocal`, `get_db` dependency), `Base`.
+- `backend/app/models.py`: `User`, `EmailAccount`, `Transaction`, `Category` per BUILD_PLAN §4,
+  with Postgres enum types (`provider_enum`, `direction_enum`, `transaction_type_enum`),
+  `source_email_id` unique, `txn_at`/`created_at` as timezone-aware timestamps, `raw_parsed` JSONB.
+- `backend/app/routers/health.py`: `GET /health` → `{"ok": true}`, wired into `main.py`.
+- Alembic initialized (`backend/alembic/`), `env.py` wired to `app.config.settings` and
+  `Base.metadata` so `--autogenerate` and `upgrade head` work off the real models. Initial
+  migration `301117dd9e40_create_initial_tables.py` creates all four tables.
+- `backend/tests/conftest.py`: session-scoped fixture creates (and drops) a dedicated
+  `expenses_test` Postgres database for DB-backed tests, separate from the dev `expenses` DB.
+
+**Tested:**
+- `pytest` → 3 passed (`test_smoke`, `test_health_ok`, `test_db_round_trip`).
+- `alembic upgrade head` run live against the dev Postgres container — confirmed via
+  `docker compose exec postgres psql -c '\dt'` that `users`, `email_accounts`, `transactions`,
+  `categories`, `alembic_version` all exist.
+- `uvicorn app.main:app` booted and `curl localhost:8124/health` returned `{"ok":true}`.
+
+**Manual steps for the human:** none — no new external credentials needed this phase.
