@@ -213,3 +213,53 @@
   end-to-end, not just against mocks.
 
 **Manual steps for the human:** none.
+
+## Phase 6 — Outlook (Microsoft Graph), auth part
+
+Doing this phase in two steps at the human's request: OAuth first (this entry), then
+`services/graph.py` mail fetching once Microsoft auth is verified end-to-end.
+
+**Built:**
+- `backend/app/services/ms_oauth.py`: mirrors `google_oauth.py` -- `build_authorization_url`,
+  `exchange_code_for_tokens`, `refresh_access_token`, `fetch_userinfo` (calls Microsoft Graph
+  `/me`), `compute_expiry`. Uses the `common` tenant endpoint (works for both personal Microsoft
+  accounts and work/school accounts) with scopes `offline_access User.Read Mail.Read`.
+- `backend/app/routers/auth.py`: added `GET /auth/microsoft?user_id=` and
+  `GET /auth/microsoft/callback`, both guarded the same way as Google's (clear 500 if
+  `MS_CLIENT_ID`/`SECRET`/`REDIRECT_URI` aren't set -- verified live via curl). Refactored the
+  upsert-and-encrypt logic the two providers share into `_upsert_email_account`, used by both
+  callbacks now. `provider_email` prefers Graph's `mail` field, falling back to
+  `userPrincipalName` since `mail` can be null on some personal accounts.
+- `backend/app/config.py`: added `ms_client_id`/`ms_client_secret`/`ms_redirect_uri` (all
+  optional, same pattern as the Google fields).
+- `backend/.env`: blank `MS_CLIENT_ID`/`MS_CLIENT_SECRET`/`MS_REDIRECT_URI` placeholders added
+  (git-ignored, not committed).
+
+**Tested:**
+- `pytest` -> 27 passed. New `test_ms_auth.py`: start endpoint redirects to
+  `login.microsoftonline.com` with `state` set; callback test mocks `ms_oauth`'s token/userinfo
+  calls and asserts an encrypted `email_accounts` row with `provider=microsoft`; a third test
+  covers the `mail: null` -> `userPrincipalName` fallback.
+
+**Manual steps for the human (required before real Outlook linking works, mirrors Phase 3):**
+1. In the [Azure Portal](https://portal.azure.com): **Azure Active Directory (Microsoft Entra
+   ID) → App registrations → New registration**.
+   - Name it (e.g. "XPense dev").
+   - Supported account types: **"Accounts in any organizational directory and personal Microsoft
+     accounts"** (matches the `common` endpoint the code uses -- lets you sign in with either an
+     Outlook.com/Hotmail address or a work/school account).
+   - Redirect URI: leave blank for now (added in step 3, same ngrok-dependency as Google).
+2. After creation: **Certificates & secrets → New client secret** -- copy the secret **value**
+   immediately (it's hidden after you leave the page). Copy the **Application (client) ID** from
+   the app's Overview page too.
+   - **API permissions → Add a permission → Microsoft Graph → Delegated permissions**: add
+     `Mail.Read`, `User.Read`, `offline_access` (User.Read is usually pre-added by default).
+3. With the backend running and `ngrok http 8000` active (same tunnel Google uses is fine, or a
+   fresh one): copy the forwarding URL, append `/auth/microsoft/callback`, and:
+   - add it under the app registration's **Authentication → Add a platform → Web** → redirect URI
+   - set `MS_REDIRECT_URI` to that URL in `backend/.env`, plus `MS_CLIENT_ID` and
+     `MS_CLIENT_SECRET` from step 2
+   - restart uvicorn
+4. Visit `http://localhost:8000/auth/microsoft?user_id=1`, sign in with an Outlook/Hotmail (or
+   work/school) account, and confirm `{"linked": true, "provider": "microsoft", ...}` with a new
+   encrypted row in `email_accounts`.
