@@ -183,3 +183,33 @@
   -- BUILD_PLAN defers that to Phase 5's `/sync` endpoint tests, which will mock the Gmail service.
 
 **Manual steps for the human:** none.
+
+## Phase 5 — Sync scheduler + endpoint
+
+**Built:**
+- `backend/app/services/sync.py`: `sync_google_account(db, account)` -- gets a valid access
+  token (decrypts the stored one, or refreshes via `google_oauth.refresh_access_token` and
+  re-encrypts if `expires_at` has passed), builds the Gmail query (bank-sender filter plus
+  `after:<unix ts of last_synced_at>` once there's been a prior sync, else `newer_than:60d`),
+  lists/fetches/parses each message, inserts via `save_parsed_transaction` (dedup already built
+  into that from Phase 4), and updates `last_synced_at`. Returns the count of newly-inserted rows.
+- `backend/app/routers/sync.py`: `POST /sync?user_id=` runs `sync_google_account` for every
+  linked Google account belonging to that user, returns per-account and total inserted counts.
+- `backend/app/services/scheduler.py`: APScheduler `BackgroundScheduler`, one job every 10
+  minutes that syncs every linked Google account across all users; one account failing (e.g. a
+  revoked token) is caught and rolled back so it doesn't stop the rest. Wired into `main.py` via
+  a FastAPI `lifespan` (starts on app startup, shuts down cleanly on shutdown).
+
+**Tested:**
+- `pytest` -> 24 passed. `test_sync.py` mocks `gmail.list_bank_messages`/`fetch_message` (network
+  boundary only -- real `extract_plain_text`/`get_sender`/`parse_email` run against a
+  synthetic-but-realistic Gmail message payload) with one DBS and one SimplyGo fixture: first
+  `/sync` call inserts 2, `last_synced_at` gets set; a second `/sync` call against the same mocked
+  mail inserts 0 (idempotent), per BUILD_PLAN's DoD.
+- Live-verified: booted uvicorn, confirmed the scheduler starts/stops cleanly around requests,
+  and called `POST /sync?user_id=1` against the **real** linked Gmail account from the Phase 3
+  manual test -- it used the real stored (encrypted) token, queried Gmail for real, and returned
+  200 with `inserted: 0` (no matching bank mail in the inbox), proving the whole pipeline works
+  end-to-end, not just against mocks.
+
+**Manual steps for the human:** none.

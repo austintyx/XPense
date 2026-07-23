@@ -16,6 +16,7 @@ dependencies = [
     "pydantic-settings",
     "httpx",
     "cryptography",
+    "apscheduler",
 ]
 
 [project.optional-dependencies]
