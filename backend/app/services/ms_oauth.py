@@ -4,6 +4,7 @@ from urllib.parse import urlencode
 import httpx
 
 from app.config import settings
+from app.services.oauth_http import raise_for_status_with_body
 
 AUTH_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
 TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
@@ -37,7 +38,7 @@ def exchange_code_for_tokens(code: str) -> dict:
             "scope": SCOPES,
         },
     )
-    response.raise_for_status()
+    raise_for_status_with_body(response)
     return response.json()
 
 
@@ -52,13 +53,13 @@ def refresh_access_token(refresh_token: str) -> dict:
             "scope": SCOPES,
         },
     )
-    response.raise_for_status()
+    raise_for_status_with_body(response)
     return response.json()
 
 
 def fetch_userinfo(access_token: str) -> dict:
     response = httpx.get(ME_URL, headers={"Authorization": f"Bearer {access_token}"})
-    response.raise_for_status()
+    raise_for_status_with_body(response)
     return response.json()
 
 

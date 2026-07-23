@@ -4,6 +4,7 @@ from urllib.parse import urlencode
 import httpx
 
 from app.config import settings
+from app.services.oauth_http import raise_for_status_with_body
 
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -43,7 +44,7 @@ def exchange_code_for_tokens(code: str) -> dict:
             "grant_type": "authorization_code",
         },
     )
-    response.raise_for_status()
+    raise_for_status_with_body(response)
     return response.json()
 
 
@@ -57,13 +58,13 @@ def refresh_access_token(refresh_token: str) -> dict:
             "grant_type": "refresh_token",
         },
     )
-    response.raise_for_status()
+    raise_for_status_with_body(response)
     return response.json()
 
 
 def fetch_userinfo(access_token: str) -> dict:
     response = httpx.get(USERINFO_URL, headers={"Authorization": f"Bearer {access_token}"})
-    response.raise_for_status()
+    raise_for_status_with_body(response)
     return response.json()
 
 
