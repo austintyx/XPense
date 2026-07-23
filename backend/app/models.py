@@ -61,7 +61,9 @@ class Transaction(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     source_email_id: Mapped[str] = mapped_column(String, unique=True, nullable=False)
-    provider: Mapped[ProviderEnum] = mapped_column(SAEnum(ProviderEnum, name="provider_enum"), nullable=False)
+    provider: Mapped[ProviderEnum | None] = mapped_column(
+        SAEnum(ProviderEnum, name="provider_enum"), nullable=True
+    )
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     direction: Mapped[DirectionEnum] = mapped_column(SAEnum(DirectionEnum, name="direction_enum"), nullable=False)

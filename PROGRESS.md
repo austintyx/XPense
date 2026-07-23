@@ -55,3 +55,35 @@
 - `uvicorn app.main:app` booted and `curl localhost:8124/health` returned `{"ok":true}`.
 
 **Manual steps for the human:** none — no new external credentials needed this phase.
+
+## Phase 2 — Transactions API (with fake data)
+
+**Built:**
+- `backend/app/schemas.py`: `TransactionOut`, `CategoryUpdateIn`, `TransactionCreateIn`,
+  `CategorySummary`, `SummaryOut`.
+- `backend/app/routers/transactions.py`:
+  - `GET /transactions?user_id=` — newest first, `type=expense` by default (overridable via
+    `?type=`).
+  - `POST /transactions/{id}/category` — updates and returns the row.
+  - `POST /transactions` — manual add (Apple-Pay-no-email fallback); body carries `user_id`,
+    generates a synthetic unique `source_email_id` (`manual:<uuid>`), `provider=null`.
+  - `GET /summary?user_id=` — per-category totals for the current month, excludes `type=transfer`.
+  - **Model change:** `transactions.provider` is now nullable (new migration
+    `9333baec37df_make_transactions_provider_nullable.py`) — manual adds have no email provider.
+    Applied and verified against the dev DB.
+- `backend/app/seed.py` (`python -m app.seed`): idempotent, upserts a demo user and inserts fake
+  expense/transfer transactions if not already present (dedup on `source_email_id`).
+
+**Tested:**
+- `pytest` → 7 passed (3 from Phase 0/1 + 4 new `test_transactions.py` cases: seeded-row
+  ordering with transfer exclusion, category-update persistence, manual add, and summary totals
+  that correctly exclude a transfer row and a prior-month row).
+- Test isolation: `conftest.py`'s `db_session` fixture truncates all tables before each test
+  (route handlers do real `commit()`s, so a plain rollback wouldn't undo them) and a `client`
+  fixture overrides the `get_db` FastAPI dependency to bind to that same session.
+- Live-verified against the dev Postgres container: ran `python -m app.seed` (twice, to confirm
+  idempotency — second run inserted 0 rows), then hit `/transactions`, `/summary`, and manual
+  `POST /transactions` over real HTTP with `uvicorn` — summary correctly excluded the seeded
+  transfer row.
+
+**Manual steps for the human:** none.
