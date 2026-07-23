@@ -145,3 +145,41 @@
   `openid` and `https://www.googleapis.com/auth/userinfo.email`. If Google Cloud Console rejects
   those (unlikely — they're non-sensitive/default scopes), add them under OAuth consent screen →
   **Data access** the same way `gmail.readonly` was added.
+
+## Phase 4 — Email fetch + parse (regex)
+
+**Built:**
+- `backend/app/services/parser.py`: `ParsedTxn` dataclass, `parse_email(text, sender)`, and
+  `save_parsed_transaction(db, user_id, source_email_id, provider, parsed)`.
+  - Per-bank regex extractors: DBS (Own Funds Transfer, PayNow, NETS Scan & Pay), UOB (PayNow).
+  - Amount regex handles both `S$87.00` and `SGD 200.00`/`SGD200.00`.
+  - Classification: "Own Funds Transfer" -> `transfer`; PayNow `(UEN ending ...)` -> `expense`;
+    PayNow `(MOBILE/NRIC ending ...)` -> `transfer`; NETS -> `expense`.
+  - SimplyGo fare parser -> `expense`, `category="Transport"`, `merchant_raw="Transit: X-Y"`.
+  - Dates are naive day/month(/year) in bank alert text; parsed as `Asia/Singapore` (UTC+8) and
+    stored timezone-aware. Year defaults to the current year when the text omits it (DBS/SimplyGo
+    fixtures); UOB's fixture includes a 2-digit year.
+  - Dedup: `save_parsed_transaction` looks up by `source_email_id` first and returns the existing
+    row instead of inserting a duplicate.
+- `backend/app/services/gmail.py`: `list_bank_messages`/`fetch_message` (Gmail API, bank-sender
+  query `from:(dbs.com.sg OR uob.com.sg OR simplygo) newer_than:60d`), `extract_plain_text`
+  (base64url-decodes the message body, prefers `text/plain`, falls back to stripping `text/html`
+  via stdlib `html.parser` -- no new HTML-parsing dependency), `get_sender`.
+- `backend/tests/fixtures/emails/`: one `.txt` fixture per BUILD_PLAN §7 case, plus
+  `unparseable_unknown_format.txt` for the "returns None" test.
+  - **`dbs_card_wallet.txt` intentionally not built** -- BUILD_PLAN §7 itself notes it only
+    arrives as an Apple Wallet push in practice, no real email equivalent, and says to document
+    it as a manual-entry case instead. That path already exists: Phase 2's `POST /transactions`.
+
+**Tested:**
+- `pytest` -> 23 passed. `test_parser.py`: all 6 real fixtures assert amount, currency, merchant
+  (where applicable), direction, type, bank, and the full parsed date/time in SGT; the
+  unparseable fixture returns `None`; a dedup test calls `save_parsed_transaction` twice with the
+  same `source_email_id` and asserts only one row exists.
+- `test_gmail.py`: unit tests for `strip_html`, `extract_plain_text` (plain-text preferred,
+  HTML fallback), and `get_sender` -- pure functions, no network, not required by BUILD_PLAN's
+  Phase 4 test list but written anyway since they're new code with deterministic behavior.
+- `services/gmail.py`'s network calls (`list_bank_messages`/`fetch_message`) aren't exercised yet
+  -- BUILD_PLAN defers that to Phase 5's `/sync` endpoint tests, which will mock the Gmail service.
+
+**Manual steps for the human:** none.
