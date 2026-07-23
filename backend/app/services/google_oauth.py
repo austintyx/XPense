@@ -8,7 +8,15 @@ from app.config import settings
 AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
-GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
+# gmail.readonly to read mail; openid + userinfo.email so /oauth2/v2/userinfo can identify
+# which account this is (fetch_userinfo below) — without it, that call 401s.
+SCOPES = " ".join(
+    [
+        "openid",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/gmail.readonly",
+    ]
+)
 
 
 def build_authorization_url(state: str) -> str:
@@ -16,7 +24,7 @@ def build_authorization_url(state: str) -> str:
         "client_id": settings.google_client_id,
         "redirect_uri": settings.google_redirect_uri,
         "response_type": "code",
-        "scope": GMAIL_READONLY_SCOPE,
+        "scope": SCOPES,
         "access_type": "offline",
         "prompt": "consent",
         "state": state,

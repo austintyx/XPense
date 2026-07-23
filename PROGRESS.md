@@ -133,3 +133,15 @@
    in `email_accounts` (tokens should be unreadable ciphertext in the DB).
    Note: free ngrok URLs change every restart — you'd need to update the redirect URI (both in
    Google Cloud Console and `.env`) each time unless you reserve a static ngrok domain.
+
+**Bugs found during the human's real end-to-end run (both fixed):**
+- `Settings()` resolved `backend/.env` relative to the process's *current working directory*,
+  so launching uvicorn from anywhere other than `backend/` crashed on startup with
+  `database_url Field required`. Fixed: `config.py` now resolves the `.env` path relative to
+  its own file location.
+- `fetch_userinfo` called Google's `/oauth2/v2/userinfo` endpoint, but the authorization request
+  only asked for the `gmail.readonly` scope — the access token had no permission to read profile
+  info, so Google returned `401 Unauthorized`. Fixed: `build_authorization_url` now also requests
+  `openid` and `https://www.googleapis.com/auth/userinfo.email`. If Google Cloud Console rejects
+  those (unlikely — they're non-sensitive/default scopes), add them under OAuth consent screen →
+  **Data access** the same way `gmail.readonly` was added.
