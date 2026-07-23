@@ -263,3 +263,46 @@ Doing this phase in two steps at the human's request: OAuth first (this entry), 
 4. Visit `http://localhost:8000/auth/microsoft?user_id=1`, sign in with an Outlook/Hotmail (or
    work/school) account, and confirm `{"linked": true, "provider": "microsoft", ...}` with a new
    encrypted row in `email_accounts`.
+
+**Bug found during the human's real run (fixed):** `httpx`'s bare `raise_for_status()` only
+reported "401 Unauthorized" with no detail, which made a real failure hard to diagnose (turned
+out to be an Azure Portal Secret ID vs Secret Value mix-up in `.env` -- Secret ID is always
+GUID-shaped, the actual Value is a longer random string shown once at creation). Added
+`services/oauth_http.py`'s `raise_for_status_with_body`, now used everywhere Google/Microsoft
+token or userinfo calls happen, so the provider's real error body shows up in the traceback.
+
+## Phase 6 (part 2) — Microsoft Graph mail fetching, provider-agnostic sync
+
+**Built:**
+- `backend/app/services/graph.py`: mirrors `gmail.py`'s four-function interface
+  (`list_bank_messages`, `fetch_message`, `extract_plain_text`, `get_sender`) against Microsoft
+  Graph instead of the Gmail API. Uses Graph's `$search` (supports the same `from:` operator
+  Outlook's search box does) for the bank-sender query; message bodies come back as plain
+  strings (no base64 decoding needed, unlike Gmail) with `contentType` telling you whether to
+  run them through the shared `strip_html` (reused from `gmail.py`, not duplicated).
+- `backend/app/services/sync.py`: generalized from Google-only to provider-agnostic —
+  `sync_email_account(db, account)` looks up the right mail-service module and OAuth-service
+  module from small provider->module maps and runs the identical loop either way. Token refresh
+  now also updates `refresh_token_enc` when the provider issues a new one (Microsoft can rotate
+  refresh tokens on each use; this was silently skipped for Google before, harmlessly, since
+  Google's don't rotate, but it's more correct for both now).
+  - Known limitation: unlike Gmail's `after:<timestamp>`, Graph's query isn't time-bounded by
+    `last_synced_at` (combining `$search` with a date `$filter` reliably needs a real mailbox to
+    verify against). Correctness isn't affected -- dedup on `source_email_id` still guarantees no
+    duplicate rows -- it's just less efficient, re-scanning the same bank-sender mail every sync.
+- `backend/app/routers/sync.py` and `backend/app/services/scheduler.py`: no longer filter to
+  `provider=google` -- both now iterate every linked account regardless of provider.
+
+**Tested:**
+- `pytest` -> 32 passed. `test_graph.py`: plain/HTML body extraction, sender formatting (pure
+  functions, no network). `test_sync.py`: new
+  `test_sync_microsoft_account_reaches_identical_output_through_same_parser` feeds the same DBS
+  PayNow text through the (mocked) Graph path and asserts the resulting row has the same amount/
+  merchant/type/bank as the Gmail path -- this is BUILD_PLAN's Phase 6 DoD ("both providers reach
+  identical transaction output through one parser").
+- Live-verified: `POST /sync?user_id=1` against **both** real linked accounts (the Gmail one from
+  Phase 3 and the real Outlook account just linked) in a single call -- both synced cleanly
+  through the same generalized pipeline, `inserted: 0` for both (no real bank mail in either
+  inbox yet).
+
+**Manual steps for the human:** none beyond the Azure setup already done above.

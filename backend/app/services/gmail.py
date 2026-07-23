@@ -4,6 +4,8 @@ from html.parser import HTMLParser
 
 import httpx
 
+from app.services.oauth_http import raise_for_status_with_body
+
 BANK_SENDER_QUERY = "from:(dbs.com.sg OR uob.com.sg OR simplygo) newer_than:60d"
 GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me"
 
@@ -37,7 +39,7 @@ def list_bank_messages(access_token: str, query: str = BANK_SENDER_QUERY) -> lis
         params={"q": query},
         headers={"Authorization": f"Bearer {access_token}"},
     )
-    response.raise_for_status()
+    raise_for_status_with_body(response)
     return response.json().get("messages", [])
 
 
@@ -47,7 +49,7 @@ def fetch_message(access_token: str, message_id: str) -> dict:
         params={"format": "full"},
         headers={"Authorization": f"Bearer {access_token}"},
     )
-    response.raise_for_status()
+    raise_for_status_with_body(response)
     return response.json()
 
 

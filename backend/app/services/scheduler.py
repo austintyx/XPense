@@ -1,8 +1,8 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.db import SessionLocal
-from app.models import EmailAccount, ProviderEnum
-from app.services.sync import sync_google_account
+from app.models import EmailAccount
+from app.services.sync import sync_email_account
 
 _scheduler: BackgroundScheduler | None = None
 
@@ -10,10 +10,10 @@ _scheduler: BackgroundScheduler | None = None
 def _run_all_syncs() -> None:
     db = SessionLocal()
     try:
-        accounts = db.query(EmailAccount).filter_by(provider=ProviderEnum.google).all()
+        accounts = db.query(EmailAccount).all()
         for account in accounts:
             try:
-                sync_google_account(db, account)
+                sync_email_account(db, account)
             except Exception:
                 # one broken/expired account shouldn't stop the rest from syncing
                 db.rollback()
