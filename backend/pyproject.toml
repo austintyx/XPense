@@ -14,12 +14,13 @@ dependencies = [
     "alembic",
     "psycopg[binary]",
     "pydantic-settings",
+    "httpx",
+    "cryptography",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest",
-    "httpx",
 ]
 
 [tool.pytest.ini_options]

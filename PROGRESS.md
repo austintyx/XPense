@@ -87,3 +87,49 @@
   transfer row.
 
 **Manual steps for the human:** none.
+
+## Phase 3 — Gmail OAuth
+
+**Built:**
+- `backend/app/security/crypto.py`: Fernet encrypt/decrypt, reading `TOKEN_ENCRYPTION_KEY` from
+  settings; raises a clear `RuntimeError` (with the exact command to generate a key) if unset.
+- `backend/app/services/google_oauth.py`: `build_authorization_url`, `exchange_code_for_tokens`,
+  `refresh_access_token` (the token-refresh helper), `fetch_userinfo`, `compute_expiry` — thin
+  `httpx` wrappers around Google's OAuth endpoints, kept separate from the router so they're easy
+  to mock in tests and reusable by `services/gmail.py` in Phase 4.
+- `backend/app/routers/auth.py`:
+  - `GET /auth/google?user_id=` → redirects to Google consent (`gmail.readonly` scope,
+    `access_type=offline`, `prompt=consent`, `user_id` round-tripped via the `state` param).
+  - `GET /auth/google/callback?code=&state=` → exchanges the code, fetches the account email,
+    encrypts both tokens, upserts an `email_accounts` row.
+  - Both return a clear 500 (not a crash) if `GOOGLE_CLIENT_ID`/`SECRET`/`REDIRECT_URI` aren't
+    set — verified live via curl.
+- `backend/.env` (local, git-ignored) now has a real generated `TOKEN_ENCRYPTION_KEY`;
+  `GOOGLE_CLIENT_ID`/`SECRET`/`REDIRECT_URI` left blank pending your Google Cloud credentials.
+- Installed `ngrok` CLI via `brew install ngrok` (no sudo needed, unlike Docker Desktop earlier).
+
+**Tested:**
+- `pytest` → 11 passed. New: `test_crypto.py` (encrypt→decrypt round-trip; clear error when
+  unconfigured), `test_auth.py` (start endpoint redirects to Google with `state` set; callback
+  test mocks `google_oauth.exchange_code_for_tokens`/`fetch_userinfo` and asserts an
+  `email_accounts` row is written with **non-plaintext** `access_token_enc`/`refresh_token_enc`).
+
+**Manual steps for the human (required before real Gmail linking works):**
+1. In Google Cloud Console: enable the **Gmail API**, configure the **OAuth consent screen**
+   (External, add your Gmail as a test user, scope `.../auth/gmail.readonly`), then create an
+   **OAuth client ID** (Web application) — copy the Client ID/Secret. Leave redirect URIs empty
+   until step 3.
+2. Sign up at ngrok.com (free), get your authtoken from the dashboard, run
+   `ngrok config add-authtoken <token>` once.
+3. Run the backend (`uvicorn app.main:app`), then `ngrok http 8000` in another terminal. Copy the
+   `https://*.ngrok-free.app` forwarding URL, append `/auth/google/callback`, and:
+   - add that exact URL as an **Authorized redirect URI** on the OAuth client in Google Cloud
+     Console
+   - set `GOOGLE_REDIRECT_URI` to that same URL in `backend/.env`, plus `GOOGLE_CLIENT_ID` and
+     `GOOGLE_CLIENT_SECRET` from step 1
+   - restart uvicorn so it picks up the new `.env` values
+4. Visit `http://localhost:8000/auth/google?user_id=1` in a browser, sign in with your test-user
+   Gmail account, and confirm you land on the callback with `{"linked": true, ...}` and a new row
+   in `email_accounts` (tokens should be unreadable ciphertext in the DB).
+   Note: free ngrok URLs change every restart — you'd need to update the redirect URI (both in
+   Google Cloud Console and `.env`) each time unless you reserve a static ngrok domain.
