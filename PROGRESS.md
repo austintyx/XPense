@@ -21,13 +21,10 @@
   `localhost:8081` without error.
 
 **Manual steps for the human:**
-- **Docker Desktop install failed** — `brew install --cask docker` needs a `sudo` password
-  prompt that can't be answered non-interactively from this session. Run it yourself in a real
-  terminal (or type `! brew install --cask docker` in Claude Code so it runs in your terminal
-  session): `brew install --cask docker`, then open Docker.app once to finish first-run setup
-  (license agreement / permissions). After that, `docker compose up -d` from the repo root
-  starts Postgres on `localhost:5432` — this hasn't been verified live yet since Docker isn't
-  installed on this machine.
+- ~~Docker Desktop install~~ — done. `brew install --cask docker` failed (needs an interactive
+  `sudo` password this session can't supply), so the human installed Docker Desktop directly
+  instead. Verified working: `docker compose up -d` pulls `postgres:16` and starts it on
+  `localhost:5432`, `pg_isready` confirms it accepts connections.
 - No Xcode / iOS Simulator on this machine — preview the app via **Expo Go** on a physical device
   by running `npx expo start` inside `app/` and scanning the QR code, rather than `npm run ios`.
 - Node is v22.9.0; several Expo SDK 57 / React Native 0.86 packages request `^22.13.0+`
