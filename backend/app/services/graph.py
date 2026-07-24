@@ -5,7 +5,8 @@ from app.services.oauth_http import raise_for_status_with_body
 
 # Matches gmail.py's four-function interface (list_bank_messages, fetch_message,
 # extract_plain_text, get_sender) so services/sync.py can treat both providers identically.
-BANK_SENDER_QUERY = '"from:dbs.com.sg OR from:uob.com.sg OR from:simplygo"'
+# Brand name only, no domain suffix — see the comment on gmail.BANK_SENDER_QUERY.
+BANK_SENDER_QUERY = '"from:dbs OR from:uob OR from:simplygo"'
 GRAPH_API_BASE = "https://graph.microsoft.com/v1.0/me"
 
 

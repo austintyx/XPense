@@ -7,7 +7,7 @@ from app.security.crypto import decrypt, encrypt
 from app.services import gmail, google_oauth, graph, ms_oauth
 from app.services.parser import parse_email, save_parsed_transaction
 
-GMAIL_BANK_SENDER_FILTER = "from:(dbs.com.sg OR uob.com.sg OR simplygo)"
+GMAIL_BANK_SENDER_FILTER = "from:(dbs OR uob OR simplygo)"
 
 # Each provider's mail service exposes the same four-function interface (see gmail.py/graph.py),
 # so the sync loop below is identical regardless of which one an account uses.

@@ -6,17 +6,32 @@ import httpx
 
 from app.services.oauth_http import raise_for_status_with_body
 
-BANK_SENDER_QUERY = "from:(dbs.com.sg OR uob.com.sg OR simplygo) newer_than:60d"
+# Brand name only, no domain suffix: real alert senders vary (e.g. DBS's card-transaction
+# alerts come from ibanking.alert@dbs.com, not any *.dbs.com.sg address). The regex parser is
+# the real filter; this just needs to not exclude legitimate senders.
+BANK_SENDER_QUERY = "from:(dbs OR uob OR simplygo) newer_than:60d"
 GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me"
+
+_SKIP_CONTENT_TAGS = {"style", "script"}
 
 
 class _HTMLTextExtractor(HTMLParser):
     def __init__(self):
         super().__init__()
         self._chunks: list[str] = []
+        self._skip_depth = 0
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        if tag in _SKIP_CONTENT_TAGS:
+            self._skip_depth += 1
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in _SKIP_CONTENT_TAGS and self._skip_depth > 0:
+            self._skip_depth -= 1
 
     def handle_data(self, data: str) -> None:
-        self._chunks.append(data)
+        if self._skip_depth == 0:
+            self._chunks.append(data)
 
     def text(self) -> str:
         return re.sub(r"\s+", " ", "".join(self._chunks)).strip()

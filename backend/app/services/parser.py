@@ -71,6 +71,17 @@ _DBS_NETS_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Real DBS card-purchase alert format (sent from ibanking.alert@dbs.com), not in BUILD_PLAN's
+# original fixture set -- found by testing against a real linked inbox.
+_DBS_CARD_TXN_RE = re.compile(
+    r"Card Transaction Alert.*?"
+    r"Date & Time: (?P<day>\d{1,2}) (?P<month>[A-Za-z]{3}) (?P<hour>\d{1,2}):(?P<minute>\d{2}) \(SGT\)\s*"
+    rf"Amount: (?P<amount>{_AMOUNT})\s*"
+    r"From: .*?\s*"
+    r"To: (?P<merchant>.+?)\s*(?:If unauthorized|To review|Thank you|$)",
+    re.IGNORECASE | re.DOTALL,
+)
+
 
 def _parse_dbs(text: str) -> ParsedTxn | None:
     if match := _DBS_OWN_TRANSFER_RE.search(text):
@@ -98,6 +109,18 @@ def _parse_dbs(text: str) -> ParsedTxn | None:
         )
 
     if match := _DBS_NETS_RE.search(text):
+        return ParsedTxn(
+            amount=_parse_amount(match["amount"]),
+            currency="SGD",
+            merchant_raw=match["merchant"].strip(),
+            direction=DirectionEnum.debit,
+            type=TransactionTypeEnum.expense,
+            bank="DBS",
+            txn_at=_sgt_datetime(int(match["day"]), match["month"], int(match["hour"]), int(match["minute"])),
+            raw_parsed=match.groupdict(),
+        )
+
+    if match := _DBS_CARD_TXN_RE.search(text):
         return ParsedTxn(
             amount=_parse_amount(match["amount"]),
             currency="SGD",

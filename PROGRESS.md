@@ -306,3 +306,44 @@ token or userinfo calls happen, so the provider's real error body shows up in th
   inbox yet).
 
 **Manual steps for the human:** none beyond the Azure setup already done above.
+
+## Real-world bug fixes (found by syncing the human's actual Outlook inbox)
+
+Once real DBS card-purchase alerts existed in the linked Outlook inbox, `/sync` returned
+`inserted: 0` for the Microsoft account. Diagnosed live against the real Graph API/mailbox
+(not mocks) and found three issues:
+
+1. **Bank-sender query too narrow.** `BANK_SENDER_QUERY` required `.com.sg`-suffixed domains
+   (`dbs.com.sg`, `uob.com.sg`), but the human's real DBS transaction alerts come from
+   `ibanking.alert@dbs.com` -- no `.sg`. Broadened both `gmail.py` and `graph.py`'s queries (and
+   `sync.py`'s duplicate Gmail filter constant) to match on brand name alone
+   (`dbs`/`uob`/`simplygo`); the regex parser is the real precision filter, so a broader coarse
+   fetch is safe.
+2. **HTML stripping leaked `<style>`/`<script>` content.** `_HTMLTextExtractor` captured all
+   `handle_data` calls, including CSS text inside `<style>` blocks, polluting extracted text with
+   raw CSS before the real message content. Didn't break parsing in practice (regex `.search()`
+   still found the real content past the noise) but was clearly wrong; fixed by tracking
+   start/end tags and skipping data while inside `style`/`script`.
+3. **Missing parser for DBS's real card-purchase alert format** ("Card Transaction Alert" --
+   `Date & Time: ... Amount: SGD... From: ... card ending ... To: MERCHANT`), which none of
+   BUILD_PLAN §7's fixtures covered (those only had PayNow/NETS/Own-Transfer). Added
+   `_DBS_CARD_TXN_RE` to `parser.py` plus a fixture (`dbs_card_transaction_alert.txt`, built with
+   synthetic amount/merchant -- not the human's real transaction data -- to avoid committing
+   personal financial details to the repo) and a `test_parser.py` case.
+
+**Verified against real data:** after the fixes, `POST /sync?user_id=1` inserted **5** real
+transactions from the linked Outlook inbox -- actual purchases the human made (supermarket,
+online marketplace, transit, a restaurant, a cinema), each correctly parsed as `bank=DBS`,
+`type=expense`, with the right amount/merchant/timestamp. `pytest` -> 33 passed (dbs_card_wallet
+fixture added, all prior tests still green).
+
+## How to independently verify the Microsoft Graph calls are real (not mocked)
+
+Two ways, without trusting the app's own claims:
+1. **The data itself is the strongest proof** -- the transactions that appeared after `/sync`
+   (merchant names, amounts, timestamps) match real purchases, and `source_email_id` on each row
+   is a real Graph message ID (a long `AQMk...` string), not something the app could fabricate.
+2. **Azure Portal → Microsoft Entra ID → Enterprise applications** → find the app by name → 
+   **Sign-in logs** tab shows an entry each time a token was issued/refreshed for it (e.g. when
+   you first consented, and on subsequent silent token refreshes). Per-API-call logs beyond that
+   aren't available on the free tier, so (1) is the more direct check for actual data access.
