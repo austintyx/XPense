@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     ms_client_id: str | None = None
     ms_client_secret: str | None = None
     ms_redirect_uri: str | None = None
+    llm_api_key: str | None = None
 
     model_config = SettingsConfigDict(env_file=ENV_FILE, env_file_encoding="utf-8", extra="ignore")
 

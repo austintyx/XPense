@@ -79,6 +79,35 @@ def test_manual_add_creates_row(client, user):
     assert any(r["id"] == body["id"] for r in listing.json())
 
 
+def test_categorize_pending_backfills_hardcoded_matchable_rows(client, db_session, user):
+    uncategorized = _make_txn(db_session, user, merchant_raw="BUS/MRT", category=None)
+    already_done = _make_txn(db_session, user, merchant_raw="SOMETHING", category="Shopping")
+    unresolvable = _make_txn(db_session, user, merchant_raw="ZZZZZ UNKNOWN MERCHANT", category=None)
+    stale_food = _make_txn(
+        db_session,
+        user,
+        merchant_raw="CHICKEN RICE",
+        category="Food",
+        subcategory=None,
+        txn_at=datetime(2026, 7, 23, 19, 0, tzinfo=timezone.utc).astimezone(),
+    )
+
+    response = client.post("/transactions/categorize-pending", params={"user_id": user.id})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["categorized"] == 1
+    assert body["remaining"] == 1
+
+    db_session.refresh(uncategorized)
+    db_session.refresh(already_done)
+    db_session.refresh(unresolvable)
+    db_session.refresh(stale_food)
+    assert uncategorized.category == "Transport"
+    assert already_done.category == "Shopping"  # untouched, wasn't pending
+    assert unresolvable.category is None  # no hardcoded match, no AI key configured in tests
+    assert stale_food.subcategory is not None  # backfilled even though category predates this feature
+
+
 def test_summary_sums_categories_and_excludes_transfers(client, db_session, user):
     now = datetime.now(timezone.utc)
     _make_txn(db_session, user, category="Food", amount=Decimal("10.00"), txn_at=now)

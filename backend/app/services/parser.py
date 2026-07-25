@@ -28,6 +28,7 @@ class ParsedTxn:
     bank: str
     txn_at: datetime
     category: str | None = None
+    subcategory: str | None = None
     raw_parsed: dict = field(default_factory=dict)
 
 
@@ -231,6 +232,7 @@ def save_parsed_transaction(
         merchant_raw=parsed.merchant_raw,
         merchant_clean=parsed.merchant_raw,
         category=parsed.category,
+        subcategory=parsed.subcategory,
         txn_at=parsed.txn_at,
         bank=parsed.bank,
         raw_parsed=parsed.raw_parsed,

@@ -18,6 +18,12 @@ UOB_PAYNOW_TEXT = (
 )
 DBS_SENDER = "ibanking.alert@dbs.com"
 UOB_SENDER = "unialerts@uobgroup.com"
+DBS_CARD_TXN_TEXT = (
+    "Card Transaction Alert Transaction Ref: 999999999999 Dear Sir / Madam, We refer to your "
+    "card transaction request dated 24/07/26. We are pleased to confirm that the transaction "
+    "was completed. Date & Time: 24 Jul 08:15 (SGT) Amount: SGD3.76 From: DBS/POSB card ending "
+    "1234 To: BUS/MRT If unauthorized, please call our DBS hotline. Thank you for banking with us."
+)
 
 
 def _fake_message(msg_id: str, text: str, sender: str) -> dict:
@@ -146,3 +152,23 @@ def test_sync_skips_non_allowlisted_sender_even_if_search_returns_it(
     assert response.json()["inserted"] == 0
 
     assert db_session.query(Transaction).filter_by(user_id=user.id).count() == 0
+
+
+def test_sync_auto_categorizes_a_hardcoded_matchable_merchant(client, db_session, user, email_account, monkeypatch):
+    """A new transaction with a merchant the hardcoded rules recognize should be categorized
+    automatically during sync, with no manual tap needed."""
+    messages = [_fake_message("msg-transit", DBS_CARD_TXN_TEXT, DBS_SENDER)]
+    message_lookup = {m["id"]: m for m in messages}
+
+    monkeypatch.setattr(
+        gmail, "list_bank_messages", lambda access_token, query=None: [{"id": m["id"]} for m in messages]
+    )
+    monkeypatch.setattr(gmail, "fetch_message", lambda access_token, message_id: message_lookup[message_id])
+
+    response = client.post("/sync", params={"user_id": user.id})
+    assert response.status_code == 200
+    assert response.json()["inserted"] == 1
+
+    txn = db_session.query(Transaction).filter_by(user_id=user.id, merchant_raw="BUS/MRT").one()
+    assert txn.category == "Transport"
+    assert txn.subcategory is None

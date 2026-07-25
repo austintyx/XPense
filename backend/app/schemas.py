@@ -21,6 +21,7 @@ class TransactionOut(BaseModel):
     merchant_raw: str | None
     merchant_clean: str | None
     category: str | None
+    subcategory: str | None
     txn_at: datetime
     bank: str | None
     raw_parsed: dict[str, Any] | None

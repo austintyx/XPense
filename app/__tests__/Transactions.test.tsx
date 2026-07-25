@@ -16,6 +16,7 @@ const FAKE_TRANSACTIONS: client.Transaction[] = [
     merchant_raw: 'CHICKEN RICE',
     merchant_clean: 'CHICKEN RICE',
     category: 'Food',
+    subcategory: 'Dinner',
     txn_at: '2026-07-23T05:42:21.155856Z',
     bank: 'DBS',
     raw_parsed: null,
@@ -33,6 +34,7 @@ const FAKE_TRANSACTIONS: client.Transaction[] = [
     merchant_raw: '24HRS CITY FLORIST',
     merchant_clean: null,
     category: null,
+    subcategory: null,
     txn_at: '2026-07-23T05:42:21.155856Z',
     bank: 'DBS',
     raw_parsed: null,
@@ -53,6 +55,20 @@ describe('Transactions', () => {
     expect(await screen.findByText('CHICKEN RICE')).toBeTruthy();
     expect(screen.getByText('24HRS CITY FLORIST')).toBeTruthy();
     expect(screen.getByText('SGD 6.00')).toBeTruthy();
+  });
+
+  test('shows the transaction time alongside the date, and Food subcategory in parentheses', async () => {
+    jest.spyOn(client, 'getTransactions').mockResolvedValue(FAKE_TRANSACTIONS);
+
+    render(<Transactions />);
+
+    const expectedTime = new Date('2026-07-23T05:42:21.155856Z').toLocaleTimeString(undefined, {
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+    const timeMatches = await screen.findAllByText(new RegExp(expectedTime.replace(/[:.]/g, '\\$&')));
+    expect(timeMatches.length).toBeGreaterThan(0);
+    expect(screen.getByText(/Food \(Dinner\)/)).toBeTruthy();
   });
 
   test('selecting a category fires the correct POST via updateTransactionCategory', async () => {

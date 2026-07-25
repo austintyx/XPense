@@ -13,8 +13,16 @@ import {
 import { getTransactions, updateTransactionCategory, type Transaction } from "../api/client";
 import { CATEGORIES } from "../constants/categories";
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+function formatDateTime(iso: string): string {
+  const date = new Date(iso);
+  const datePart = date.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  const timePart = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return `${datePart}, ${timePart}`;
+}
+
+function formatCategory(category: string | null, subcategory: string | null): string {
+  if (!category) return "Uncategorized";
+  return subcategory ? `${category} (${subcategory})` : category;
 }
 
 export default function Transactions() {
@@ -73,7 +81,7 @@ export default function Transactions() {
             <View style={styles.rowMain}>
               <Text style={styles.merchant}>{item.merchant_clean ?? item.merchant_raw ?? "Unknown"}</Text>
               <Text style={styles.meta}>
-                {formatDate(item.txn_at)} · {item.category ?? "Uncategorized"}
+                {formatDateTime(item.txn_at)} · {formatCategory(item.category, item.subcategory)}
               </Text>
             </View>
             <Text style={styles.amount}>

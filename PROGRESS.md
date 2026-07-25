@@ -518,3 +518,68 @@ start` session from the Phase 8 test) -- 1201 modules, no errors.
    genuinely needs your phone -- I can't verify a native chart actually paints correctly from
    here) and that categorizing a transaction on the Transactions tab is reflected in Summary's
    totals after a refresh.
+
+## Post-Phase-9: automatic transaction categorization (hardcoded rules + AI fallback)
+
+The human noticed all 5 real synced transactions showed as "Uncategorized" and asked why --
+Phase 9's category was purely manual (tap -> picker). They asked for automatic categorization: a
+hybrid of hardcoded keyword rules (instant, free -- e.g. "BUS/MRT" is obviously Transport) plus an
+AI fallback for merchant names needing real-world knowledge (e.g. "SAIZERIYA - POIZ CENTRE" needs
+to be known as a restaurant chain). Also asked for the transaction list to show time (not just
+date), and for Food specifically to have a time-derived subcategory (Lunch/Dinner/Drinks/Snacks).
+Confirmed with the human: AI fallback model is **Claude Haiku 4.5**, and they'll add the real
+Anthropic key themselves once told the variable name -- same graceful-degradation pattern as the
+Google/Microsoft OAuth credentials.
+
+**Backend:**
+- New `transactions.subcategory` column (nullable `String`), migration `33e100332d0c`.
+- New `app/services/categorize.py`: `hardcoded_category()` (ordered regex rules per category --
+  Transport covers BUS/MRT, Grab, Gojek, Cabcharge, ComfortDelGro, EZ-Link, transit; similar rule
+  sets for Groceries, Shopping, Entertainment, Bills, Health), `food_subcategory()` (buckets the
+  `Asia/Singapore` local hour of `txn_at`: 11:00-14:59 Lunch, 15:00-17:59 Snacks, 18:00-21:59
+  Dinner, else Drinks), `ai_category()` (Claude Haiku 4.5 via the official `anthropic` SDK,
+  `client.messages.parse()` with a Pydantic `Literal`-constrained output so the model can't return
+  an invalid category; reads the key from `LLM_API_KEY`, returns `None` -- never raises -- when
+  unset or on any API failure, so it's a pure enrichment step that can never block a sync), and
+  `categorize_transaction()` (tries hardcoded first, only calls the AI when that misses, adds the
+  food subcategory when the resolved category is Food).
+- `services/sync.py`: after parsing, if the parser didn't set a category (true for every real bank
+  format so far), calls `categorize_transaction()` before saving -- every future transaction
+  auto-categorizes on sync, no manual tap needed. Phase 9's tap-to-recategorize still works as a
+  manual override.
+- New `POST /transactions/categorize-pending?user_id=` backfills existing `category IS NULL` rows
+  for a user, and separately backfills `subcategory` for any row that's already `category=Food`
+  but predates this feature (so the human's earlier Phase-9-era Food transactions get a
+  subcategory too, not just newly-synced ones).
+- `schemas.py` / `client.ts`: `subcategory` added to `TransactionOut` / the `Transaction` type.
+
+**App:** `Transactions.tsx` -- `formatDateTime()` shows date + time (e.g. "23 Jul, 6:00 PM")
+instead of date only; the row's meta line now reads `Food (Dinner)` style when a subcategory is
+present, or falls back to `category` alone / "Uncategorized".
+
+**Tested:** `pytest` in `backend/` -> 67 passed (new `tests/test_categorize.py`: hardcoded matches
+for real merchant strings including Grab/Gojek/Cabcharge, confirms `SAIZERIYA - POIZ CENTRE` is
+*not* hardcoded-matched -- proving the AI step is actually needed for it --, parametrized
+`food_subcategory` time buckets, `ai_category` gracefully returns `None` with no key configured
+and on a mocked API failure, a mocked-Anthropic-response success path, and the
+hardcoded-before-AI precedence; `test_sync.py` extended with a sync-time auto-categorization case;
+`test_transactions.py` extended with the backfill endpoint, including the stale-Food-subcategory
+case). `npm test` in `app/` -> 10 passed across 4 suites (new case asserting the row shows both
+the transaction time and a `Category (Subcategory)` combination).
+
+**Live-verified against the real dev Postgres:** ran the migration, then called
+`POST /transactions/categorize-pending?user_id=1` for real. Of the human's real transactions, 9
+resolved immediately via hardcoded rules alone (Sheng Siong -> Groceries, Shopee -> Shopping,
+2x Bus/MRT -> Transport, Shaw Theatres -> Entertainment, Gojek/Gopay-Gojek/Cabcharge/Grab ->
+Transport) with zero API calls or cost. 2 stayed Uncategorized as expected (`SAIZERIYA - POIZ
+CENTRE`, `McDonalds 930151`) since no `LLM_API_KEY` is configured yet -- exactly the human's own
+example of a case needing AI. One row (`A/C ending 9249`) isn't a real merchant name (an own-funds
+transfer description) and will likely never resolve either way, which is expected.
+
+**Manual step for the human:** to enable the AI fallback for merchants like Saizeriya and
+McDonald's, add your Anthropic API key to `backend/.env` as `LLM_API_KEY=sk-ant-...`, restart the
+backend, then call `POST /transactions/categorize-pending?user_id=1` again (or just wait -- every
+future sync auto-categorizes new transactions the same way). No code changes needed. Also please
+reload the app (Fast Refresh should pick up the `Transactions.tsx` change automatically) and
+confirm on your phone that transaction rows now show the time and that Food rows show a
+Lunch/Dinner/Drinks/Snacks subcategory.

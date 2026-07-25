@@ -40,6 +40,7 @@ export interface Transaction {
   merchant_raw: string | null;
   merchant_clean: string | null;
   category: string | null;
+  subcategory: string | null;
   txn_at: string;
   bank: string | null;
   raw_parsed: Record<string, unknown> | null;

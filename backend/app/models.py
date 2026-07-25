@@ -75,6 +75,7 @@ class Transaction(Base):
     merchant_raw: Mapped[str | None] = mapped_column(String, nullable=True)
     merchant_clean: Mapped[str | None] = mapped_column(String, nullable=True)
     category: Mapped[str | None] = mapped_column(String, nullable=True)
+    subcategory: Mapped[str | None] = mapped_column(String, nullable=True)
     txn_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     bank: Mapped[str | None] = mapped_column(String, nullable=True)
     raw_parsed: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
