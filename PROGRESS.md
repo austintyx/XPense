@@ -429,16 +429,12 @@ and linked-account state renders correctly both on initial load and after a succ
 session). Metro bundle verified clean (`curl` the dev-server bundle endpoint directly -- 1028
 modules, no errors) since there's no simulator on this machine to actually launch the app in.
 
-**Manual steps for the human (Phase 8's DoD explicitly requires a real-device check):**
-1. Make sure `ngrok http 8000` is running and `backend/.env`'s `GOOGLE_REDIRECT_URI` /
-   `MS_REDIRECT_URI` match its current URL (same as every prior phase's manual OAuth test).
-2. In `app/`, confirm `.env`'s `EXPO_PUBLIC_API_BASE_URL` matches that same ngrok URL, then
-   `npx expo start` and scan the QR code with Expo Go on your phone.
-3. Tap "Connect Gmail" (or Outlook) -- sign in -- confirm the in-app browser closes automatically
-   and the screen updates to "Connected as your@email" without you manually backing out.
-   This exact end-to-end mobile flow can't be verified from this machine (no simulator, and the
-   deep-link auto-close behavior is meaningful only on a real device/Expo Go session) -- it's the
-   one part of Phase 8 that genuinely needs your hands.
+**Manual steps for the human (Phase 8's DoD explicitly requires a real-device check):** ~~done~~
+-- verified on the human's actual phone via Expo Go: tapped "Connect Outlook", signed in, the
+in-app browser closed automatically (no manual backing out), and the ConnectEmail screen updated
+to "Connected as <their real Outlook email>". Confirms the full loop works end-to-end: deep-link
+auto-close via `openAuthSessionAsync`, the backend's `return_to` redirect, and the app's refetch-
+on-success all functioning together on a real device.
 
 ## Bug found during the human's real device test: Expo SDK too new for their Expo Go build
 
@@ -464,5 +460,5 @@ this project is now pinned to SDK 54 docs, not whatever's newest.
 **Verified:** `npx expo-doctor` -> 17/17 passed. `npm test` -> 5 passed (all Phase 8 tests
 unaffected). Fresh `npx expo start --clear` (killed a stale leftover process first to make sure
 this wasn't testing a cached bundle) + forced a real Metro bundle via curl -> 982 modules, no
-errors. The human still needs to actually rescan the QR code on their phone to confirm Expo Go
-accepts SDK 54 and the rest of Phase 8's real-device flow works.
+errors. Human confirmed on their phone: SDK 54 loads in Expo Go, and the full Connect Outlook
+flow (browser auto-close + status update) works end-to-end. Phase 8's real-device DoD is met.
