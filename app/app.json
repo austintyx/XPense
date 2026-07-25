@@ -24,6 +24,12 @@
     },
     "plugins": [
       "expo-web-browser"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "e476467c-8c15-40fd-996b-e288d501c489"
+      }
+    },
+    "owner": "austintyxs-team"
   }
 }
