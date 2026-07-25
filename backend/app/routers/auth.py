@@ -1,3 +1,5 @@
+from urllib.parse import urlencode
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from starlette.responses import RedirectResponse
@@ -7,6 +9,7 @@ from app.db import get_db
 from app.models import EmailAccount, ProviderEnum
 from app.security.crypto import encrypt
 from app.services import google_oauth, ms_oauth
+from app.services.oauth_state import decode_state, encode_state
 
 router = APIRouter()
 
@@ -55,16 +58,22 @@ def _upsert_email_account(
     return account
 
 
+def _append_query(url: str, **params: str) -> str:
+    separator = "&" if "?" in url else "?"
+    return f"{url}{separator}{urlencode(params)}"
+
+
 @router.get("/auth/google")
-def google_auth_start(user_id: int):
+def google_auth_start(user_id: int, return_to: str):
     _require_google_config()
-    return RedirectResponse(google_oauth.build_authorization_url(state=str(user_id)))
+    state = encode_state(user_id, return_to)
+    return RedirectResponse(google_oauth.build_authorization_url(state=state))
 
 
 @router.get("/auth/google/callback")
 def google_auth_callback(code: str, state: str, db: Session = Depends(get_db)):
     _require_google_config()
-    user_id = int(state)
+    user_id, return_to = decode_state(state)
 
     token_data = google_oauth.exchange_code_for_tokens(code)
     userinfo = google_oauth.fetch_userinfo(token_data["access_token"])
@@ -73,19 +82,20 @@ def google_auth_callback(code: str, state: str, db: Session = Depends(get_db)):
 
     _upsert_email_account(db, user_id, ProviderEnum.google, provider_email, token_data, expires_at)
 
-    return {"linked": True, "provider": "google", "provider_email": provider_email}
+    return RedirectResponse(_append_query(return_to, linked="true", provider="google", email=provider_email))
 
 
 @router.get("/auth/microsoft")
-def microsoft_auth_start(user_id: int):
+def microsoft_auth_start(user_id: int, return_to: str):
     _require_ms_config()
-    return RedirectResponse(ms_oauth.build_authorization_url(state=str(user_id)))
+    state = encode_state(user_id, return_to)
+    return RedirectResponse(ms_oauth.build_authorization_url(state=state))
 
 
 @router.get("/auth/microsoft/callback")
 def microsoft_auth_callback(code: str, state: str, db: Session = Depends(get_db)):
     _require_ms_config()
-    user_id = int(state)
+    user_id, return_to = decode_state(state)
 
     token_data = ms_oauth.exchange_code_for_tokens(code)
     userinfo = ms_oauth.fetch_userinfo(token_data["access_token"])
@@ -94,4 +104,4 @@ def microsoft_auth_callback(code: str, state: str, db: Session = Depends(get_db)
 
     _upsert_email_account(db, user_id, ProviderEnum.microsoft, provider_email, token_data, expires_at)
 
-    return {"linked": True, "provider": "microsoft", "provider_email": provider_email}
+    return RedirectResponse(_append_query(return_to, linked="true", provider="microsoft", email=provider_email))

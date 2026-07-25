@@ -27,6 +27,16 @@ class TransactionOut(BaseModel):
     created_at: datetime
 
 
+class EmailAccountOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    provider: ProviderEnum
+    provider_email: str
+    last_synced_at: datetime | None
+    created_at: datetime
+
+
 class CategoryUpdateIn(BaseModel):
     category: str
 

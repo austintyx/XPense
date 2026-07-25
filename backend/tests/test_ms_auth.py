@@ -1,8 +1,13 @@
+from urllib.parse import parse_qs, urlparse
+
 import pytest
 
 from app.config import settings
 from app.models import EmailAccount, ProviderEnum
 from app.services import ms_oauth
+from app.services.oauth_state import decode_state, encode_state
+
+RETURN_TO = "exp://192.168.1.5:8081/--/"
 
 
 @pytest.fixture(autouse=True)
@@ -12,15 +17,21 @@ def _ms_config(monkeypatch):
     monkeypatch.setattr(settings, "ms_redirect_uri", "https://example.ngrok.io/auth/microsoft/callback")
 
 
-def test_microsoft_auth_start_redirects_to_microsoft(client, user):
-    response = client.get(f"/auth/microsoft?user_id={user.id}", follow_redirects=False)
+def test_microsoft_auth_start_redirects_to_microsoft_carrying_return_to(client, user):
+    response = client.get(
+        "/auth/microsoft", params={"user_id": user.id, "return_to": RETURN_TO}, follow_redirects=False
+    )
     assert response.status_code in (302, 307)
     location = response.headers["location"]
     assert location.startswith("https://login.microsoftonline.com/common/oauth2/v2.0/authorize")
-    assert f"state={user.id}" in location
+
+    state = parse_qs(urlparse(location).query)["state"][0]
+    decoded_user_id, decoded_return_to = decode_state(state)
+    assert decoded_user_id == user.id
+    assert decoded_return_to == RETURN_TO
 
 
-def test_microsoft_callback_stores_encrypted_tokens(client, db_session, user, monkeypatch):
+def test_microsoft_callback_stores_encrypted_tokens_and_redirects_to_app(client, db_session, user, monkeypatch):
     monkeypatch.setattr(
         ms_oauth,
         "exchange_code_for_tokens",
@@ -36,9 +47,17 @@ def test_microsoft_callback_stores_encrypted_tokens(client, db_session, user, mo
         lambda access_token: {"mail": "someone@outlook.com", "userPrincipalName": "someone@outlook.com"},
     )
 
-    response = client.get(f"/auth/microsoft/callback?code=fake-code&state={user.id}")
-    assert response.status_code == 200
-    assert response.json()["provider_email"] == "someone@outlook.com"
+    state = encode_state(user.id, RETURN_TO)
+    response = client.get(
+        "/auth/microsoft/callback", params={"code": "fake-code", "state": state}, follow_redirects=False
+    )
+    assert response.status_code in (302, 307)
+    location = response.headers["location"]
+    assert location.startswith(RETURN_TO)
+    query = parse_qs(urlparse(location).query)
+    assert query["linked"] == ["true"]
+    assert query["provider"] == ["microsoft"]
+    assert query["email"] == ["someone@outlook.com"]
 
     account = (
         db_session.query(EmailAccount)
@@ -63,6 +82,10 @@ def test_microsoft_callback_falls_back_to_user_principal_name(client, db_session
         lambda access_token: {"mail": None, "userPrincipalName": "someone@live.com"},
     )
 
-    response = client.get(f"/auth/microsoft/callback?code=fake-code&state={user.id}")
-    assert response.status_code == 200
-    assert response.json()["provider_email"] == "someone@live.com"
+    state = encode_state(user.id, RETURN_TO)
+    response = client.get(
+        "/auth/microsoft/callback", params={"code": "fake-code", "state": state}, follow_redirects=False
+    )
+    assert response.status_code in (302, 307)
+    query = parse_qs(urlparse(response.headers["location"]).query)
+    assert query["email"] == ["someone@live.com"]

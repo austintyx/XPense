@@ -378,3 +378,64 @@ that a non-allowlisted sender returned by (mocked) search is skipped with zero r
 Live-verified: re-ran the real Graph query against the linked Outlook account -- all 10 results
 now come from `ibanking.alert@dbs.com`, zero marketing mail, versus 25/25 marketing mail before
 this change.
+
+## Phase 8 -- App: Connect Email screen
+
+Three design decisions confirmed with the human before building: (1) OAuth returns to the app via
+an auto-closing deep-link redirect rather than a manual "tap back" flow -- required backend
+changes; (2) the phone reaches the backend via the existing ngrok tunnel, not a LAN IP; (3)
+React Navigation is set up now rather than deferred to Phase 9.
+
+**Backend changes (needed for #1 and for the screen to show real status):**
+- `backend/app/services/oauth_state.py` (new): `encode_state`/`decode_state` pack `user_id` *and*
+  the app's own redirect URI into the OAuth `state` param (base64url JSON), so both survive the
+  round trip through Google/Microsoft's consent screen.
+- `backend/app/routers/auth.py`: `/auth/google` and `/auth/microsoft` now require a `return_to`
+  query param (the app's deep link). The callbacks decode `state`, upsert the account as before,
+  then `RedirectResponse` to `return_to` with `?linked=true&provider=...&email=...` appended --
+  replacing the old plain-JSON response. `expo-web-browser`'s `openAuthSessionAsync` on the app
+  side auto-detects this and closes the in-app browser.
+- `backend/app/routers/email_accounts.py` (new) + `EmailAccountOut` schema: `GET /email-accounts?
+  user_id=` lists linked accounts (provider, email, last_synced_at) -- no tokens exposed. This is
+  what "show linked-account status from the backend" actually calls.
+- `test_auth.py`/`test_ms_auth.py` rewritten for the redirect-based flow (assert `Location` header
+  + decoded state, not JSON body); new `test_email_accounts.py`.
+- Live-verified: `curl` against `/auth/google?user_id=1&return_to=exp://...` returns a 307 to
+  Google with a correctly base64-encoded `state`; `/email-accounts?user_id=1` returns both real
+  linked accounts (Gmail + Outlook) from earlier phases.
+
+**App changes:**
+- Installed `expo-web-browser`, `expo-auth-session`, `@react-navigation/native` +
+  `native-stack` (+ `react-native-screens`/`react-native-safe-area-context` peer deps) via
+  `npx expo install` (version-matched to the Expo SDK).
+- `app/app.json`: added `"scheme": "xpense"` (for a future standalone build; Expo Go testing uses
+  its own `exp://` scheme automatically, computed by `AuthSession.makeRedirectUri()`).
+- `app/src/api/client.ts` (new, matches BUILD_PLAN §3's intended layout): `getLinkedAccounts()`,
+  `buildAuthUrl()`. Base URL from `EXPO_PUBLIC_API_BASE_URL` (Expo's native env-var convention,
+  loaded from `app/.env` -- git-ignored since the ngrok URL changes per tunnel session;
+  `app/.env.example` documents the placeholder). `CURRENT_USER_ID = 1` hardcoded -- no login
+  screen exists yet, matches how the backend has been exercised throughout.
+- `app/src/screens/ConnectEmail.tsx` (new): two buttons (Gmail/Outlook), each opens
+  `WebBrowser.openAuthSessionAsync(authUrl, redirectUri)`; on `type: "success"` refetches linked
+  accounts; shows "Connected as <email>" or "Not connected" per provider from the live API.
+- `App.tsx`: now a `NavigationContainer` + native-stack with `ConnectEmail` as the (only, for now)
+  screen -- ready for Phase 9 to add `Transactions`/`Summary` routes without restructuring.
+
+**Tested:** `npm test` -> 5 passed (`App.test.tsx` updated to mock the fetch `ConnectEmail` now
+makes on mount, clearing an `act()` warning it triggered otherwise; new `ConnectEmail.test.tsx`
+covers all three BUILD_PLAN requirements: both provider buttons render, tapping one calls the
+mocked `openAuthSessionAsync` with a URL containing `/auth/google` and the mocked redirect URI,
+and linked-account state renders correctly both on initial load and after a successful auth
+session). Metro bundle verified clean (`curl` the dev-server bundle endpoint directly -- 1028
+modules, no errors) since there's no simulator on this machine to actually launch the app in.
+
+**Manual steps for the human (Phase 8's DoD explicitly requires a real-device check):**
+1. Make sure `ngrok http 8000` is running and `backend/.env`'s `GOOGLE_REDIRECT_URI` /
+   `MS_REDIRECT_URI` match its current URL (same as every prior phase's manual OAuth test).
+2. In `app/`, confirm `.env`'s `EXPO_PUBLIC_API_BASE_URL` matches that same ngrok URL, then
+   `npx expo start` and scan the QR code with Expo Go on your phone.
+3. Tap "Connect Gmail" (or Outlook) -- sign in -- confirm the in-app browser closes automatically
+   and the screen updates to "Connected as your@email" without you manually backing out.
+   This exact end-to-end mobile flow can't be verified from this machine (no simulator, and the
+   deep-link auto-close behavior is meaningful only on a real device/Expo Go session) -- it's the
+   one part of Phase 8 that genuinely needs your hands.
