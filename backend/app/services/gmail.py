@@ -4,12 +4,10 @@ from html.parser import HTMLParser
 
 import httpx
 
+from app.services.bank_senders import GMAIL_SENDER_FILTER
 from app.services.oauth_http import raise_for_status_with_body
 
-# Brand name only, no domain suffix: real alert senders vary (e.g. DBS's card-transaction
-# alerts come from ibanking.alert@dbs.com, not any *.dbs.com.sg address). The regex parser is
-# the real filter; this just needs to not exclude legitimate senders.
-BANK_SENDER_QUERY = "from:(dbs OR uob OR simplygo) newer_than:60d"
+BANK_SENDER_QUERY = f"{GMAIL_SENDER_FILTER} newer_than:60d"
 GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me"
 
 _SKIP_CONTENT_TAGS = {"style", "script"}

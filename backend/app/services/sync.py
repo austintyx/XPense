@@ -5,9 +5,8 @@ from sqlalchemy.orm import Session
 from app.models import EmailAccount, ProviderEnum, Transaction
 from app.security.crypto import decrypt, encrypt
 from app.services import gmail, google_oauth, graph, ms_oauth
+from app.services.bank_senders import GMAIL_SENDER_FILTER, is_allowlisted_sender
 from app.services.parser import parse_email, save_parsed_transaction
-
-GMAIL_BANK_SENDER_FILTER = "from:(dbs OR uob OR simplygo)"
 
 # Each provider's mail service exposes the same four-function interface (see gmail.py/graph.py),
 # so the sync loop below is identical regardless of which one an account uses.
@@ -38,8 +37,8 @@ def _get_valid_access_token(db: Session, account: EmailAccount) -> str:
 def _build_query(account: EmailAccount) -> str | None:
     if account.provider == ProviderEnum.google:
         if account.last_synced_at is not None:
-            return f"{GMAIL_BANK_SENDER_FILTER} after:{int(account.last_synced_at.timestamp())}"
-        return f"{GMAIL_BANK_SENDER_FILTER} newer_than:60d"
+            return f"{GMAIL_SENDER_FILTER} after:{int(account.last_synced_at.timestamp())}"
+        return f"{GMAIL_SENDER_FILTER} newer_than:60d"
     return None  # graph.py's default BANK_SENDER_QUERY; dedup on source_email_id keeps this safe
 
 
@@ -57,9 +56,14 @@ def sync_email_account(db: Session, account: EmailAccount) -> int:
         already_exists = db.query(Transaction).filter_by(source_email_id=message_id).first() is not None
 
         message = mail_service.fetch_message(access_token, message_id)
-        text = mail_service.extract_plain_text(message)
         sender = mail_service.get_sender(message)
+        if not is_allowlisted_sender(sender):
+            # Defense in depth: the search query should already exclude this, but a provider's
+            # fuzzy search matching a non-bank sender (seen in practice with Graph's $search)
+            # must never result in that email's body being parsed or stored.
+            continue
 
+        text = mail_service.extract_plain_text(message)
         parsed = parse_email(text, sender)
         if parsed is None:
             continue

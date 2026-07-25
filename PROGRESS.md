@@ -347,3 +347,34 @@ Two ways, without trusting the app's own claims:
    **Sign-in logs** tab shows an entry each time a token was issued/refreshed for it (e.g. when
    you first consented, and on subsequent silent token refreshes). Per-API-call logs beyond that
    aren't available on the free tier, so (1) is the more direct check for actual data access.
+
+## Bank-sender allowlist (pulled forward from Phase 10)
+
+The human has configured all card/PayNow/transit spends to route through the bank's own
+transaction-alert email (no separate merchant/transit sender), and gave the exact addresses:
+DBS `ibanking.alert@dbs.com`, UOB `unialerts@uobgroup.com`. Since these are known exactly, moved
+off the brand-name substring matching from the previous fix (which is how a UOB marketing sender
+matched in the first place) onto an exact-address allowlist:
+
+- `backend/app/services/bank_senders.py` (new): `KNOWN_BANK_SENDERS` (hardcoded dict, per user
+  decision -- simplest for a single-user app, easy to make per-user later if needed),
+  `is_allowlisted_sender()`, and the Gmail/Graph query-string builders derived from the same dict
+  so the query and the enforcement can never drift apart.
+- `gmail.py` / `graph.py`: `BANK_SENDER_QUERY` now built from the exact-address list instead of
+  brand-name substrings.
+- `sync.py`: **hard filter** -- every fetched message's sender is checked against the allowlist
+  and skipped (never parsed, never stored) if it doesn't match exactly, even though the query
+  should already exclude it. This is defense in depth against exactly the kind of fuzzy-match
+  false positive Graph's `$search` produced last time, and it's substantively Phase 10's "enforce
+  bank-sender allowlist before reading any body" requirement -- built now because we had a
+  concrete reason to, not scheduled scope creep.
+- SimplyGo's parser/fixture/test are untouched (still real code, matches BUILD_PLAN §7) but it's
+  not in the sender allowlist, since the human's real setup never sends a separate SimplyGo email.
+
+**Tested:** `pytest` -> 39 passed. New `test_bank_senders.py` (address extraction, allowlist
+accept/reject including the exact marketing sender that leaked through last time). `test_sync.py`
+updated to use the real allowlisted addresses instead of guessed `.com.sg` ones, plus a new test
+that a non-allowlisted sender returned by (mocked) search is skipped with zero rows written.
+Live-verified: re-ran the real Graph query against the linked Outlook account -- all 10 results
+now come from `ibanking.alert@dbs.com`, zero marketing mail, versus 25/25 marketing mail before
+this change.
