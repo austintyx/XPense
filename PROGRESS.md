@@ -462,3 +462,59 @@ unaffected). Fresh `npx expo start --clear` (killed a stale leftover process fir
 this wasn't testing a cached bundle) + forced a real Metro bundle via curl -> 982 modules, no
 errors. Human confirmed on their phone: SDK 54 loads in Expo Go, and the full Connect Outlook
 flow (browser auto-close + status update) works end-to-end. Phase 8's real-device DoD is met.
+
+## Phase 9 -- App: Transactions + categorize + summary
+
+**Chart library deviation from BUILD_PLAN (confirmed with the human first):** BUILD_PLAN names
+`victory-native`, but its current major version requires `@shopify/react-native-skia` (a native
+module needing a custom dev build) -- uncertain whether Expo Go SDK 54 bundles it, and getting it
+wrong would mean another crash-on-device round trip like the SDK 57 issue. Used
+`react-native-chart-kit` instead (built on `react-native-svg`, no native build required, works in
+plain Expo Go) -- the human's explicit choice over the alternatives (try victory-native anyway,
+or skip the chart).
+
+**Backend:** none needed -- Phase 2's `GET /transactions`, `POST /transactions/{id}/category`,
+and `GET /summary` already cover everything Phase 9 requires.
+
+**App:**
+- `src/api/client.ts` extended: `getTransactions()`, `updateTransactionCategory()`, `getSummary()`
+  (+ `Transaction`/`CategorySummary`/`Summary` types matching the backend schemas).
+- `src/constants/categories.ts` (new): a hardcoded category list (Food, Groceries, Transport,
+  Shopping, Bills, Entertainment, Health, Other) for the category picker -- BUILD_PLAN's
+  `categories` DB table has no CRUD endpoint built in any phase, so a fixed list is the minimal
+  choice rather than building unrequested backend scope.
+- `src/screens/Transactions.tsx` (new): `FlatList` with pull-to-refresh, each row tappable to
+  open a bottom-sheet `Modal` category picker; selecting a category calls
+  `updateTransactionCategory` and updates the row in place from the response (no full refetch).
+- `src/screens/Summary.tsx` (new): per-category totals list plus a `react-native-chart-kit`
+  `BarChart`; pull-to-refresh; empty state when there are no expenses this month.
+- `App.tsx`: switched from a bare native-stack (Phase 8, single screen) to a bottom-tab navigator
+  (`@react-navigation/bottom-tabs`) with three tabs -- Transactions, Summary, Connect Email --
+  using `@expo/vector-icons` for tab icons.
+- Had to explicitly install `@expo/vector-icons`, `expo-font`, and `expo-asset` as direct
+  dependencies -- they're transitively required by the icon rendering path but aren't hoisted to
+  root `node_modules`, so Jest (and Metro) couldn't resolve them until added directly.
+
+**Tested:** `npm test` -> 9 passed across 4 suites. New `Transactions.test.tsx` (mocked list
+renders both merchant names and amounts; tapping a row then a category calls
+`updateTransactionCategory(id, category)` with the right arguments and the row's displayed
+category updates, no more "Uncategorized"). New `Summary.test.tsx` (category totals render from
+mocked API data; empty-state text renders when there are no categories). `App.test.tsx` updated
+for the new default tab (Transactions, not ConnectEmail) and mocks all three screens' network
+calls. `npx expo-doctor` -> 17/17 passed after each new dependency. Verified a completely fresh
+Metro bundle (on an isolated port, so as not to disturb the human's own already-running `expo
+start` session from the Phase 8 test) -- 1201 modules, no errors.
+
+**Manual steps for the human (Phase 9's DoD explicitly requires a real end-to-end check):**
+1. Since several native modules (bottom-tabs, chart-kit, vector-icons, expo-font/expo-asset) were
+   installed *after* your currently-running `expo start` session started, **fully restart it**
+   (stop it, `npx expo start` again) rather than just reloading the app in Expo Go -- Metro may
+   not have these in its dependency graph otherwise.
+2. You already have 5 real DBS transactions synced from earlier phases (Sheng Siong, Shopee,
+   Bus/MRT, Saizeriya, Shaw Theatres) -- the Transactions tab should show them immediately without
+   needing a fresh sync. Confirm they appear, tap one, categorize it, and confirm the category
+   sticks (and shows correctly) after a pull-to-refresh.
+3. Switch to the Summary tab and confirm the bar chart renders (this is the one part that
+   genuinely needs your phone -- I can't verify a native chart actually paints correctly from
+   here) and that categorizing a transaction on the Transactions tab is reflected in Summary's
+   totals after a refresh.
