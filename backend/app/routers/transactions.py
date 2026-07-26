@@ -40,6 +40,7 @@ def update_category(transaction_id: int, body: CategoryUpdateIn, db: Session = D
     if txn is None:
         raise HTTPException(status_code=404, detail="Transaction not found")
     txn.category = body.category
+    txn.subcategory = body.subcategory
     db.commit()
     db.refresh(txn)
     return txn
@@ -85,6 +86,7 @@ def create_manual_transaction(body: TransactionCreateIn, db: Session = Depends(g
         merchant_raw=body.merchant_raw,
         merchant_clean=body.merchant_clean,
         category=body.category,
+        subcategory=body.subcategory,
         txn_at=body.txn_at,
         bank=body.bank,
     )

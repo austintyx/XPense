@@ -40,6 +40,7 @@ class EmailAccountOut(BaseModel):
 
 class CategoryUpdateIn(BaseModel):
     category: str
+    subcategory: str | None = None
 
 
 class TransactionCreateIn(BaseModel):
@@ -51,6 +52,7 @@ class TransactionCreateIn(BaseModel):
     merchant_raw: str | None = None
     merchant_clean: str | None = None
     category: str | None = None
+    subcategory: str | None = None
     txn_at: datetime
     bank: str | None = None
 
@@ -65,3 +67,40 @@ class SummaryOut(BaseModel):
     month: str
     categories: list[CategorySummary]
     total: Decimal
+
+
+class BudgetOut(BaseModel):
+    user_id: int
+    monthly_target: Decimal
+    weekly_target: Decimal
+    daily_target: Decimal
+
+
+class BudgetUpdateIn(BaseModel):
+    monthly_target: Decimal
+
+
+class SavingsGoalOut(BaseModel):
+    user_id: int
+    name: str
+    target_amount: Decimal
+    saved_amount: Decimal
+
+
+class SavingsGoalUpdateIn(BaseModel):
+    name: str
+    target_amount: Decimal
+    saved_amount: Decimal
+
+
+class UserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    email: str
+    name: str | None
+    created_at: datetime
+
+
+class UserUpdateIn(BaseModel):
+    name: str

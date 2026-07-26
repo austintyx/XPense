@@ -89,3 +89,27 @@ def test_microsoft_callback_falls_back_to_user_principal_name(client, db_session
     assert response.status_code in (302, 307)
     query = parse_qs(urlparse(response.headers["location"]).query)
     assert query["email"] == ["someone@live.com"]
+
+
+def test_microsoft_callback_sets_user_name_from_profile_when_unset(client, db_session, user, monkeypatch):
+    assert user.name is None
+    monkeypatch.setattr(
+        ms_oauth,
+        "exchange_code_for_tokens",
+        lambda code: {"access_token": "fake-ms-access-token", "refresh_token": "fake-ms-refresh-token", "expires_in": 3600},
+    )
+    monkeypatch.setattr(
+        ms_oauth,
+        "fetch_userinfo",
+        lambda access_token: {
+            "mail": "someone@outlook.com",
+            "userPrincipalName": "someone@outlook.com",
+            "displayName": "Wei Ling Tan",
+        },
+    )
+
+    state = encode_state(user.id, RETURN_TO)
+    client.get("/auth/microsoft/callback", params={"code": "fake-code", "state": state}, follow_redirects=False)
+
+    db_session.refresh(user)
+    assert user.name == "Wei Ling Tan"

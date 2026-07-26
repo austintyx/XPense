@@ -6,7 +6,7 @@ from starlette.responses import RedirectResponse
 
 from app.config import settings
 from app.db import get_db
-from app.models import EmailAccount, ProviderEnum
+from app.models import EmailAccount, ProviderEnum, User
 from app.security.crypto import encrypt
 from app.services import google_oauth, ms_oauth
 from app.services.oauth_state import decode_state, encode_state
@@ -58,6 +58,18 @@ def _upsert_email_account(
     return account
 
 
+def _maybe_set_user_name(db: Session, user_id: int, name: str | None) -> None:
+    """Opportunistically fill in a display name from the OAuth profile the first time a user
+    links an account -- never overwrites a name the user already has (e.g. set manually in
+    Settings)."""
+    if not name:
+        return
+    user = db.get(User, user_id)
+    if user is not None and user.name is None:
+        user.name = name
+        db.commit()
+
+
 def _append_query(url: str, **params: str) -> str:
     separator = "&" if "?" in url else "?"
     return f"{url}{separator}{urlencode(params)}"
@@ -81,6 +93,7 @@ def google_auth_callback(code: str, state: str, db: Session = Depends(get_db)):
     expires_at = google_oauth.compute_expiry(token_data.get("expires_in", 3600))
 
     _upsert_email_account(db, user_id, ProviderEnum.google, provider_email, token_data, expires_at)
+    _maybe_set_user_name(db, user_id, userinfo.get("name"))
 
     return RedirectResponse(_append_query(return_to, linked="true", provider="google", email=provider_email))
 
@@ -103,5 +116,6 @@ def microsoft_auth_callback(code: str, state: str, db: Session = Depends(get_db)
     expires_at = ms_oauth.compute_expiry(token_data.get("expires_in", 3600))
 
     _upsert_email_account(db, user_id, ProviderEnum.microsoft, provider_email, token_data, expires_at)
+    _maybe_set_user_name(db, user_id, userinfo.get("displayName"))
 
     return RedirectResponse(_append_query(return_to, linked="true", provider="microsoft", email=provider_email))

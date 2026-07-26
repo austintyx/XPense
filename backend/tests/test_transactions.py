@@ -57,6 +57,30 @@ def test_category_update_persists(client, db_session, user):
     assert row["category"] == "Food"
 
 
+def test_category_update_accepts_explicit_subcategory(client, db_session, user):
+    txn = _make_txn(db_session, user, category=None, subcategory=None)
+
+    response = client.post(
+        f"/transactions/{txn.id}/category", json={"category": "Food", "subcategory": "Drinks"}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["category"] == "Food"
+    assert body["subcategory"] == "Drinks"
+
+
+def test_category_update_without_subcategory_clears_it(client, db_session, user):
+    """The categorise sheet always sends the subcategory it decided on (or none for non-Food
+    categories) -- a plain recategorise should not leave a stale subcategory behind."""
+    txn = _make_txn(db_session, user, category="Food", subcategory="Dinner")
+
+    response = client.post(f"/transactions/{txn.id}/category", json={"category": "Transport"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["category"] == "Transport"
+    assert body["subcategory"] is None
+
+
 def test_manual_add_creates_row(client, user):
     payload = {
         "user_id": user.id,
@@ -77,6 +101,24 @@ def test_manual_add_creates_row(client, user):
 
     listing = client.get("/transactions", params={"user_id": user.id})
     assert any(r["id"] == body["id"] for r in listing.json())
+
+
+def test_manual_add_accepts_food_subcategory(client, user):
+    payload = {
+        "user_id": user.id,
+        "amount": "8.40",
+        "currency": "SGD",
+        "direction": "debit",
+        "type": "expense",
+        "merchant_raw": "Tiong Bahru Bakery",
+        "category": "Food",
+        "subcategory": "Coffee",
+        "txn_at": datetime.now(timezone.utc).isoformat(),
+        "bank": None,
+    }
+    response = client.post("/transactions", json=payload)
+    assert response.status_code == 201
+    assert response.json()["subcategory"] == "Coffee"
 
 
 def test_categorize_pending_backfills_hardcoded_matchable_rows(client, db_session, user):

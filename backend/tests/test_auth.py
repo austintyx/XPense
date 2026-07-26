@@ -70,3 +70,44 @@ def test_google_callback_stores_encrypted_tokens_and_redirects_to_app(client, db
     assert account.refresh_token_enc != "fake-refresh-token"
     assert "fake-access-token" not in account.access_token_enc
     assert "fake-refresh-token" not in account.refresh_token_enc
+
+
+def test_google_callback_sets_user_name_from_profile_when_unset(client, db_session, user, monkeypatch):
+    assert user.name is None
+    monkeypatch.setattr(
+        google_oauth,
+        "exchange_code_for_tokens",
+        lambda code: {"access_token": "fake-access-token", "refresh_token": "fake-refresh-token", "expires_in": 3600},
+    )
+    monkeypatch.setattr(
+        google_oauth,
+        "fetch_userinfo",
+        lambda access_token: {"email": "someone@gmail.com", "name": "Wei Ling Tan"},
+    )
+
+    state = encode_state(user.id, RETURN_TO)
+    client.get("/auth/google/callback", params={"code": "fake-code", "state": state}, follow_redirects=False)
+
+    db_session.refresh(user)
+    assert user.name == "Wei Ling Tan"
+
+
+def test_google_callback_does_not_overwrite_existing_user_name(client, db_session, user, monkeypatch):
+    user.name = "Already Set"
+    db_session.commit()
+    monkeypatch.setattr(
+        google_oauth,
+        "exchange_code_for_tokens",
+        lambda code: {"access_token": "fake-access-token", "refresh_token": "fake-refresh-token", "expires_in": 3600},
+    )
+    monkeypatch.setattr(
+        google_oauth,
+        "fetch_userinfo",
+        lambda access_token: {"email": "someone@gmail.com", "name": "Wei Ling Tan"},
+    )
+
+    state = encode_state(user.id, RETURN_TO)
+    client.get("/auth/google/callback", params={"code": "fake-code", "state": state}, follow_redirects=False)
+
+    db_session.refresh(user)
+    assert user.name == "Already Set"

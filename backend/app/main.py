@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.routers import auth, email_accounts, health, sync, transactions
+from app.routers import auth, budget, email_accounts, goals, health, sync, transactions, users
 from app.services.scheduler import start_scheduler, stop_scheduler
 
 
@@ -19,3 +19,6 @@ app.include_router(transactions.router)
 app.include_router(auth.router)
 app.include_router(sync.router)
 app.include_router(email_accounts.router)
+app.include_router(budget.router)
+app.include_router(goals.router)
+app.include_router(users.router)
