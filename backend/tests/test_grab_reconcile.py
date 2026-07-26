@@ -24,6 +24,17 @@ GRAB_RIDE_RECEIPT_TEXT = (
     "Your Grab receipt Thanks for riding with Grab! Trip from Tampines to Changi Airport "
     "Total S$18.50 Paid with DBS card ending 1234."
 )
+# Verbatim (whitespace-collapsed) plain text of a real "Your Grab E-Receipt" email, captured from
+# a live account. Two real quirks this must handle: "TOTAL" and "SGD" have no space between them
+# (HTML-stripping artifact), and "Subtotal" elsewhere in the body must not be mistaken for "Total".
+REAL_GRAB_FOOD_RECEIPT_TEXT = (
+    "Hope you enjoyed your food!TOTALSGD 5.12DATE | TIME26 Jul 26 01:16 +0800Order Details"
+    "Vehicle type:GrabFood Issued toAustin Booking code001224847382-C8CKWF5ZVUJVN6 "
+    "Order from:CHAGEE - Tampines West Community Club Profile:Personal Receipt Summary"
+    "Payment Method:Visa Description: Amount: 1x Peach Oolong Milk Tea SGD 6.40 Large Fresh Milk "
+    "Normal Ice Normal Sweet Subtotal SGD 6.40 PICKUP20- SGD 1.28 TOTAL (INCL. TAX) SGD 5.12 "
+    "Rate your meal!"
+)
 
 
 @pytest.mark.parametrize(
@@ -44,6 +55,13 @@ def test_parse_grab_receipt_identifies_grabfood():
     receipt = parse_grab_receipt(GRAB_FOOD_RECEIPT_TEXT)
     assert receipt is not None
     assert receipt.amount == Decimal("9.80")
+    assert receipt.category == "Food"
+
+
+def test_parse_grab_receipt_handles_a_real_receipt_ignoring_the_subtotal():
+    receipt = parse_grab_receipt(REAL_GRAB_FOOD_RECEIPT_TEXT)
+    assert receipt is not None
+    assert receipt.amount == Decimal("5.12")  # not 6.40 (the Subtotal), not a Subtotal-as-Total match
     assert receipt.category == "Food"
 
 
@@ -79,7 +97,7 @@ class _FakeMailService:
         self.bodies = bodies
         self.list_calls = []
 
-    def list_messages_from_sender(self, access_token, sender_email):
+    def list_messages_from_sender(self, access_token, sender_email, around, window=None):
         self.list_calls.append(sender_email)
         return self.stubs
 
@@ -156,7 +174,7 @@ def test_reconcile_grab_transaction_ignores_non_grab_sender():
 
 def test_reconcile_grab_transaction_never_raises_on_mail_service_failure():
     class _BrokenMailService:
-        def list_messages_from_sender(self, access_token, sender_email):
+        def list_messages_from_sender(self, access_token, sender_email, around, window=None):
             raise RuntimeError("network error")
 
     result = reconcile_grab_transaction(

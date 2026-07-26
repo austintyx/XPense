@@ -13,9 +13,12 @@ _GRAB_MERCHANT_PATTERN = re.compile(r"\bGRAB\b", re.I)
 GRAB_RECEIPT_SENDER = "no-reply@grab.com"
 
 # Matches the receipt's stated total specifically (not a line-item price) -- Grab receipt bodies
-# list item/delivery-fee amounts before the total, so a bare amount-anywhere-in-the-text regex
-# would grab the wrong number.
-_TOTAL_AMOUNT_RE = re.compile(r"Total\s+(?:S\$|SGD\s?)([\d,]+\.\d{2})", re.I)
+# list item/delivery-fee/subtotal amounts before the grand total, so a bare amount-anywhere regex
+# would grab the wrong number. \b is required before TOTAL so this doesn't match inside "Subtotal"
+# (real receipts list both). The optional parenthetical handles "TOTAL (INCL. TAX) SGD 5.12", and
+# \s* (not \s+) handles real receipts where HTML-stripping collapses "TOTAL" and "SGD" together
+# with no space at all (observed in practice: "TOTALSGD 5.12").
+_TOTAL_AMOUNT_RE = re.compile(r"\bTOTAL\b(?:\s*\([^)]*\))?\s*(?:S\$|SGD)\s*([\d,]+\.\d{2})", re.I)
 
 # Ordered: first keyword found in the receipt body wins. No match (a ride) means "no override" --
 # the caller keeps the existing default Transport/Private classification.
@@ -40,10 +43,14 @@ def parse_grab_receipt(text: str) -> GrabReceipt | None:
     """Pure function, no I/O. Extracts the receipt total and sniffs the body for which Grab
     service this was. Returns None if the amount can't be found or no recognized service keyword
     is present (a ride, or an email that isn't actually a Grab receipt)."""
-    amount_match = _TOTAL_AMOUNT_RE.search(text)
-    if amount_match is None:
+    # A receipt's summary section and its itemized-detail section both restate the same total
+    # (observed in practice) -- take the last match as the more likely "final" figure in case a
+    # future receipt format ever shows an earlier estimated/pre-discount total under the same
+    # label.
+    amount_matches = list(_TOTAL_AMOUNT_RE.finditer(text))
+    if not amount_matches:
         return None
-    amount = Decimal(amount_match.group(1).replace(",", ""))
+    amount = Decimal(amount_matches[-1].group(1).replace(",", ""))
 
     for pattern, category in _SERVICE_KEYWORDS:
         if pattern.search(text):
@@ -59,7 +66,7 @@ def reconcile_grab_transaction(
     is found, so the caller can fall back to the default Transport/Private classification -- a
     network hiccup or a not-yet-delivered receipt must never block a sync."""
     try:
-        candidates = mail_service.list_messages_from_sender(access_token, GRAB_RECEIPT_SENDER)
+        candidates = mail_service.list_messages_from_sender(access_token, GRAB_RECEIPT_SENDER, around=txn_at)
         for stub in candidates:
             message = mail_service.fetch_message(access_token, stub["id"])
             sender = mail_service.get_sender(message)

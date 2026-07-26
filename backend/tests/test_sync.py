@@ -196,7 +196,9 @@ def test_sync_reconciles_generic_grab_charge_with_matching_grabfood_receipt(
 
     monkeypatch.setattr(gmail, "list_bank_messages", lambda access_token, query=None: [{"id": "msg-grab-alert"}])
     monkeypatch.setattr(
-        gmail, "list_messages_from_sender", lambda access_token, sender_email: [{"id": "msg-grab-receipt"}]
+        gmail,
+        "list_messages_from_sender",
+        lambda access_token, sender_email, around, window=None: [{"id": "msg-grab-receipt"}],
     )
     monkeypatch.setattr(gmail, "fetch_message", lambda access_token, message_id: message_lookup[message_id])
 
@@ -218,7 +220,9 @@ def test_sync_falls_back_to_transport_when_no_matching_grab_receipt_is_found(
     message_lookup = {"msg-grab-alert": alert_message}
 
     monkeypatch.setattr(gmail, "list_bank_messages", lambda access_token, query=None: [{"id": "msg-grab-alert"}])
-    monkeypatch.setattr(gmail, "list_messages_from_sender", lambda access_token, sender_email: [])
+    monkeypatch.setattr(
+        gmail, "list_messages_from_sender", lambda access_token, sender_email, around, window=None: []
+    )
     monkeypatch.setattr(gmail, "fetch_message", lambda access_token, message_id: message_lookup[message_id])
 
     response = client.post("/sync", params={"user_id": user.id})

@@ -896,15 +896,35 @@ reliable where `$search` wasn't. Added a new shared-interface function,
 `$search`), and switched `grab_reconcile.py` to call that instead of reusing `list_bank_messages`
 for this lookup. All tests updated to mock the new function; 127 passed.
 
-**Manual step for the human:** none required for the feature itself -- no new env vars, no new
-OAuth consent. I did try to fix the specific 5/12 (S$5.12) transaction (id 16, `Grab* 2-C8CKWF...`)
-against your real linked Outlook inbox and couldn't: with the `$filter` fix, the search does now
-reliably find real Grab emails in your mailbox (confirmed against 500 of them), but every single
-one is old account/marketing mail from 2018-2020 -- there's no 2026 Grab receipt in that inbox to
-cross-reference, so `categorize-pending` correctly leaves it as `Transport`/`Private` rather than
-guessing. That specific transaction was most likely added as manual/seeded test data rather than
-from an actual synced Grab charge, so there's no receipt email for the mechanism to find -- you'll
-need to recategorize that one row by hand via the app's categorize sheet. The mechanism itself is
-verified working end-to-end against your real account (found and correctly parsed real historical
-Grab receipt-shaped emails during testing); it'll take effect automatically for any real GrabFood
-order going forward.
+**Two more real bugs found and fixed after you shared a screenshot of the actual "Your Grab
+E-Receipt" email:**
+
+1. **The search was scanning the wrong 50 emails.** The account has 1898 total emails from
+   `no-reply@grab.com` (8 years of Grab marketing mail); my first `$filter`-only fix (no
+   `$orderby`, since combining the two triggered Graph's "InefficientFilter" error) returned an
+   *unordered* batch of 50, which happened to all be 2018-2020 mail -- nowhere near the actual
+   2026 receipt. Fixed by filtering + sorting on `receivedDateTime` instead (a native, indexed
+   property that *does* support `$filter` + `$orderby` together) within a window centered on the
+   transaction's own timestamp, then matching the sender client-side. Also updated Gmail's version
+   of `list_messages_from_sender` to center on the transaction time the same way (via `after:`/
+   `before:` Unix timestamps) rather than "newer than N days before whenever this happens to run"
+   -- more robust for both a live sync and a backfill of an older row.
+2. **The amount regex matched the wrong number.** Your receipt's body (once HTML-stripped) reads
+   `"...Subtotal SGD 6.40 PICKUP20- SGD 1.28 TOTAL (INCL. TAX) SGD 5.12..."` -- the old
+   `Total\s+...` regex wasn't word-boundary-anchored, so it matched inside **Sub**`total` and
+   grabbed 6.40 instead of the real 5.12. Also found the receipt's *own* summary line reads
+   `"TOTALSGD 5.12"` with zero whitespace between the two (an HTML-stripping artifact). Fixed with
+   `\bTOTAL\b(?:\s*\([^)]*\))?\s*(?:S\$|SGD)\s*(...)`, which won't match "Subtotal", tolerates the
+   optional "(INCL. TAX)" wording and the no-space case, and takes the *last* such match in the
+   body if there are several restating the same figure.
+
+With both fixes, `reconcile_grab_transaction` now correctly finds your real "Your Grab E-Receipt"
+email and returns `("Food", "Others")` for the 5.12 transaction -- "Others" because it was a 1:16
+AM order (SGT), outside the Breakfast/Lunch/Dinner windows, which is the correct existing
+`food_subcategory` bucket for that hour, not a bug. Added a new `test_parse_grab_receipt_handles_a
+_real_receipt_ignoring_the_subtotal` regression test using your receipt's actual (anonymized-free,
+it's already just your own data) body text. 128 tests passing.
+
+**Manual step for the human:** none required for the feature itself. I re-ran
+`POST /transactions/categorize-pending?user_id=1` against your dev server with both fixes in place
+-- see below for the actual result on your real transaction.

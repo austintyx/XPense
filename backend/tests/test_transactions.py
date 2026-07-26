@@ -207,7 +207,9 @@ def test_categorize_pending_reconciles_a_generic_grab_transport_row_against_a_ma
     }
 
     monkeypatch.setattr(
-        gmail, "list_messages_from_sender", lambda access_token, sender_email: [{"id": "receipt-1"}]
+        gmail,
+        "list_messages_from_sender",
+        lambda access_token, sender_email, around, window=None: [{"id": "receipt-1"}],
     )
     monkeypatch.setattr(gmail, "fetch_message", lambda access_token, message_id: receipt_message)
 

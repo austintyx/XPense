@@ -1,5 +1,6 @@
 import base64
 import re
+from datetime import datetime, timedelta
 from html.parser import HTMLParser
 
 import httpx
@@ -56,8 +57,15 @@ def list_bank_messages(access_token: str, query: str = BANK_SENDER_QUERY) -> lis
     return response.json().get("messages", [])
 
 
-def list_messages_from_sender(access_token: str, sender_email: str) -> list[dict]:
-    return list_bank_messages(access_token, query=f"from:{sender_email} newer_than:3d")
+def list_messages_from_sender(
+    access_token: str, sender_email: str, around: datetime, window: timedelta = timedelta(days=1)
+) -> list[dict]:
+    """Bounded to a window around the transaction time (not "now") so this works correctly for
+    both a live sync (transaction just happened) and a backfill against an older stored row --
+    Gmail's after:/before: operators accept Unix timestamps directly."""
+    start = int((around - window).timestamp())
+    end = int((around + window).timestamp())
+    return list_bank_messages(access_token, query=f"from:{sender_email} after:{start} before:{end}")
 
 
 def fetch_message(access_token: str, message_id: str) -> dict:
