@@ -6,7 +6,7 @@ from app.models import EmailAccount, ProviderEnum, Transaction
 from app.security.crypto import decrypt, encrypt
 from app.services import gmail, google_oauth, graph, ms_oauth
 from app.services.bank_senders import GMAIL_SENDER_FILTER, is_allowlisted_sender
-from app.services.categorize import categorize_transaction
+from app.services.categorize import categorize_transaction, subcategory_for
 from app.services.parser import parse_email, save_parsed_transaction
 
 # Each provider's mail service exposes the same four-function interface (see gmail.py/graph.py),
@@ -73,6 +73,10 @@ def sync_email_account(db: Session, account: EmailAccount) -> int:
             parsed.category, parsed.subcategory = categorize_transaction(
                 parsed.merchant_raw, parsed.bank, parsed.txn_at
             )
+        elif parsed.subcategory is None:
+            # The parser already hardcoded a category (e.g. SimplyGo transit -> Transport) --
+            # still derive a subcategory so parser-hardcoded rows aren't left without one.
+            parsed.subcategory = subcategory_for(parsed.category, parsed.merchant_raw, parsed.txn_at)
 
         save_parsed_transaction(db, account.user_id, message_id, account.provider, parsed)
         if not already_exists:

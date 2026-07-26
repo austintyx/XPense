@@ -10,11 +10,22 @@ from app.services.parser import SGT
 
 CATEGORIES = ["Food", "Groceries", "Transport", "Shopping", "Bills", "Entertainment", "Health", "Other"]
 
+# Public-transit and ride-hailing merchant keywords are split into named patterns so both the
+# top-level category rule and the Transport subcategory rule can reuse them without duplicating
+# the keyword lists.
+_PUBLIC_TRANSPORT_PATTERN = re.compile(r"BUS/MRT|\bMRT\b|TRANSIT|COMFORTDELGRO|EZ-?LINK", re.I)
+_PRIVATE_TRANSPORT_PATTERN = re.compile(r"\bGRAB\b|GOJEK|CABCHARGE|\bTADA\b", re.I)
+
+# Coffee/tea/juice-type merchants -- checked before time-of-day for Food subcategorization.
+_BEVERAGE_PATTERN = re.compile(
+    r"STARBUCKS|COFFEE|\bCAFE\b|\bKOI\b|LIHO|GONG CHA|\bTEA\b|BUBBLE TEA|JUICE|SMOOTHIE", re.I
+)
+
 # Ordered rules: first pattern to match wins. Representative, not exhaustive -- unmatched
 # merchants fall through to the AI step below.
 _HARDCODED_RULES: list[tuple[re.Pattern, str]] = [
     (
-        re.compile(r"BUS/MRT|\bMRT\b|TRANSIT|COMFORTDELGRO|EZ-?LINK|\bGRAB\b|GOJEK|CABCHARGE|\bTADA\b", re.I),
+        re.compile(_PUBLIC_TRANSPORT_PATTERN.pattern + "|" + _PRIVATE_TRANSPORT_PATTERN.pattern, re.I),
         "Transport",
     ),
     (
@@ -38,15 +49,26 @@ def hardcoded_category(merchant: str) -> str | None:
     return None
 
 
-def food_subcategory(txn_at: datetime) -> str:
+def food_subcategory(merchant: str, txn_at: datetime) -> str:
+    if _BEVERAGE_PATTERN.search(merchant):
+        return "Beverage"
+
     hour = txn_at.astimezone(SGT).hour
+    if 5 <= hour < 11:
+        return "Breakfast"
     if 11 <= hour < 15:
         return "Lunch"
-    if 15 <= hour < 18:
-        return "Snacks"
     if 18 <= hour < 22:
         return "Dinner"
-    return "Drinks"
+    return "Others"
+
+
+def transport_subcategory(merchant: str) -> str:
+    if _PUBLIC_TRANSPORT_PATTERN.search(merchant):
+        return "Public"
+    if _PRIVATE_TRANSPORT_PATTERN.search(merchant):
+        return "Private"
+    return "Others"
 
 
 class _MerchantCategoryResult(BaseModel):
@@ -83,9 +105,17 @@ def ai_category(merchant: str, bank: str | None) -> str | None:
         return None
 
 
+def subcategory_for(category: str | None, merchant: str, txn_at: datetime) -> str | None:
+    if category == "Food":
+        return food_subcategory(merchant, txn_at)
+    if category == "Transport":
+        return transport_subcategory(merchant)
+    return None
+
+
 def categorize_transaction(
     merchant: str, bank: str | None, txn_at: datetime
 ) -> tuple[str | None, str | None]:
     category = hardcoded_category(merchant) or ai_category(merchant, bank)
-    subcategory = food_subcategory(txn_at) if category == "Food" else None
+    subcategory = subcategory_for(category, merchant, txn_at)
     return category, subcategory

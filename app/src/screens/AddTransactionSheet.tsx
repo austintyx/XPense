@@ -5,7 +5,7 @@ import { BottomSheet } from "../components/BottomSheet";
 import { CategoryChip } from "../components/CategoryChip";
 import { useToast } from "../components/Toast";
 import { useAppData } from "../store/TransactionsProvider";
-import { CATEGORIES, FOOD_SUBCATEGORIES, categoryColorChip, colors, typography, type CategoryId } from "../theme/tokens";
+import { CATEGORIES, categoryColorChip, colors, subcategoriesFor, typography, type CategoryId } from "../theme/tokens";
 import { formatMoney } from "../utils/derive";
 
 interface AddTransactionSheetProps {
@@ -43,7 +43,7 @@ export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetPro
       merchant_raw: merchant,
       merchant_clean: merchant,
       category,
-      subcategory: category === "Food" ? subcategory : null,
+      subcategory: subcategoriesFor(category) ? subcategory : null,
       txn_at: new Date().toISOString(),
     });
     showToast(`Added ${formatMoney(amount)} · ${merchant}`);
@@ -94,9 +94,9 @@ export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetPro
         ))}
       </View>
 
-      {category === "Food" && (
+      {category !== null && subcategoriesFor(category) && (
         <View style={[styles.chipsRow, styles.subChipsRow]}>
-          {FOOD_SUBCATEGORIES.map((sub) => (
+          {subcategoriesFor(category)!.map((sub) => (
             <CategoryChip
               key={sub}
               label={sub}

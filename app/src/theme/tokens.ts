@@ -81,7 +81,14 @@ export const CATEGORIES: CategoryId[] = [
   "Other",
 ];
 
-export const FOOD_SUBCATEGORIES = ["Lunch", "Snacks", "Dinner", "Drinks"] as const;
+export const FOOD_SUBCATEGORIES = ["Breakfast", "Lunch", "Dinner", "Beverage", "Others"] as const;
+export const TRANSPORT_SUBCATEGORIES = ["Public", "Private", "Others"] as const;
+
+export function subcategoriesFor(category: CategoryId): readonly string[] | null {
+  if (category === "Food") return FOOD_SUBCATEGORIES;
+  if (category === "Transport") return TRANSPORT_SUBCATEGORIES;
+  return null;
+}
 
 export function categoryColor(id: CategoryId): string {
   return oklchToHex(0.72, 0.1, CATEGORY_HUES[id]);

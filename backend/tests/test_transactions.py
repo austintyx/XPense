@@ -133,6 +133,13 @@ def test_categorize_pending_backfills_hardcoded_matchable_rows(client, db_sessio
         subcategory=None,
         txn_at=datetime(2026, 7, 23, 19, 0, tzinfo=timezone.utc).astimezone(),
     )
+    stale_transport = _make_txn(
+        db_session,
+        user,
+        merchant_raw="BUS/MRT",
+        category="Transport",
+        subcategory=None,
+    )
 
     response = client.post("/transactions/categorize-pending", params={"user_id": user.id})
     assert response.status_code == 200
@@ -144,10 +151,12 @@ def test_categorize_pending_backfills_hardcoded_matchable_rows(client, db_sessio
     db_session.refresh(already_done)
     db_session.refresh(unresolvable)
     db_session.refresh(stale_food)
+    db_session.refresh(stale_transport)
     assert uncategorized.category == "Transport"
     assert already_done.category == "Shopping"  # untouched, wasn't pending
     assert unresolvable.category is None  # no hardcoded match, no AI key configured in tests
     assert stale_food.subcategory is not None  # backfilled even though category predates this feature
+    assert stale_transport.subcategory == "Public"  # backfilled from merchant name
 
 
 def test_summary_sums_categories_and_excludes_transfers(client, db_session, user):

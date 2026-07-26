@@ -5,7 +5,7 @@ import { BottomSheet } from "../components/BottomSheet";
 import { CategoryChip } from "../components/CategoryChip";
 import { useToast } from "../components/Toast";
 import { useAppData } from "../store/TransactionsProvider";
-import { CATEGORIES, FOOD_SUBCATEGORIES, categoryColorChip, colors, typography, type CategoryId } from "../theme/tokens";
+import { CATEGORIES, categoryColorChip, colors, subcategoriesFor, typography, type CategoryId } from "../theme/tokens";
 import { deriveSource, formatMoney } from "../utils/derive";
 import type { Transaction } from "../api/client";
 
@@ -33,10 +33,11 @@ export function CategorizeSheet({ transaction, onClose }: CategorizeSheetProps) 
     );
   }
 
-  const isFoodStep = pickedCategory === "Food";
+  const subcategories = pickedCategory ? subcategoriesFor(pickedCategory) : null;
+  const isSubcategoryStep = subcategories !== null;
 
   const chooseCategory = async (category: CategoryId) => {
-    if (category === "Food") {
+    if (subcategoriesFor(category)) {
       setPickedCategory(category);
       return;
     }
@@ -46,8 +47,9 @@ export function CategorizeSheet({ transaction, onClose }: CategorizeSheetProps) 
   };
 
   const chooseSubcategory = async (subcategory: string) => {
-    await categorize(transaction.id, "Food", subcategory);
-    showToast(`Filed under Food · ${subcategory}`);
+    if (!pickedCategory) return;
+    await categorize(transaction.id, pickedCategory, subcategory);
+    showToast(`Filed under ${pickedCategory} · ${subcategory}`);
     onClose();
   };
 
@@ -60,10 +62,12 @@ export function CategorizeSheet({ transaction, onClose }: CategorizeSheetProps) 
       <Text style={styles.meta}>
         {new Date(transaction.txn_at).toLocaleDateString()} · read from {deriveSource(transaction)}
       </Text>
-      <Text style={styles.stepLabel}>{isFoodStep ? "Which kind of food?" : "Pick a category"}</Text>
+      <Text style={styles.stepLabel}>
+        {isSubcategoryStep ? `Which kind of ${pickedCategory!.toLowerCase()}?` : "Pick a category"}
+      </Text>
       <View style={styles.chipsRow}>
-        {isFoodStep
-          ? FOOD_SUBCATEGORIES.map((sub) => (
+        {isSubcategoryStep
+          ? subcategories!.map((sub) => (
               <CategoryChip key={sub} label={sub} active={false} onPress={() => chooseSubcategory(sub)} testID={`sub-chip-${sub}`} />
             ))
           : CATEGORIES.map((category) => (
@@ -77,7 +81,7 @@ export function CategorizeSheet({ transaction, onClose }: CategorizeSheetProps) 
               />
             ))}
       </View>
-      {isFoodStep && (
+      {isSubcategoryStep && (
         <Text style={styles.backLink} onPress={() => setPickedCategory(null)} testID="back-to-categories">
           ‹ Back to categories
         </Text>

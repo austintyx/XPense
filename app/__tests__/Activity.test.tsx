@@ -58,18 +58,18 @@ test('quick sort banner navigates to QuickSort', async () => {
   expect(mockNavigate).toHaveBeenCalledWith('QuickSort');
 });
 
-test('categorizing a transaction as a non-Food category closes the sheet after one step', async () => {
-  mockClientDefaults({ transactions: [makeTxn({ id: 1, merchant_raw: 'BUS/MRT', category: null })] });
+test('categorizing a transaction as a category with no subcategories closes the sheet after one step', async () => {
+  mockClientDefaults({ transactions: [makeTxn({ id: 1, merchant_raw: 'SHOPEE', category: null })] });
   const updateSpy = jest
     .spyOn(client, 'updateTransactionCategory')
-    .mockResolvedValue(makeTxn({ id: 1, merchant_raw: 'BUS/MRT', category: 'Transport' }));
+    .mockResolvedValue(makeTxn({ id: 1, merchant_raw: 'SHOPEE', category: 'Shopping' }));
 
   renderWithProviders(<Activity />);
 
   fireEvent.press(await screen.findByTestId('transaction-1'));
-  fireEvent.press(await screen.findByTestId('cat-chip-Transport'));
+  fireEvent.press(await screen.findByTestId('cat-chip-Shopping'));
 
-  expect(updateSpy).toHaveBeenCalledWith(1, 'Transport', null);
+  expect(updateSpy).toHaveBeenCalledWith(1, 'Shopping', null);
 });
 
 test('categorizing a transaction as Food requires a second subcategory step', async () => {
@@ -86,6 +86,22 @@ test('categorizing a transaction as Food requires a second subcategory step', as
   fireEvent.press(screen.getByTestId('sub-chip-Dinner'));
 
   expect(updateSpy).toHaveBeenCalledWith(1, 'Food', 'Dinner');
+});
+
+test('categorizing a transaction as Transport requires a second subcategory step', async () => {
+  mockClientDefaults({ transactions: [makeTxn({ id: 1, merchant_raw: 'BUS/MRT', category: null })] });
+  const updateSpy = jest
+    .spyOn(client, 'updateTransactionCategory')
+    .mockResolvedValue(makeTxn({ id: 1, merchant_raw: 'BUS/MRT', category: 'Transport', subcategory: 'Public' }));
+
+  renderWithProviders(<Activity />);
+
+  fireEvent.press(await screen.findByTestId('transaction-1'));
+  fireEvent.press(await screen.findByTestId('cat-chip-Transport'));
+  expect(await screen.findByText('Which kind of transport?')).toBeTruthy();
+  fireEvent.press(screen.getByTestId('sub-chip-Public'));
+
+  expect(updateSpy).toHaveBeenCalledWith(1, 'Transport', 'Public');
 });
 
 test('add transaction sheet requires amount, merchant and category before Save is enabled', async () => {

@@ -59,12 +59,12 @@ test('expanding the Food category row reveals its subcategory breakdown and its 
   expect(screen.getByText('SAIZERIYA')).toBeTruthy();
 });
 
-test('expanding a non-Food category row lists its actual transactions (no subcategory data needed)', async () => {
+test('expanding the Transport category row lists its transactions and its subcategory breakdown', async () => {
   mockClientDefaults({
     summary: { user_id: 1, month: '2026-07', categories: [{ category: 'Transport', total: '18.20' }], total: '18.20' },
     transactions: [
-      makeTxn({ id: 1, category: 'Transport', amount: '11.80', txn_at: '2026-07-15T08:15:00Z', merchant_raw: 'GRAB' }),
-      makeTxn({ id: 2, category: 'Transport', amount: '6.40', txn_at: '2026-07-14T18:00:00Z', merchant_raw: 'BUS/MRT' }),
+      makeTxn({ id: 1, category: 'Transport', subcategory: 'Private', amount: '11.80', txn_at: '2026-07-15T08:15:00Z', merchant_raw: 'GRAB' }),
+      makeTxn({ id: 2, category: 'Transport', subcategory: 'Public', amount: '6.40', txn_at: '2026-07-14T18:00:00Z', merchant_raw: 'BUS/MRT' }),
     ],
   });
 
@@ -76,6 +76,8 @@ test('expanding a non-Food category row lists its actual transactions (no subcat
   expect(await screen.findByTestId('cat-tx-list-Transport')).toBeTruthy();
   expect(screen.getByText('GRAB')).toBeTruthy();
   expect(screen.getByText('BUS/MRT')).toBeTruthy();
+  expect(screen.getByText('Private')).toBeTruthy();
+  expect(screen.getByText('Public')).toBeTruthy();
 });
 
 test('paging the month chart view back a month shows that month\'s own total, not the current-month summary total', async () => {

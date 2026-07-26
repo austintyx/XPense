@@ -29,24 +29,24 @@ test('shows the first uncategorized transaction and the queue counter', async ()
   expect(screen.getByText('1 of 2')).toBeTruthy();
 });
 
-test('picking a non-Food category sorts the card and advances the queue', async () => {
+test('picking a category with no subcategories sorts the card and advances the queue', async () => {
   mockClientDefaults({
     transactions: [
-      makeTxn({ id: 1, merchant_raw: 'GRAB', category: null }),
-      makeTxn({ id: 2, merchant_raw: 'SHOPEE', category: null }),
+      makeTxn({ id: 1, merchant_raw: 'SHOPEE', category: null }),
+      makeTxn({ id: 2, merchant_raw: 'NETFLIX', category: null }),
     ],
   });
   const updateSpy = jest
     .spyOn(client, 'updateTransactionCategory')
-    .mockResolvedValue(makeTxn({ id: 1, category: 'Transport' }));
+    .mockResolvedValue(makeTxn({ id: 1, category: 'Shopping' }));
 
   renderWithProviders(<QuickSort />);
 
-  await screen.findByText('GRAB');
-  fireEvent.press(screen.getByTestId('qs-cat-Transport'));
+  await screen.findByText('SHOPEE');
+  fireEvent.press(screen.getByTestId('qs-cat-Shopping'));
 
-  expect(updateSpy).toHaveBeenCalledWith(1, 'Transport', null);
-  expect(await screen.findByText('SHOPEE')).toBeTruthy();
+  expect(updateSpy).toHaveBeenCalledWith(1, 'Shopping', null);
+  expect(await screen.findByText('NETFLIX')).toBeTruthy();
 });
 
 test('picking Food shows a subcategory step before sorting', async () => {
@@ -63,6 +63,22 @@ test('picking Food shows a subcategory step before sorting', async () => {
   fireEvent.press(screen.getByTestId('qs-sub-Dinner'));
 
   expect(updateSpy).toHaveBeenCalledWith(1, 'Food', 'Dinner');
+});
+
+test('picking Transport shows a subcategory step before sorting', async () => {
+  mockClientDefaults({ transactions: [makeTxn({ id: 1, merchant_raw: 'GRAB', category: null })] });
+  const updateSpy = jest
+    .spyOn(client, 'updateTransactionCategory')
+    .mockResolvedValue(makeTxn({ id: 1, category: 'Transport', subcategory: 'Private' }));
+
+  renderWithProviders(<QuickSort />);
+
+  await screen.findByText('GRAB');
+  fireEvent.press(screen.getByTestId('qs-cat-Transport'));
+  expect(await screen.findByText('Which kind of transport?')).toBeTruthy();
+  fireEvent.press(screen.getByTestId('qs-sub-Private'));
+
+  expect(updateSpy).toHaveBeenCalledWith(1, 'Transport', 'Private');
 });
 
 test('skip removes the card from this session without categorizing it', async () => {
@@ -84,13 +100,13 @@ test('skip removes the card from this session without categorizing it', async ()
 });
 
 test('shows the done state once the queue is empty and "Back to spending" closes the flow', async () => {
-  mockClientDefaults({ transactions: [makeTxn({ id: 1, merchant_raw: 'GRAB', category: null })] });
-  jest.spyOn(client, 'updateTransactionCategory').mockResolvedValue(makeTxn({ id: 1, category: 'Transport' }));
+  mockClientDefaults({ transactions: [makeTxn({ id: 1, merchant_raw: 'SHOPEE', category: null })] });
+  jest.spyOn(client, 'updateTransactionCategory').mockResolvedValue(makeTxn({ id: 1, category: 'Shopping' }));
 
   renderWithProviders(<QuickSort />);
 
-  await screen.findByText('GRAB');
-  fireEvent.press(screen.getByTestId('qs-cat-Transport'));
+  await screen.findByText('SHOPEE');
+  fireEvent.press(screen.getByTestId('qs-cat-Shopping'));
 
   expect(await screen.findByText('All sorted')).toBeTruthy();
   fireEvent.press(screen.getByTestId('quicksort-back-to-spending'));

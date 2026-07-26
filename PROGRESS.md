@@ -739,3 +739,54 @@ now shows a Saturday, and that the new ‹ › chevrons (next to the Week/Month/
 to the calendar's month name) let you browse to a past period. This is a pure JS/rendering change
 (no new native dependencies), so Fast Refresh on your already-running Expo session should pick it
 up without a restart.
+
+## Merchant/timing-based default subcategories for Food and Transport
+
+Food subcategories changed from Lunch/Snacks/Dinner/Drinks to **Breakfast, Lunch, Dinner,
+Beverage, Others**, and Transport got subcategories for the first time: **Public, Private,
+Others**. Both are now derived automatically (as well as pickable manually, same as before).
+
+**Backend (`categorize.py`):** `food_subcategory(merchant, txn_at)` (now takes the merchant name,
+not just the timestamp) checks the merchant against a beverage-keyword regex first
+(Starbucks/coffee/cafe/tea/juice/smoothie-type chains) -> `"Beverage"` if it matches, regardless
+of time. Otherwise it buckets by SGT hour: `[5,11)` Breakfast, `[11,15)` Lunch, `[18,22)` Dinner,
+anything else (the old afternoon-snack/late-night gap) -> `"Others"` -- there's no longer a
+time-only bucket that absorbs everything, since Beverage moved to being merchant-driven. New
+`transport_subcategory(merchant)` reuses the same public-transit keywords (BUS/MRT, MRT, Transit,
+ComfortDelGro, EZ-Link) -> `"Public"` and ride-hailing keywords (Grab, Gojek, Cabcharge, Tada) ->
+`"Private"` that already existed as one fused category-detection regex -- split into two named
+patterns so both the category rule and the new subcategory rule reuse the same keyword lists
+instead of duplicating them. `categorize_transaction` now dispatches on whichever category it
+resolved (via `subcategory_for`), covering both the hardcoded-rule path and the AI-fallback path.
+
+**Backend call sites:** `sync.py` previously only derived category+subcategory when the parser
+hadn't already hardcoded a category (e.g. SimplyGo transit emails hardcode `category="Transport"`
+directly) -- those rows were silently left with no subcategory. Added a branch: if the category is
+already set but the subcategory isn't, still derive the subcategory. `categorize-pending`'s legacy
+backfill block (for rows categorized before this feature existed) now also backfills Transport
+rows, not just Food ones.
+
+**Frontend:** the three places that gate a subcategory chip step on `category === "Food"`
+(`QuickSort.tsx`, `CategorizeSheet.tsx`, `AddTransactionSheet.tsx`) now use a new
+`subcategoriesFor(category)` helper in `theme/tokens.ts` that returns the right chip list for Food
+or Transport (or `null` for everything else, meaning no subcategory step) -- so picking Transport
+manually now also prompts for Public/Private/Others, the same two-step flow Food already had.
+Summary's expandable category rows show a subcategory bar breakdown for Transport now too, not
+just Food.
+
+**Tested:** `pytest` in `backend/` -> 93 passed (up from 81). New `test_categorize.py` cases:
+beverage merchants return "Beverage" across all time-of-day parametrizations; non-beverage
+merchants hit each of the four time buckets; `transport_subcategory` across Public/Private/Others;
+existing `categorize_transaction`/`sync`/`categorize-pending` tests updated for the new subcategory
+values, plus a new Transport-backfill case in `categorize-pending`'s test. `npm test` in `app/` ->
+36 passed (up from 34): QuickSort and Activity each gained a "picking Transport shows a
+subcategory step" case (the two existing tests that used Transport as their "no subcategory step
+needed" example were switched to Shopping, which genuinely has none); Summary's Transport-row
+expansion test now also asserts the Public/Private subcategory bars render. `npx tsc --noEmit`
+clean.
+
+**Manual step for the human:** none required -- pure derivation-logic + UI-gating change, no new
+env vars or credentials. Worth eyeballing Quick Sort and the categorize sheet on your phone to
+confirm the new Food (Breakfast/Lunch/Dinner/Beverage/Others) and Transport (Public/Private/Others)
+chip sets look right, and that picking Transport now asks a follow-up question the way Food always
+did.

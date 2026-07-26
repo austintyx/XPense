@@ -171,4 +171,4 @@ def test_sync_auto_categorizes_a_hardcoded_matchable_merchant(client, db_session
 
     txn = db_session.query(Transaction).filter_by(user_id=user.id, merchant_raw="BUS/MRT").one()
     assert txn.category == "Transport"
-    assert txn.subcategory is None
+    assert txn.subcategory == "Public"

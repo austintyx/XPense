@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { CategoryChip } from "../components/CategoryChip";
 import { useToast } from "../components/Toast";
 import { useAppData } from "../store/TransactionsProvider";
-import { CATEGORIES, FOOD_SUBCATEGORIES, categoryColor, colors, radii, shadow, spacing, typography, type CategoryId } from "../theme/tokens";
+import { CATEGORIES, categoryColor, colors, radii, shadow, spacing, subcategoriesFor, typography, type CategoryId } from "../theme/tokens";
 import { deriveSource, formatDateTime, formatMoney, uncategorized } from "../utils/derive";
 
 const REASON_HINT = "We couldn't confidently match this merchant — pick a category to help us learn.";
@@ -28,7 +28,7 @@ export default function QuickSort() {
   const close = () => navigation.goBack();
 
   const chooseCategory = async (category: CategoryId) => {
-    if (category === "Food") {
+    if (subcategoriesFor(category)) {
       setPickedCategory(category);
       return;
     }
@@ -42,7 +42,7 @@ export default function QuickSort() {
     if (!current || !pickedCategory) return;
     await categorize(current.id, pickedCategory, subcategory);
     setSortedCount((n) => n + 1);
-    showToast(`${current.merchant_clean ?? current.merchant_raw} → Food · ${subcategory}`);
+    showToast(`${current.merchant_clean ?? current.merchant_raw} → ${pickedCategory} · ${subcategory}`);
     setPickedCategory(null);
   };
 
@@ -99,7 +99,7 @@ export default function QuickSort() {
           <Text style={styles.stepLabel}>{pickedCategory ? `Which kind of ${pickedCategory.toLowerCase()}?` : "Tap a category"}</Text>
           <View style={styles.chipsRow}>
             {pickedCategory
-              ? FOOD_SUBCATEGORIES.map((sub) => (
+              ? (subcategoriesFor(pickedCategory) ?? []).map((sub) => (
                   <CategoryChip key={sub} label={sub} onPress={() => chooseSubcategory(sub)} testID={`qs-sub-${sub}`} />
                 ))
               : CATEGORIES.map((cat) => (

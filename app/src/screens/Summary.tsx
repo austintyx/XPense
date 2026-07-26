@@ -182,7 +182,8 @@ export default function Summary() {
           <View style={styles.catRows}>
             {sortedCats.map(([cat, total]) => {
               const expanded = openCat === cat;
-              const subs = cat === "Food" ? subcategoryTotals(periodTransactions, "Food") : [];
+              const subs =
+                cat === "Food" || cat === "Transport" ? subcategoryTotals(periodTransactions, cat) : [];
               const maxSub = Math.max(1, ...subs.map(([, v]) => v));
               const catTxns = expanded ? categoryTransactions(periodTransactions, cat) : [];
               return (

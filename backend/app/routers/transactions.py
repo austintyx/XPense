@@ -15,7 +15,7 @@ from app.schemas import (
     TransactionCreateIn,
     TransactionOut,
 )
-from app.services.categorize import categorize_transaction, food_subcategory
+from app.services.categorize import categorize_transaction, food_subcategory, transport_subcategory
 
 router = APIRouter()
 
@@ -60,14 +60,23 @@ def categorize_pending(user_id: int, db: Session = Depends(get_db)):
             txn.subcategory = subcategory
             categorized += 1
 
-    # Backfill subcategory for rows categorized as Food before this feature existed.
+    # Backfill subcategory for rows categorized as Food/Transport before this feature existed
+    # (or before the current subcategory rules).
     missing_food_subcategory = db.query(Transaction).filter(
         Transaction.user_id == user_id,
         Transaction.category == "Food",
         Transaction.subcategory.is_(None),
     ).all()
     for txn in missing_food_subcategory:
-        txn.subcategory = food_subcategory(txn.txn_at)
+        txn.subcategory = food_subcategory(txn.merchant_raw or "", txn.txn_at)
+
+    missing_transport_subcategory = db.query(Transaction).filter(
+        Transaction.user_id == user_id,
+        Transaction.category == "Transport",
+        Transaction.subcategory.is_(None),
+    ).all()
+    for txn in missing_transport_subcategory:
+        txn.subcategory = transport_subcategory(txn.merchant_raw or "")
 
     db.commit()
     return {"categorized": categorized, "remaining": len(pending) - categorized}
