@@ -56,6 +56,10 @@ def list_bank_messages(access_token: str, query: str = BANK_SENDER_QUERY) -> lis
     return response.json().get("messages", [])
 
 
+def list_messages_from_sender(access_token: str, sender_email: str) -> list[dict]:
+    return list_bank_messages(access_token, query=f"from:{sender_email} newer_than:3d")
+
+
 def fetch_message(access_token: str, message_id: str) -> dict:
     response = httpx.get(
         f"{GMAIL_API_BASE}/messages/{message_id}",

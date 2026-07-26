@@ -11,7 +11,6 @@ from app.services.categorize import food_subcategory
 _GRAB_MERCHANT_PATTERN = re.compile(r"\bGRAB\b", re.I)
 
 GRAB_RECEIPT_SENDER = "no-reply@grab.com"
-GRAB_RECEIPT_QUERY = f"from:{GRAB_RECEIPT_SENDER} subject:receipt newer_than:3d"
 
 # Matches the receipt's stated total specifically (not a line-item price) -- Grab receipt bodies
 # list item/delivery-fee amounts before the total, so a bare amount-anywhere-in-the-text regex
@@ -60,7 +59,7 @@ def reconcile_grab_transaction(
     is found, so the caller can fall back to the default Transport/Private classification -- a
     network hiccup or a not-yet-delivered receipt must never block a sync."""
     try:
-        candidates = mail_service.list_bank_messages(access_token, query=GRAB_RECEIPT_QUERY)
+        candidates = mail_service.list_messages_from_sender(access_token, GRAB_RECEIPT_SENDER)
         for stub in candidates:
             message = mail_service.fetch_message(access_token, stub["id"])
             sender = mail_service.get_sender(message)

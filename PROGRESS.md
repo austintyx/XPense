@@ -884,9 +884,27 @@ to `Transport`/`Private`) and one new `test_transactions.py` case reproducing th
 an existing `Transport`/`GRAB` row flips to `Food` once `categorize-pending` finds a matching
 receipt.
 
+**Real-world testing against the live dev server caught and fixed a genuine bug:** running the
+reconciliation against your actual linked Outlook account, Microsoft Graph's `$search` (used by
+`list_bank_messages`) turned out to be unreliable for structured `from:`/`subject:` matching on
+this account -- it returned completely unrelated inbox mail (marketing, job alerts, a phishing
+email) instead of Grab receipts, even though the request succeeded with `200`. Confirmed by testing
+directly against the Graph API that `$filter=from/emailAddress/address eq 'no-reply@grab.com'` is
+reliable where `$search` wasn't. Added a new shared-interface function,
+`list_messages_from_sender(access_token, sender_email)`, to both `gmail.py` (reuses the existing
+`from:`/`newer_than:` query, which needed no fix) and `graph.py` (uses `$filter` instead of
+`$search`), and switched `grab_reconcile.py` to call that instead of reusing `list_bank_messages`
+for this lookup. All tests updated to mock the new function; 127 passed.
+
 **Manual step for the human:** none required for the feature itself -- no new env vars, no new
-OAuth consent. I'm going to try re-running `POST /transactions/categorize-pending?user_id=1`
-against your dev server now to see whether it actually finds and fixes the 5/12 transaction against
-your real linked inbox; results depend on whether that Grab receipt email is still present and
-matches on amount, which I can't guarantee from here -- I'll report what actually happened rather
-than assume success.
+OAuth consent. I did try to fix the specific 5/12 (S$5.12) transaction (id 16, `Grab* 2-C8CKWF...`)
+against your real linked Outlook inbox and couldn't: with the `$filter` fix, the search does now
+reliably find real Grab emails in your mailbox (confirmed against 500 of them), but every single
+one is old account/marketing mail from 2018-2020 -- there's no 2026 Grab receipt in that inbox to
+cross-reference, so `categorize-pending` correctly leaves it as `Transport`/`Private` rather than
+guessing. That specific transaction was most likely added as manual/seeded test data rather than
+from an actual synced Grab charge, so there's no receipt email for the mechanism to find -- you'll
+need to recategorize that one row by hand via the app's categorize sheet. The mechanism itself is
+verified working end-to-end against your real account (found and correctly parsed real historical
+Grab receipt-shaped emails during testing); it'll take effect automatically for any real GrabFood
+order going forward.

@@ -20,6 +20,26 @@ def list_bank_messages(access_token: str, query: str = BANK_SENDER_QUERY) -> lis
     return response.json().get("value", [])
 
 
+def list_messages_from_sender(access_token: str, sender_email: str) -> list[dict]:
+    """$search is unreliable for structured from:/subject: matching on at least some Outlook/Live
+    accounts (observed returning unrelated inbox mail for a from:/subject: query in practice) --
+    $filter on the sender address is the precise, reliable alternative for a single-sender lookup
+    like this. $top bounds the scan; combining this filter with a date range or $orderby triggers
+    Graph's "InefficientFilter" error on this account type, so recency isn't enforced here --
+    callers must verify the sender and match on their own correlation signal (e.g. amount)."""
+    response = httpx.get(
+        f"{GRAPH_API_BASE}/messages",
+        params={
+            "$filter": f"from/emailAddress/address eq '{sender_email}'",
+            "$select": "id",
+            "$top": 50,
+        },
+        headers={"Authorization": f"Bearer {access_token}", "ConsistencyLevel": "eventual"},
+    )
+    raise_for_status_with_body(response)
+    return response.json().get("value", [])
+
+
 def fetch_message(access_token: str, message_id: str) -> dict:
     response = httpx.get(
         f"{GRAPH_API_BASE}/messages/{message_id}",

@@ -7,7 +7,7 @@ import pytest
 from app.models import EmailAccount, ProviderEnum, Transaction, TransactionTypeEnum
 from app.security.crypto import encrypt
 from app.services import gmail, graph
-from app.services.grab_reconcile import GRAB_RECEIPT_QUERY, GRAB_RECEIPT_SENDER
+from app.services.grab_reconcile import GRAB_RECEIPT_SENDER
 
 DBS_PAYNOW_TEXT = (
     "Fr DBS: Successful PayNow: S$87.00 from A/C ending 6540 to 24HRS CITY FLORIST "
@@ -194,12 +194,10 @@ def test_sync_reconciles_generic_grab_charge_with_matching_grabfood_receipt(
     receipt_message = _fake_message("msg-grab-receipt", GRAB_FOOD_RECEIPT_TEXT, f"Grab <{GRAB_RECEIPT_SENDER}>")
     message_lookup = {"msg-grab-alert": alert_message, "msg-grab-receipt": receipt_message}
 
-    def fake_list_bank_messages(access_token, query=None):
-        if query == GRAB_RECEIPT_QUERY:
-            return [{"id": "msg-grab-receipt"}]
-        return [{"id": "msg-grab-alert"}]
-
-    monkeypatch.setattr(gmail, "list_bank_messages", fake_list_bank_messages)
+    monkeypatch.setattr(gmail, "list_bank_messages", lambda access_token, query=None: [{"id": "msg-grab-alert"}])
+    monkeypatch.setattr(
+        gmail, "list_messages_from_sender", lambda access_token, sender_email: [{"id": "msg-grab-receipt"}]
+    )
     monkeypatch.setattr(gmail, "fetch_message", lambda access_token, message_id: message_lookup[message_id])
 
     response = client.post("/sync", params={"user_id": user.id})
@@ -219,12 +217,8 @@ def test_sync_falls_back_to_transport_when_no_matching_grab_receipt_is_found(
     alert_message = _fake_message("msg-grab-alert", DBS_GRAB_CARD_TXN_TEXT, DBS_SENDER)
     message_lookup = {"msg-grab-alert": alert_message}
 
-    def fake_list_bank_messages(access_token, query=None):
-        if query == GRAB_RECEIPT_QUERY:
-            return []
-        return [{"id": "msg-grab-alert"}]
-
-    monkeypatch.setattr(gmail, "list_bank_messages", fake_list_bank_messages)
+    monkeypatch.setattr(gmail, "list_bank_messages", lambda access_token, query=None: [{"id": "msg-grab-alert"}])
+    monkeypatch.setattr(gmail, "list_messages_from_sender", lambda access_token, sender_email: [])
     monkeypatch.setattr(gmail, "fetch_message", lambda access_token, message_id: message_lookup[message_id])
 
     response = client.post("/sync", params={"user_id": user.id})

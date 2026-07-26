@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 from app.models import DirectionEnum, EmailAccount, ProviderEnum, Transaction, TransactionTypeEnum
 from app.security.crypto import encrypt
 from app.services import gmail
-from app.services.grab_reconcile import GRAB_RECEIPT_QUERY, GRAB_RECEIPT_SENDER
+from app.services.grab_reconcile import GRAB_RECEIPT_SENDER
 
 
 def _make_txn(db_session, user, **overrides):
@@ -206,12 +206,9 @@ def test_categorize_pending_reconciles_a_generic_grab_transport_row_against_a_ma
         },
     }
 
-    def fake_list_bank_messages(access_token, query=None):
-        if query == GRAB_RECEIPT_QUERY:
-            return [{"id": "receipt-1"}]
-        return []
-
-    monkeypatch.setattr(gmail, "list_bank_messages", fake_list_bank_messages)
+    monkeypatch.setattr(
+        gmail, "list_messages_from_sender", lambda access_token, sender_email: [{"id": "receipt-1"}]
+    )
     monkeypatch.setattr(gmail, "fetch_message", lambda access_token, message_id: receipt_message)
 
     response = client.post("/transactions/categorize-pending", params={"user_id": user.id})

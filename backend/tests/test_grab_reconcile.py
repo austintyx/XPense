@@ -5,7 +5,6 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from app.services.grab_reconcile import (
-    GRAB_RECEIPT_QUERY,
     GRAB_RECEIPT_SENDER,
     is_generic_grab_merchant,
     parse_grab_receipt,
@@ -80,8 +79,8 @@ class _FakeMailService:
         self.bodies = bodies
         self.list_calls = []
 
-    def list_bank_messages(self, access_token, query=None):
-        self.list_calls.append(query)
+    def list_messages_from_sender(self, access_token, sender_email):
+        self.list_calls.append(sender_email)
         return self.stubs
 
     def fetch_message(self, access_token, message_id):
@@ -107,7 +106,7 @@ def test_reconcile_grab_transaction_matches_grabfood_receipt_by_amount():
     )
 
     assert result == ("Food", "Lunch")
-    assert mail_service.list_calls == [GRAB_RECEIPT_QUERY]
+    assert mail_service.list_calls == [GRAB_RECEIPT_SENDER]
 
 
 def test_reconcile_grab_transaction_returns_none_when_amount_does_not_match():
@@ -157,7 +156,7 @@ def test_reconcile_grab_transaction_ignores_non_grab_sender():
 
 def test_reconcile_grab_transaction_never_raises_on_mail_service_failure():
     class _BrokenMailService:
-        def list_bank_messages(self, access_token, query=None):
+        def list_messages_from_sender(self, access_token, sender_email):
             raise RuntimeError("network error")
 
     result = reconcile_grab_transaction(
