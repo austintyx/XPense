@@ -16,7 +16,7 @@ export function deriveSource(txn: Pick<Transaction, "provider" | "bank">): strin
   return "Manual";
 }
 
-function isSameLocalDay(a: Date, b: Date): boolean {
+export function isSameLocalDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
@@ -135,6 +135,16 @@ export function firstWeekdayOfMonth(year: number, month: number): number {
 
 export function uncategorized(transactions: Transaction[]): Transaction[] {
   return transactions.filter((t) => isExpense(t) && !t.category);
+}
+
+export function todayRangeTransactions(transactions: Transaction[], now: Date = new Date()): Transaction[] {
+  return transactions.filter((t) => isExpense(t) && isSameLocalDay(new Date(t.txn_at), now));
+}
+
+export function categoryTransactions(transactions: Transaction[], category: string): Transaction[] {
+  return transactions
+    .filter((t) => isExpense(t) && t.category === category)
+    .sort((a, b) => new Date(b.txn_at).getTime() - new Date(a.txn_at).getTime());
 }
 
 export function weekRangeTransactions(transactions: Transaction[], now: Date = new Date()): Transaction[] {

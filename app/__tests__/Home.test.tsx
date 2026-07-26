@@ -56,3 +56,23 @@ test('switching to the Today segment shows today-scoped spend', async () => {
   fireEvent.press(screen.getByTestId('period-today'));
   expect(await screen.findByTestId('period-amount')).toHaveTextContent('S$8.40');
 });
+
+test('"Where it went" respects the selected period, not just all-time totals', async () => {
+  const threeWeeksAgo = new Date();
+  threeWeeksAgo.setDate(threeWeeksAgo.getDate() - 21);
+
+  mockClientDefaults({
+    transactions: [
+      makeTxn({ id: 1, category: 'Food', amount: '50.00', txn_at: threeWeeksAgo.toISOString() }),
+      makeTxn({ id: 2, category: 'Transport', amount: '5.00', txn_at: new Date().toISOString() }),
+    ],
+  });
+
+  renderWithProviders(<Home />);
+
+  await screen.findByTestId('home-screen');
+  fireEvent.press(screen.getByTestId('period-today'));
+
+  expect(await screen.findByText('Transport')).toBeTruthy();
+  expect(screen.queryByText('Food')).toBeNull();
+});

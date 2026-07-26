@@ -6,7 +6,16 @@ import Svg, { Circle } from "react-native-svg";
 import { ProgressBar } from "../components/ProgressBar";
 import { useAppData } from "../store/TransactionsProvider";
 import { categoryColor, colors, radii, shadow, spacing, typography, type CategoryId } from "../theme/tokens";
-import { formatMoney, todaySpend, topCategories, uncategorized, weekSpend } from "../utils/derive";
+import {
+  currentMonthTransactions,
+  formatMoney,
+  todayRangeTransactions,
+  todaySpend,
+  topCategories,
+  uncategorized,
+  weekRangeTransactions,
+  weekSpend,
+} from "../utils/derive";
 
 type Period = "today" | "week" | "month";
 
@@ -37,7 +46,12 @@ export default function Home() {
   };
 
   const uncat = useMemo(() => uncategorized(transactions), [transactions]);
-  const top4 = useMemo(() => topCategories(transactions, 4), [transactions]);
+  const periodTransactions = useMemo(() => {
+    if (period === "today") return todayRangeTransactions(transactions);
+    if (period === "week") return weekRangeTransactions(transactions);
+    return currentMonthTransactions(transactions);
+  }, [transactions, period]);
+  const top4 = useMemo(() => topCategories(periodTransactions, 4), [periodTransactions]);
   const maxTop = top4[0]?.total ?? 1;
 
   const todayLabel = new Date()

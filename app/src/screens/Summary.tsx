@@ -8,7 +8,9 @@ import { oklchToHex } from "../theme/oklch";
 import {
   calendarDailyTotals,
   categoryTotals,
+  categoryTransactions,
   currentMonthTransactions,
+  dayLabel,
   firstWeekdayOfMonth,
   formatMoney,
   isExpense,
@@ -127,6 +129,7 @@ export default function Summary() {
               const expanded = openCat === cat;
               const subs = cat === "Food" ? subcategoryTotals(periodTransactions, "Food") : [];
               const maxSub = Math.max(1, ...subs.map(([, v]) => v));
+              const catTxns = expanded ? categoryTransactions(periodTransactions, cat) : [];
               return (
                 <View key={cat} style={[styles.catRowCard, shadow.card]}>
                   <Pressable
@@ -138,7 +141,7 @@ export default function Summary() {
                     <Text style={styles.catName}>{cat}</Text>
                     <Text style={styles.catPct}>{Math.round((total / grand) * 100)}%</Text>
                     <Text style={styles.catAmount}>{formatMoney(total)}</Text>
-                    {subs.length > 0 && <Text style={styles.chevron}>{expanded ? "⌃" : "⌄"}</Text>}
+                    <Text style={styles.chevron}>{expanded ? "⌃" : "⌄"}</Text>
                   </Pressable>
                   {expanded && subs.length > 0 && (
                     <View style={styles.subList}>
@@ -154,6 +157,22 @@ export default function Summary() {
                             />
                           </View>
                           <Text style={styles.subAmount}>{formatMoney(value)}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                  {expanded && (
+                    <View style={styles.catTxList} testID={`cat-tx-list-${cat}`}>
+                      {catTxns.map((t) => (
+                        <View key={t.id} style={styles.catTxRow}>
+                          <View style={[styles.catTxDot, { backgroundColor: categoryColor(cat) }]} />
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.catTxName} numberOfLines={1}>
+                              {t.merchant_clean ?? t.merchant_raw ?? "Unknown"}
+                            </Text>
+                            <Text style={styles.catTxMeta}>{dayLabel(t.txn_at, now)}</Text>
+                          </View>
+                          <Text style={styles.catTxAmount}>{formatMoney(t.amount)}</Text>
                         </View>
                       ))}
                     </View>
@@ -263,6 +282,12 @@ const styles = StyleSheet.create({
   subBarTrack: { width: 84, height: 4, borderRadius: 2, backgroundColor: colors.ink06, overflow: "hidden" },
   subBar: { height: 4, borderRadius: 2 },
   subAmount: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.base, minWidth: 64, textAlign: "right", color: colors.ink70 },
+  catTxList: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.ink07, gap: 10 },
+  catTxRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  catTxDot: { width: 8, height: 8, borderRadius: 4 },
+  catTxName: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.base5, color: colors.ink },
+  catTxMeta: { fontFamily: typography.fontFamily.mono, fontSize: typography.size.xs, color: colors.ink42, marginTop: 2 },
+  catTxAmount: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.base5, color: colors.ink },
   calendarCard: { padding: 20, paddingHorizontal: 18 },
   calendarHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginBottom: 16 },
   calTitle: { fontFamily: typography.fontFamily.serif, fontSize: typography.size.displaySm, color: colors.ink },
