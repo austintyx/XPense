@@ -841,3 +841,52 @@ Manage Categories (verified the new migration's revision chain resolves cleanly 
 history`, but it hasn't been applied to a real database by me). Everything else is proactive/no
 credentials needed -- worth a look on your phone at the new circular badge, the Remove link's
 confirm dialog, and the Manage Categories screen's add/remove flows.
+
+## Reconcile generic "GRAB" bank alerts against Grab receipt emails
+
+DBS/UOB card alerts only ever say `"GRAB"` for any Grab charge -- the bank has no idea whether it
+was a ride, a GrabFood order, a GrabMart delivery, etc. -- so every Grab charge was hardcoded to
+`Transport`/`Private`, which is why a real GrabFood order (5/12) got misfiled as a ride.
+
+**New `backend/app/services/grab_reconcile.py`:** `is_generic_grab_merchant(merchant)` only fires
+for the bank's bare `"GRAB"` string (not an already-specific merchant). `parse_grab_receipt(text)`
+is a pure function that reads a Grab receipt email body, extracts the stated `Total` amount
+(specifically the total, not a line-item price -- receipts list item/delivery-fee amounts before
+the total), and sniffs for `GrabFood`/`GrabMart`/`GrabExpress` keywords -> `Food`/`Groceries`/
+`Other` respectively; a ride receipt has none of those keywords and returns `None`, meaning "no
+override, keep the Transport/Private default."
+`reconcile_grab_transaction(mail_service, access_token, merchant, amount, txn_at)` searches
+`from:no-reply@grab.com subject:receipt` in the *same* mailbox (no new OAuth scope or second
+consent needed -- both providers' existing scopes are already inbox-wide, not sender-restricted),
+verifies the sender, and only accepts a match whose receipt **amount exactly equals** the bank
+alert's amount -- the strongest correlation signal available, since DBS/UOB don't expose a shared
+order ID. Wrapped in a blanket `try/except` returning `None` on any failure (mirroring
+`ai_category`'s "never block a sync" philosophy), so a network hiccup or a not-yet-delivered
+receipt can't break transaction ingestion.
+
+**Wired into two places:** `sync.py`'s per-message loop tries reconciliation first for any
+newly-parsed generic-Grab charge, falling back to the existing hardcoded classification only if no
+matching receipt is found. `POST /transactions/categorize-pending` also got a third backfill pass
+that re-checks *already-stored* `Transport` rows with a generic Grab merchant against the same
+reconciliation logic -- this is what actually fixes previously-misfiled rows like the 5/12
+transaction, and is safe to re-run (a correctly-reconciled row naturally leaves the `Transport`
+filter on the next call). Promoted `sync.py`'s `_get_valid_access_token`/`_MAIL_SERVICES` to public
+(`get_valid_access_token`/`MAIL_SERVICES`) since the backfill endpoint now needs them too, to reuse
+a linked account's token without a second OAuth flow.
+
+**Tested:** `pytest` in `backend/` -> 127 passed (up from 109). New `test_grab_reconcile.py` (15
+tests) covers the pure `parse_grab_receipt`/`is_generic_grab_merchant` logic plus
+`reconcile_grab_transaction` against a fake mail service (matches by amount, ignores non-Grab
+senders, returns `None` for a ride or an amount mismatch, never raises on a mail-service failure).
+Two new fixture files (`grab_food_receipt.txt`, `grab_ride_receipt.txt`) plus two new `test_sync.py`
+cases (a GrabFood receipt reclassifies a "GRAB" DBS alert to `Food`; no matching receipt falls back
+to `Transport`/`Private`) and one new `test_transactions.py` case reproducing the real scenario --
+an existing `Transport`/`GRAB` row flips to `Food` once `categorize-pending` finds a matching
+receipt.
+
+**Manual step for the human:** none required for the feature itself -- no new env vars, no new
+OAuth consent. I'm going to try re-running `POST /transactions/categorize-pending?user_id=1`
+against your dev server now to see whether it actually finds and fixes the 5/12 transaction against
+your real linked inbox; results depend on whether that Grab receipt email is still present and
+matches on amount, which I can't guarantee from here -- I'll report what actually happened rather
+than assume success.

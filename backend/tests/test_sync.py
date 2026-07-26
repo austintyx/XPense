@@ -7,6 +7,7 @@ import pytest
 from app.models import EmailAccount, ProviderEnum, Transaction, TransactionTypeEnum
 from app.security.crypto import encrypt
 from app.services import gmail, graph
+from app.services.grab_reconcile import GRAB_RECEIPT_QUERY, GRAB_RECEIPT_SENDER
 
 DBS_PAYNOW_TEXT = (
     "Fr DBS: Successful PayNow: S$87.00 from A/C ending 6540 to 24HRS CITY FLORIST "
@@ -23,6 +24,16 @@ DBS_CARD_TXN_TEXT = (
     "card transaction request dated 24/07/26. We are pleased to confirm that the transaction "
     "was completed. Date & Time: 24 Jul 08:15 (SGT) Amount: SGD3.76 From: DBS/POSB card ending "
     "1234 To: BUS/MRT If unauthorized, please call our DBS hotline. Thank you for banking with us."
+)
+DBS_GRAB_CARD_TXN_TEXT = (
+    "Card Transaction Alert Transaction Ref: 999999999999 Dear Sir / Madam, We refer to your "
+    "card transaction request dated 12/05/26. We are pleased to confirm that the transaction "
+    "was completed. Date & Time: 12 May 12:30 (SGT) Amount: SGD9.80 From: DBS/POSB card ending "
+    "1234 To: GRAB If unauthorized, please call our DBS hotline. Thank you for banking with us."
+)
+GRAB_FOOD_RECEIPT_TEXT = (
+    "Your GrabFood receipt Thanks for ordering with GrabFood! Chicken Rice Stall x1 S$7.20 "
+    "Delivery fee S$2.60 Total S$9.80 Paid with DBS card ending 1234."
 )
 
 
@@ -172,3 +183,54 @@ def test_sync_auto_categorizes_a_hardcoded_matchable_merchant(client, db_session
     txn = db_session.query(Transaction).filter_by(user_id=user.id, merchant_raw="BUS/MRT").one()
     assert txn.category == "Transport"
     assert txn.subcategory == "Public"
+
+
+def test_sync_reconciles_generic_grab_charge_with_matching_grabfood_receipt(
+    client, db_session, user, email_account, monkeypatch
+):
+    """A DBS alert that just says "GRAB" should get cross-referenced against a matching Grab
+    receipt email (same amount) so it lands as Food, not the generic Transport/Private guess."""
+    alert_message = _fake_message("msg-grab-alert", DBS_GRAB_CARD_TXN_TEXT, DBS_SENDER)
+    receipt_message = _fake_message("msg-grab-receipt", GRAB_FOOD_RECEIPT_TEXT, f"Grab <{GRAB_RECEIPT_SENDER}>")
+    message_lookup = {"msg-grab-alert": alert_message, "msg-grab-receipt": receipt_message}
+
+    def fake_list_bank_messages(access_token, query=None):
+        if query == GRAB_RECEIPT_QUERY:
+            return [{"id": "msg-grab-receipt"}]
+        return [{"id": "msg-grab-alert"}]
+
+    monkeypatch.setattr(gmail, "list_bank_messages", fake_list_bank_messages)
+    monkeypatch.setattr(gmail, "fetch_message", lambda access_token, message_id: message_lookup[message_id])
+
+    response = client.post("/sync", params={"user_id": user.id})
+    assert response.status_code == 200
+    assert response.json()["inserted"] == 1
+
+    txn = db_session.query(Transaction).filter_by(user_id=user.id, merchant_raw="GRAB").one()
+    assert txn.category == "Food"
+    assert txn.subcategory == "Lunch"
+
+
+def test_sync_falls_back_to_transport_when_no_matching_grab_receipt_is_found(
+    client, db_session, user, email_account, monkeypatch
+):
+    """No matching receipt (wrong amount, or none at all) -- must fall back to today's default
+    Transport/Private classification rather than leaving the row uncategorized."""
+    alert_message = _fake_message("msg-grab-alert", DBS_GRAB_CARD_TXN_TEXT, DBS_SENDER)
+    message_lookup = {"msg-grab-alert": alert_message}
+
+    def fake_list_bank_messages(access_token, query=None):
+        if query == GRAB_RECEIPT_QUERY:
+            return []
+        return [{"id": "msg-grab-alert"}]
+
+    monkeypatch.setattr(gmail, "list_bank_messages", fake_list_bank_messages)
+    monkeypatch.setattr(gmail, "fetch_message", lambda access_token, message_id: message_lookup[message_id])
+
+    response = client.post("/sync", params={"user_id": user.id})
+    assert response.status_code == 200
+    assert response.json()["inserted"] == 1
+
+    txn = db_session.query(Transaction).filter_by(user_id=user.id, merchant_raw="GRAB").one()
+    assert txn.category == "Transport"
+    assert txn.subcategory == "Private"

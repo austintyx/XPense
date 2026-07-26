@@ -1,7 +1,12 @@
+import base64
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
-from app.models import DirectionEnum, Transaction, TransactionTypeEnum
+from app.models import DirectionEnum, EmailAccount, ProviderEnum, Transaction, TransactionTypeEnum
+from app.security.crypto import encrypt
+from app.services import gmail
+from app.services.grab_reconcile import GRAB_RECEIPT_QUERY, GRAB_RECEIPT_SENDER
 
 
 def _make_txn(db_session, user, **overrides):
@@ -157,6 +162,64 @@ def test_categorize_pending_backfills_hardcoded_matchable_rows(client, db_sessio
     assert unresolvable.category is None  # no hardcoded match, no AI key configured in tests
     assert stale_food.subcategory is not None  # backfilled even though category predates this feature
     assert stale_transport.subcategory == "Public"  # backfilled from merchant name
+
+
+def test_categorize_pending_reconciles_a_generic_grab_transport_row_against_a_matching_receipt(
+    client, db_session, user, monkeypatch
+):
+    """Reproduces fixing the real-world misfiled case: a GrabFood order that landed as Transport
+    just because the bank alert only ever says "GRAB" gets flipped to Food once a matching
+    (same-amount) Grab receipt email is found."""
+    account = EmailAccount(
+        user_id=user.id,
+        provider=ProviderEnum.google,
+        provider_email="demo@gmail.example",
+        access_token_enc=encrypt("fake-access-token"),
+        refresh_token_enc=encrypt("fake-refresh-token"),
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+    )
+    db_session.add(account)
+    db_session.commit()
+
+    grab_txn = _make_txn(
+        db_session,
+        user,
+        merchant_raw="GRAB",
+        category="Transport",
+        subcategory="Private",
+        provider=ProviderEnum.google,
+        amount=Decimal("9.80"),
+        txn_at=datetime(2026, 5, 12, 12, 30, tzinfo=ZoneInfo("Asia/Singapore")),
+    )
+
+    receipt_message = {
+        "id": "receipt-1",
+        "payload": {
+            "headers": [{"name": "From", "value": f"Grab <{GRAB_RECEIPT_SENDER}>"}],
+            "mimeType": "text/plain",
+            "body": {
+                "data": base64.urlsafe_b64encode(
+                    b"Your GrabFood receipt Thanks for ordering with GrabFood! Total S$9.80 "
+                    b"Paid with DBS card ending 1234."
+                ).decode()
+            },
+        },
+    }
+
+    def fake_list_bank_messages(access_token, query=None):
+        if query == GRAB_RECEIPT_QUERY:
+            return [{"id": "receipt-1"}]
+        return []
+
+    monkeypatch.setattr(gmail, "list_bank_messages", fake_list_bank_messages)
+    monkeypatch.setattr(gmail, "fetch_message", lambda access_token, message_id: receipt_message)
+
+    response = client.post("/transactions/categorize-pending", params={"user_id": user.id})
+    assert response.status_code == 200
+
+    db_session.refresh(grab_txn)
+    assert grab_txn.category == "Food"
+    assert grab_txn.subcategory == "Lunch"
 
 
 def test_summary_sums_categories_and_excludes_transfers(client, db_session, user):

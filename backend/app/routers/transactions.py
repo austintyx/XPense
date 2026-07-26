@@ -7,7 +7,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Transaction, TransactionTypeEnum
+from app.models import EmailAccount, Transaction, TransactionTypeEnum
 from app.schemas import (
     CategorySummary,
     CategoryUpdateIn,
@@ -16,6 +16,8 @@ from app.schemas import (
     TransactionOut,
 )
 from app.services.categorize import categorize_transaction, food_subcategory, transport_subcategory
+from app.services.grab_reconcile import is_generic_grab_merchant, reconcile_grab_transaction
+from app.services.sync import MAIL_SERVICES, get_valid_access_token
 
 router = APIRouter()
 
@@ -77,6 +79,38 @@ def categorize_pending(user_id: int, db: Session = Depends(get_db)):
     ).all()
     for txn in missing_transport_subcategory:
         txn.subcategory = transport_subcategory(txn.merchant_raw or "")
+
+    # Rows the hardcoded rules already filed under Transport just because the bank alert says
+    # generic "GRAB" -- re-check each against the user's Grab receipt emails in case it was
+    # actually GrabFood/GrabMart/GrabExpress. Never lets one lookup failure (missing linked
+    # account, expired token, network hiccup) break the rest of the backfill.
+    grab_candidates = db.query(Transaction).filter(
+        Transaction.user_id == user_id,
+        Transaction.category == "Transport",
+    ).all()
+    account_cache: dict[str, EmailAccount | None] = {}
+    for txn in grab_candidates:
+        if not txn.merchant_raw or not is_generic_grab_merchant(txn.merchant_raw) or txn.provider is None:
+            continue
+        try:
+            if txn.provider not in account_cache:
+                account_cache[txn.provider] = (
+                    db.query(EmailAccount)
+                    .filter_by(user_id=user_id, provider=txn.provider)
+                    .first()
+                )
+            account = account_cache[txn.provider]
+            if account is None:
+                continue
+            access_token = get_valid_access_token(db, account)
+            mail_service = MAIL_SERVICES[account.provider]
+            result = reconcile_grab_transaction(
+                mail_service, access_token, txn.merchant_raw, txn.amount, txn.txn_at
+            )
+            if result is not None:
+                txn.category, txn.subcategory = result
+        except Exception:
+            continue
 
     db.commit()
     return {"categorized": categorized, "remaining": len(pending) - categorized}
