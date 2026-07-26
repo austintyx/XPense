@@ -5,18 +5,20 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { CategoryChip } from "../components/CategoryChip";
 import { useToast } from "../components/Toast";
 import { useAppData } from "../store/TransactionsProvider";
-import { CATEGORIES, categoryColor, colors, radii, shadow, spacing, subcategoriesFor, typography, type CategoryId } from "../theme/tokens";
-import { deriveSource, formatDateTime, formatMoney, uncategorized } from "../utils/derive";
+import { categoryColor, colors, radii, shadow, spacing, typography } from "../theme/tokens";
+import { allCategories, deriveSource, formatDateTime, formatMoney, mergedSubcategories, uncategorized } from "../utils/derive";
 
 const REASON_HINT = "We couldn't confidently match this merchant — pick a category to help us learn.";
 
 export default function QuickSort() {
   const navigation = useNavigation<any>();
-  const { transactions, categorize } = useAppData();
+  const { transactions, categorize, customCategories, customSubcategories } = useAppData();
   const { showToast } = useToast();
   const [skipped, setSkipped] = useState<number[]>([]);
-  const [pickedCategory, setPickedCategory] = useState<CategoryId | null>(null);
+  const [pickedCategory, setPickedCategory] = useState<string | null>(null);
   const [sortedCount, setSortedCount] = useState(0);
+
+  const categories = useMemo(() => allCategories(customCategories), [customCategories]);
 
   const queue = useMemo(
     () => uncategorized(transactions).filter((t) => !skipped.includes(t.id)),
@@ -27,8 +29,8 @@ export default function QuickSort() {
 
   const close = () => navigation.goBack();
 
-  const chooseCategory = async (category: CategoryId) => {
-    if (subcategoriesFor(category)) {
+  const chooseCategory = async (category: string) => {
+    if (mergedSubcategories(category, customSubcategories).length > 0) {
       setPickedCategory(category);
       return;
     }
@@ -99,10 +101,10 @@ export default function QuickSort() {
           <Text style={styles.stepLabel}>{pickedCategory ? `Which kind of ${pickedCategory.toLowerCase()}?` : "Tap a category"}</Text>
           <View style={styles.chipsRow}>
             {pickedCategory
-              ? (subcategoriesFor(pickedCategory) ?? []).map((sub) => (
+              ? mergedSubcategories(pickedCategory, customSubcategories).map((sub) => (
                   <CategoryChip key={sub} label={sub} onPress={() => chooseSubcategory(sub)} testID={`qs-sub-${sub}`} />
                 ))
-              : CATEGORIES.map((cat) => (
+              : categories.map((cat) => (
                   <CategoryChip
                     key={cat}
                     label={cat}

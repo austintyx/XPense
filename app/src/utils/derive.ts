@@ -1,5 +1,5 @@
-import type { Transaction } from "../api/client";
-import type { CategoryId } from "../theme/tokens";
+import type { CustomCategory, CustomSubcategory, Transaction } from "../api/client";
+import { CATEGORIES, subcategoriesFor, type CategoryId } from "../theme/tokens";
 
 export function formatMoney(amount: number | string, decimals = true): string {
   const value = typeof amount === "string" ? Number(amount) : amount;
@@ -207,6 +207,22 @@ export function calendarWeekTransactions(transactions: Transaction[], anchor: Da
  * React Native has no CSS grid, and a flat `flexWrap` row of `width: '${100/7}%'` cells drops a
  * column (visually) because 100/7 is a repeating decimal that rounds over 100% across 7 siblings
  * -- chunking into fixed rows of `flex: 1` cells sidesteps that entirely. */
+/** Built-in category names plus any custom ones the user added, in that order. */
+export function allCategories(customCategories: CustomCategory[]): string[] {
+  return [...CATEGORIES, ...customCategories.map((c) => c.name)];
+}
+
+/** Built-in subcategory defaults for `category` (if any) plus the user's custom subcategories
+ * for it, skipping any custom name that case-insensitively duplicates a built-in default. */
+export function mergedSubcategories(category: string, customSubcategories: CustomSubcategory[]): string[] {
+  const base = subcategoriesFor(category) ?? [];
+  const baseLower = new Set(base.map((s) => s.toLowerCase()));
+  const extra = customSubcategories
+    .filter((s) => s.category === category && !baseLower.has(s.name.toLowerCase()))
+    .map((s) => s.name);
+  return [...base, ...extra];
+}
+
 export function calendarWeeks(leadingBlanks: number, dailyAmounts: number[]): number[][] {
   const cells: number[] = [
     ...new Array(leadingBlanks).fill(-1),

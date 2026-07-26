@@ -45,7 +45,8 @@ test('the Needs a category filter shows only uncategorized rows and the count ba
   fireEvent.press(screen.getByTestId('filter-needs'));
   expect(screen.queryByText('CHICKEN RICE')).toBeNull();
   expect(screen.getByText('GRAB')).toBeTruthy();
-  expect(screen.getByText('Needs a category 1')).toBeTruthy();
+  expect(screen.getByText('Needs a category')).toBeTruthy();
+  expect(screen.getByTestId('needs-count-badge')).toHaveTextContent('1');
 });
 
 test('quick sort banner navigates to QuickSort', async () => {

@@ -61,9 +61,10 @@ export default function Activity() {
                 style={[styles.pill, filter === "needs" ? styles.pillActive : styles.pillInactive]}
                 testID="filter-needs"
               >
-                <Text style={[styles.pillText, filter === "needs" && styles.pillTextActive]}>
-                  Needs a category {uncat.length}
-                </Text>
+                <Text style={[styles.pillText, filter === "needs" && styles.pillTextActive]}>Needs a category</Text>
+                <View style={styles.pillBadge} testID="needs-count-badge">
+                  <Text style={styles.pillBadgeText}>{uncat.length}</Text>
+                </View>
               </Pressable>
             </View>
 
@@ -156,11 +157,20 @@ const styles = StyleSheet.create({
   addButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.ink, alignItems: "center", justifyContent: "center" },
   addButtonText: { color: colors.onDark, fontSize: 22, fontWeight: "300", marginTop: -2 },
   filterRow: { flexDirection: "row", gap: 8, marginBottom: spacing.xl },
-  pill: { paddingVertical: 7, paddingHorizontal: 14, borderRadius: radii.pill },
+  pill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: radii.pill,
+  },
   pillActive: { backgroundColor: colors.ink },
   pillInactive: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.ink14 },
   pillText: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.sm5, color: colors.ink },
   pillTextActive: { color: colors.canvas },
+  pillBadge: { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 4, backgroundColor: colors.warnSolid, alignItems: "center", justifyContent: "center" },
+  pillBadgeText: { fontFamily: typography.fontFamily.sansMedium, fontSize: typography.size.xs, color: colors.surface },
   qsBanner: {
     marginBottom: spacing.xl,
     backgroundColor: colors.warnBg,

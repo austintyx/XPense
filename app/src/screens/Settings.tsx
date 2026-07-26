@@ -2,7 +2,7 @@ import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
 import { useNavigation } from "@react-navigation/native";
 import { useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 
 import { buildAuthUrl, type Provider } from "../api/client";
 import { useToast } from "../components/Toast";
@@ -25,8 +25,19 @@ function initialsOf(name: string | null): string {
 
 export default function Settings() {
   const navigation = useNavigation<any>();
-  const { user, accounts, budget, goal, transactions, updateName, updateBudget, updateGoal, refetch, loading } =
-    useAppData();
+  const {
+    user,
+    accounts,
+    budget,
+    goal,
+    transactions,
+    updateName,
+    updateBudget,
+    updateGoal,
+    refetch,
+    removeAccount,
+    loading,
+  } = useAppData();
   const { showToast } = useToast();
 
   const [editingName, setEditingName] = useState(false);
@@ -57,6 +68,20 @@ export default function Settings() {
     } finally {
       setConnecting(null);
     }
+  };
+
+  const confirmRemoveAccount = (accountId: number, email: string) => {
+    Alert.alert("Unlink account?", `Unlink ${email}? Your past transactions from this account will stay.`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Unlink",
+        style: "destructive",
+        onPress: async () => {
+          await removeAccount(accountId);
+          showToast(`Unlinked ${email}`);
+        },
+      },
+    ]);
   };
 
   const saveName = async () => {
@@ -142,6 +167,13 @@ export default function Settings() {
                 testID={`change-${account.provider}`}
               >
                 Change
+              </Text>
+              <Text
+                style={styles.removeLinkText}
+                onPress={() => confirmRemoveAccount(account.id, account.provider_email)}
+                testID={`remove-${account.id}`}
+              >
+                Remove
               </Text>
             </View>
           );
@@ -264,6 +296,19 @@ export default function Settings() {
         ))}
       </View>
 
+      <Pressable
+        style={styles.manageCategoriesCard}
+        onPress={() => navigation.navigate("ManageCategories")}
+        testID="manage-categories-entry"
+      >
+        <View style={styles.manageCategoriesDot} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.circleTitle}>Manage categories</Text>
+          <Text style={styles.circleSub}>Add or edit spending categories</Text>
+        </View>
+        <Text style={styles.chevron}>›</Text>
+      </Pressable>
+
       <Pressable style={styles.circleCard} onPress={() => navigation.navigate("Circle")} testID="circle-entry">
         <View style={styles.circleAvatars}>
           <View style={[styles.circleAvatar, { backgroundColor: colors.successAvatarBg }]} />
@@ -342,6 +387,7 @@ const styles = StyleSheet.create({
   sourceLabel: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.md5, color: colors.ink },
   sourceMeta: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.sm, color: colors.ink48, marginTop: 2 },
   linkText: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.sm5, color: colors.successText },
+  removeLinkText: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.sm5, color: colors.warnText, marginLeft: 14 },
   addSourceRow: {
     paddingVertical: 15,
     paddingHorizontal: 16,
@@ -349,6 +395,18 @@ const styles = StyleSheet.create({
     fontSize: typography.size.md5,
     color: colors.successText,
   },
+  manageCategoriesCard: {
+    marginTop: spacing.lg,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.ink14,
+    borderRadius: radii.card,
+    padding: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+  },
+  manageCategoriesDot: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.ink08 },
   circleCard: {
     marginTop: spacing.lg,
     backgroundColor: colors.successTintCard,

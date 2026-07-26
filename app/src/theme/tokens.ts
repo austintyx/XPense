@@ -84,22 +84,36 @@ export const CATEGORIES: CategoryId[] = [
 export const FOOD_SUBCATEGORIES = ["Breakfast", "Lunch", "Dinner", "Beverage", "Others"] as const;
 export const TRANSPORT_SUBCATEGORIES = ["Public", "Private", "Others"] as const;
 
-export function subcategoriesFor(category: CategoryId): readonly string[] | null {
+export function subcategoriesFor(category: string): readonly string[] | null {
   if (category === "Food") return FOOD_SUBCATEGORIES;
   if (category === "Transport") return TRANSPORT_SUBCATEGORIES;
   return null;
 }
 
-export function categoryColor(id: CategoryId): string {
-  return oklchToHex(0.72, 0.1, CATEGORY_HUES[id]);
+/** Deterministic fallback hue for custom categories that aren't in the fixed CATEGORY_HUES map,
+ * so they get a stable color with no need to store a hue server-side. */
+function hashHue(id: string): number {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  }
+  return hash % 360;
 }
 
-export function categoryColorChip(id: CategoryId): string {
-  return oklchToHex(0.62, 0.11, CATEGORY_HUES[id]);
+function hueFor(id: string): number {
+  return CATEGORY_HUES[id as CategoryId] ?? hashHue(id);
 }
 
-export function categoryColorBar(id: CategoryId): string {
-  return oklchToHex(0.8, 0.08, CATEGORY_HUES[id]);
+export function categoryColor(id: string): string {
+  return oklchToHex(0.72, 0.1, hueFor(id));
+}
+
+export function categoryColorChip(id: string): string {
+  return oklchToHex(0.62, 0.11, hueFor(id));
+}
+
+export function categoryColorBar(id: string): string {
+  return oklchToHex(0.8, 0.08, hueFor(id));
 }
 
 export const friendHues = { green: 158, warm: 78, purple: 300 };

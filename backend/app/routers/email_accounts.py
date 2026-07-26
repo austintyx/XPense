@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -11,3 +11,14 @@ router = APIRouter()
 @router.get("/email-accounts", response_model=list[EmailAccountOut])
 def list_email_accounts(user_id: int, db: Session = Depends(get_db)):
     return db.query(EmailAccount).filter_by(user_id=user_id).all()
+
+
+@router.delete("/email-accounts/{account_id}", status_code=204)
+def unlink_email_account(account_id: int, user_id: int, db: Session = Depends(get_db)):
+    account = db.query(EmailAccount).filter_by(id=account_id, user_id=user_id).one_or_none()
+    if account is None:
+        raise HTTPException(status_code=404, detail="Email account not found")
+    # Unlinking only removes the credential/connection -- transactions already synced from this
+    # account are left untouched as normal history.
+    db.delete(account)
+    db.commit()

@@ -38,6 +38,7 @@ class User(Base):
     email_accounts: Mapped[list["EmailAccount"]] = relationship(back_populates="user")
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="user")
     categories: Mapped[list["Category"]] = relationship(back_populates="user")
+    subcategories: Mapped[list["Subcategory"]] = relationship(back_populates="user")
 
 
 class EmailAccount(Base):
@@ -94,6 +95,19 @@ class Category(Base):
     icon: Mapped[str | None] = mapped_column(String, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="categories")
+
+
+class Subcategory(Base):
+    __tablename__ = "subcategories"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    # Free text, matching a built-in category name or a custom Category.name -- same convention
+    # Transaction.category/subcategory already use (no FK, since built-in categories aren't rows).
+    category: Mapped[str] = mapped_column(String, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+
+    user: Mapped["User"] = relationship(back_populates="subcategories")
 
 
 class Budget(Base):

@@ -1,12 +1,12 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { BottomSheet } from "../components/BottomSheet";
 import { CategoryChip } from "../components/CategoryChip";
 import { useToast } from "../components/Toast";
 import { useAppData } from "../store/TransactionsProvider";
-import { CATEGORIES, categoryColorChip, colors, subcategoriesFor, typography, type CategoryId } from "../theme/tokens";
-import { formatMoney } from "../utils/derive";
+import { categoryColorChip, colors, typography } from "../theme/tokens";
+import { allCategories, formatMoney, mergedSubcategories } from "../utils/derive";
 
 interface AddTransactionSheetProps {
   visible: boolean;
@@ -14,12 +14,15 @@ interface AddTransactionSheetProps {
 }
 
 export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetProps) {
-  const { addTransaction, user } = useAppData();
+  const { addTransaction, user, customCategories, customSubcategories } = useAppData();
   const { showToast } = useToast();
   const [amount, setAmount] = useState("");
   const [merchant, setMerchant] = useState("");
-  const [category, setCategory] = useState<CategoryId | null>(null);
+  const [category, setCategory] = useState<string | null>(null);
   const [subcategory, setSubcategory] = useState<string | null>(null);
+
+  const categories = useMemo(() => allCategories(customCategories), [customCategories]);
+  const subcategories = category ? mergedSubcategories(category, customSubcategories) : [];
 
   const reset = () => {
     setAmount("");
@@ -43,7 +46,7 @@ export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetPro
       merchant_raw: merchant,
       merchant_clean: merchant,
       category,
-      subcategory: subcategoriesFor(category) ? subcategory : null,
+      subcategory: subcategories.length > 0 ? subcategory : null,
       txn_at: new Date().toISOString(),
     });
     showToast(`Added ${formatMoney(amount)} · ${merchant}`);
@@ -79,7 +82,7 @@ export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetPro
 
       <Text style={styles.label}>Category</Text>
       <View style={styles.chipsRow}>
-        {CATEGORIES.map((c) => (
+        {categories.map((c) => (
           <CategoryChip
             key={c}
             label={c}
@@ -94,9 +97,9 @@ export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetPro
         ))}
       </View>
 
-      {category !== null && subcategoriesFor(category) && (
+      {subcategories.length > 0 && (
         <View style={[styles.chipsRow, styles.subChipsRow]}>
-          {subcategoriesFor(category)!.map((sub) => (
+          {subcategories.map((sub) => (
             <CategoryChip
               key={sub}
               label={sub}

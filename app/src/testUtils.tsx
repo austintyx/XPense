@@ -12,6 +12,7 @@ export function mockClientDefaults(overrides: {
   goal?: client.SavingsGoal;
   user?: client.AppUser;
   accounts?: client.EmailAccount[];
+  categories?: client.CustomCategories;
 } = {}) {
   jest.spyOn(client, 'getTransactions').mockResolvedValue(overrides.transactions ?? []);
   jest.spyOn(client, 'getSummary').mockResolvedValue(
@@ -27,6 +28,7 @@ export function mockClientDefaults(overrides: {
     overrides.user ?? { id: 1, email: 'demo@xpense.dev', name: 'Wei Ling Tan', created_at: '2026-01-01T00:00:00Z' },
   );
   jest.spyOn(client, 'getLinkedAccounts').mockResolvedValue(overrides.accounts ?? []);
+  jest.spyOn(client, 'getCategories').mockResolvedValue(overrides.categories ?? { categories: [], subcategories: [] });
 }
 
 export function makeTxn(overrides: Partial<client.Transaction> = {}): client.Transaction {

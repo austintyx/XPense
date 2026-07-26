@@ -26,6 +26,15 @@ export function buildAuthUrl(provider: Provider, redirectUri: string, userId: nu
   return `${API_BASE_URL}/auth/${provider}?${params.toString()}`;
 }
 
+export async function deleteEmailAccount(accountId: number, userId: number = CURRENT_USER_ID): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/email-accounts/${accountId}?user_id=${userId}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to unlink account (${response.status})`);
+  }
+}
+
 export type TransactionType = "expense" | "transfer" | "income";
 
 export interface Transaction {
@@ -203,4 +212,77 @@ export async function updateUserName(name: string, userId: number = CURRENT_USER
     throw new Error(`Failed to update name (${response.status})`);
   }
   return response.json();
+}
+
+export interface CustomCategory {
+  id: number;
+  name: string;
+}
+
+export interface CustomSubcategory {
+  id: number;
+  category: string;
+  name: string;
+}
+
+export interface CustomCategories {
+  categories: CustomCategory[];
+  subcategories: CustomSubcategory[];
+}
+
+export async function getCategories(userId: number = CURRENT_USER_ID): Promise<CustomCategories> {
+  const response = await fetch(`${API_BASE_URL}/categories?user_id=${userId}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch categories (${response.status})`);
+  }
+  return response.json();
+}
+
+export async function createCategory(name: string, userId: number = CURRENT_USER_ID): Promise<CustomCategory> {
+  const response = await fetch(`${API_BASE_URL}/categories?user_id=${userId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to add category (${response.status})`);
+  }
+  return response.json();
+}
+
+export async function deleteCategory(categoryId: number, userId: number = CURRENT_USER_ID): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/categories/${categoryId}?user_id=${userId}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to remove category (${response.status})`);
+  }
+}
+
+export async function createSubcategory(
+  category: string,
+  name: string,
+  userId: number = CURRENT_USER_ID,
+): Promise<CustomSubcategory> {
+  const response = await fetch(
+    `${API_BASE_URL}/categories/${encodeURIComponent(category)}/subcategories?user_id=${userId}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(`Failed to add subcategory (${response.status})`);
+  }
+  return response.json();
+}
+
+export async function deleteSubcategory(subcategoryId: number, userId: number = CURRENT_USER_ID): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/subcategories/${subcategoryId}?user_id=${userId}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to remove subcategory (${response.status})`);
+  }
 }

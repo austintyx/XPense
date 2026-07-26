@@ -43,6 +43,34 @@ class CategoryUpdateIn(BaseModel):
     subcategory: str | None = None
 
 
+class CategoryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+
+
+class CategoryCreateIn(BaseModel):
+    name: str
+
+
+class SubcategoryOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    category: str
+    name: str
+
+
+class SubcategoryCreateIn(BaseModel):
+    name: str
+
+
+class CategoriesOut(BaseModel):
+    categories: list[CategoryOut]
+    subcategories: list[SubcategoryOut]
+
+
 class TransactionCreateIn(BaseModel):
     user_id: int
     amount: Decimal

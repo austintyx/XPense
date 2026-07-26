@@ -790,3 +790,54 @@ env vars or credentials. Worth eyeballing Quick Sort and the categorize sheet on
 confirm the new Food (Breakfast/Lunch/Dinner/Beverage/Others) and Transport (Public/Private/Others)
 chip sets look right, and that picking Transport now asks a follow-up question the way Food always
 did.
+
+## Needs-a-category badge, account unlink, manage categories
+
+Three more small feature requests, one visual, two new capabilities:
+
+**Activity's "Needs a category" count is now a distinct circular badge** instead of plain inline
+text concatenated into the pill label (`Activity.tsx`) -- reuses the exact same badge recipe
+already used for the same number two elements below it (the Quick Sort banner) and on Home's
+"Need a category" card, just sized to fit inside the pill.
+
+**Settings -- linked accounts can now be unlinked.** Added `DELETE /email-accounts/{id}` (ownership
+-checked via `user_id`), a `deleteEmailAccount` client call, and a `removeAccount` store action.
+Unlinking only deletes the `EmailAccount` credential row -- there's no FK from `Transaction` to it,
+so previously-synced transactions are untouched and stay in history, per your call. The new
+"Remove" link sits next to "Change" and requires confirming a native `Alert.alert` dialog first
+("Unlink {email}? Your past transactions from this account will stay.") since it's a destructive-
+feeling action, even though the underlying data loss is limited to the connection itself.
+
+**Manage categories -- users can now add and remove custom categories and subcategories.** New
+backend: a `Subcategory` table (migration `6ad3a1dff90c`, chained after the existing head) plus a
+new `/categories` router reusing the previously-unused `Category` table for custom top-level
+categories. The backend only stores *custom* entries -- built-in categories/subcategories
+(`Food`, `Transport`, etc. and their default subcategory lists) still live entirely in
+`theme/tokens.ts` on the frontend, which merges the two together everywhere a category/subcategory
+list is shown. This also meant custom categories needed a color with no backend column for it:
+`categoryColor`/`categoryColorChip`/`categoryColorBar` now take a plain `string` and fall back to a
+deterministic hash-based hue for any id that isn't one of the 8 built-ins, so a custom category
+gets a stable color for free. `QuickSort`, `CategorizeSheet`, and `AddTransactionSheet` all switched
+from the static `CATEGORIES` array to a merged built-in-plus-custom list, and their "does this
+category have subcategories" checks now account for custom subcategories too (so e.g. a custom
+category with only custom subcategories still gets the two-step picker flow). A new full-screen
+`ManageCategories.tsx` (reached from a new Settings row, styled like the existing Circle entry)
+lists every category with its subcategories as chips, an "Add category" input at the top and an
+"Add subcategory" input per category card, and a remove affordance on every custom entry (built-ins
+have none, matching your call that they should stay fixed).
+
+**Tested:** `pytest` in `backend/` -> 109 passed (up from 93): 5 new tests for unlink (deletes the
+account but leaves transactions queryable, 404s for another user's account or an unknown id) and 13
+new tests for `/categories`/`/subcategories` (create/list/delete, blank-name and duplicate-name and
+built-in-collision rejection, ownership scoping). `npm test` in `app/` -> 44 passed (up from 36): a
+new `ManageCategories.test.tsx` (6 tests covering built-ins having no remove affordance, add/remove
+for both categories and subcategories), an updated Activity test asserting the badge renders as
+its own element with the right text content, an updated Settings test covering the full unlink
+confirm-then-remove flow (mocking `Alert.alert` to auto-press "Unlink"), and a new Settings test for
+the `manage-categories-entry` navigation. `npx tsc --noEmit` clean.
+
+**Manual step for the human:** run `alembic upgrade head` against your dev Postgres before trying
+Manage Categories (verified the new migration's revision chain resolves cleanly via `alembic
+history`, but it hasn't been applied to a real database by me). Everything else is proactive/no
+credentials needed -- worth a look on your phone at the new circular badge, the Remove link's
+confirm dialog, and the Manage Categories screen's add/remove flows.

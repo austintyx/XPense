@@ -1,12 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { BottomSheet } from "../components/BottomSheet";
 import { CategoryChip } from "../components/CategoryChip";
 import { useToast } from "../components/Toast";
 import { useAppData } from "../store/TransactionsProvider";
-import { CATEGORIES, categoryColorChip, colors, subcategoriesFor, typography, type CategoryId } from "../theme/tokens";
-import { deriveSource, formatMoney } from "../utils/derive";
+import { categoryColorChip, colors, typography } from "../theme/tokens";
+import { allCategories, deriveSource, formatMoney, mergedSubcategories } from "../utils/derive";
 import type { Transaction } from "../api/client";
 
 interface CategorizeSheetProps {
@@ -15,13 +15,15 @@ interface CategorizeSheetProps {
 }
 
 export function CategorizeSheet({ transaction, onClose }: CategorizeSheetProps) {
-  const { categorize } = useAppData();
+  const { categorize, customCategories, customSubcategories } = useAppData();
   const { showToast } = useToast();
-  const [pickedCategory, setPickedCategory] = useState<CategoryId | null>(null);
+  const [pickedCategory, setPickedCategory] = useState<string | null>(null);
+
+  const categories = useMemo(() => allCategories(customCategories), [customCategories]);
 
   useEffect(() => {
     if (transaction) {
-      setPickedCategory((transaction.category as CategoryId | null) ?? null);
+      setPickedCategory(transaction.category ?? null);
     }
   }, [transaction]);
 
@@ -33,11 +35,11 @@ export function CategorizeSheet({ transaction, onClose }: CategorizeSheetProps) 
     );
   }
 
-  const subcategories = pickedCategory ? subcategoriesFor(pickedCategory) : null;
-  const isSubcategoryStep = subcategories !== null;
+  const subcategories = pickedCategory ? mergedSubcategories(pickedCategory, customSubcategories) : [];
+  const isSubcategoryStep = subcategories.length > 0;
 
-  const chooseCategory = async (category: CategoryId) => {
-    if (subcategoriesFor(category)) {
+  const chooseCategory = async (category: string) => {
+    if (mergedSubcategories(category, customSubcategories).length > 0) {
       setPickedCategory(category);
       return;
     }
@@ -67,10 +69,10 @@ export function CategorizeSheet({ transaction, onClose }: CategorizeSheetProps) 
       </Text>
       <View style={styles.chipsRow}>
         {isSubcategoryStep
-          ? subcategories!.map((sub) => (
+          ? subcategories.map((sub) => (
               <CategoryChip key={sub} label={sub} active={false} onPress={() => chooseSubcategory(sub)} testID={`sub-chip-${sub}`} />
             ))
-          : CATEGORIES.map((category) => (
+          : categories.map((category) => (
               <CategoryChip
                 key={category}
                 label={category}

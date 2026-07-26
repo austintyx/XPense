@@ -3,13 +3,21 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import {
   type AppUser,
   type Budget,
+  type CustomCategory,
+  type CustomSubcategory,
   type EmailAccount,
   type SavingsGoal,
   type Summary,
   type Transaction,
   type TransactionDraft,
+  createCategory,
+  createSubcategory,
   createTransaction,
+  deleteCategory,
+  deleteEmailAccount,
+  deleteSubcategory,
   getBudget,
+  getCategories,
   getGoal,
   getLinkedAccounts,
   getSummary,
@@ -28,6 +36,8 @@ interface AppDataState {
   goal: SavingsGoal | null;
   user: AppUser | null;
   accounts: EmailAccount[];
+  customCategories: CustomCategory[];
+  customSubcategories: CustomSubcategory[];
   loading: boolean;
   error: string | null;
 }
@@ -39,6 +49,11 @@ interface AppDataActions {
   updateBudget: (monthlyTarget: string) => Promise<void>;
   updateGoal: (goal: { name: string; target_amount: string; saved_amount: string }) => Promise<void>;
   updateName: (name: string) => Promise<void>;
+  removeAccount: (accountId: number) => Promise<void>;
+  addCategory: (name: string) => Promise<void>;
+  removeCategory: (categoryId: number) => Promise<void>;
+  addSubcategory: (category: string, name: string) => Promise<void>;
+  removeSubcategory: (subcategoryId: number) => Promise<void>;
 }
 
 type AppDataContextValue = AppDataState & AppDataActions;
@@ -61,6 +76,8 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     goal: null,
     user: null,
     accounts: [],
+    customCategories: [],
+    customSubcategories: [],
     loading: true,
     error: null,
   });
@@ -68,15 +85,27 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
   const refetch = useCallback(async () => {
     try {
       setState((s) => ({ ...s, error: null }));
-      const [transactions, summary, budget, goal, user, accounts] = await Promise.all([
+      const [transactions, summary, budget, goal, user, accounts, categoriesData] = await Promise.all([
         getTransactions(),
         getSummary(),
         getBudget(),
         getGoal(),
         getUser(),
         getLinkedAccounts(),
+        getCategories(),
       ]);
-      setState((s) => ({ ...s, transactions, summary, budget, goal, user, accounts, loading: false }));
+      setState((s) => ({
+        ...s,
+        transactions,
+        summary,
+        budget,
+        goal,
+        user,
+        accounts,
+        customCategories: categoriesData.categories,
+        customSubcategories: categoriesData.subcategories,
+        loading: false,
+      }));
     } catch (err) {
       setState((s) => ({
         ...s,
@@ -128,6 +157,34 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     setState((s) => ({ ...s, user }));
   }, []);
 
+  const removeAccount = useCallback(async (accountId: number) => {
+    await deleteEmailAccount(accountId);
+    setState((s) => ({ ...s, accounts: s.accounts.filter((a) => a.id !== accountId) }));
+  }, []);
+
+  const addCategory = useCallback(async (name: string) => {
+    const category = await createCategory(name);
+    setState((s) => ({ ...s, customCategories: [...s.customCategories, category] }));
+  }, []);
+
+  const removeCategory = useCallback(async (categoryId: number) => {
+    await deleteCategory(categoryId);
+    setState((s) => ({ ...s, customCategories: s.customCategories.filter((c) => c.id !== categoryId) }));
+  }, []);
+
+  const addSubcategory = useCallback(async (category: string, name: string) => {
+    const subcategory = await createSubcategory(category, name);
+    setState((s) => ({ ...s, customSubcategories: [...s.customSubcategories, subcategory] }));
+  }, []);
+
+  const removeSubcategory = useCallback(async (subcategoryId: number) => {
+    await deleteSubcategory(subcategoryId);
+    setState((s) => ({
+      ...s,
+      customSubcategories: s.customSubcategories.filter((sc) => sc.id !== subcategoryId),
+    }));
+  }, []);
+
   const value = useMemo<AppDataContextValue>(
     () => ({
       ...state,
@@ -137,8 +194,26 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       updateBudget: updateBudgetAction,
       updateGoal: updateGoalAction,
       updateName,
+      removeAccount,
+      addCategory,
+      removeCategory,
+      addSubcategory,
+      removeSubcategory,
     }),
-    [state, refetch, categorize, addTransaction, updateBudgetAction, updateGoalAction, updateName],
+    [
+      state,
+      refetch,
+      categorize,
+      addTransaction,
+      updateBudgetAction,
+      updateGoalAction,
+      updateName,
+      removeAccount,
+      addCategory,
+      removeCategory,
+      addSubcategory,
+      removeSubcategory,
+    ],
   );
 
   return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;

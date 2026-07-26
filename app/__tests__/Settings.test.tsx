@@ -1,3 +1,4 @@
+import { Alert } from 'react-native';
 import { fireEvent, screen } from '@testing-library/react-native';
 
 import Settings from '../src/screens/Settings';
@@ -102,6 +103,34 @@ test('preference toggles are local UI state, not backed by an API call', async (
   expect(toggle.props.value).toBe(false);
   fireEvent(toggle, 'valueChange', true);
   expect(toggle.props.value).toBe(true);
+});
+
+test('removing a linked account confirms, then unlinks it while keeping the app usable', async () => {
+  mockClientDefaults({
+    accounts: [
+      { id: 7, provider: 'google', provider_email: 'weiling@gmail.com', last_synced_at: null, created_at: '2026-01-01T00:00:00Z' },
+    ],
+  });
+  const deleteSpy = jest.spyOn(client, 'deleteEmailAccount').mockResolvedValue(undefined);
+  jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
+    buttons?.find((b) => b.text === 'Unlink')?.onPress?.();
+  });
+
+  renderWithProviders(<Settings />);
+
+  fireEvent.press(await screen.findByTestId('remove-7'));
+
+  expect(deleteSpy).toHaveBeenCalledWith(7);
+  expect(await screen.findByText('+ Connect Gmail')).toBeTruthy();
+});
+
+test('tapping the manage-categories entry navigates to ManageCategories', async () => {
+  mockClientDefaults();
+
+  renderWithProviders(<Settings />);
+
+  fireEvent.press(await screen.findByTestId('manage-categories-entry'));
+  expect(mockNavigate).toHaveBeenCalledWith('ManageCategories');
 });
 
 test('tapping the Circle entry card navigates to Circle', async () => {
