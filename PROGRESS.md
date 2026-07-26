@@ -928,3 +928,41 @@ it's already just your own data) body text. 128 tests passing.
 **Manual step for the human:** none required for the feature itself. I re-ran
 `POST /transactions/categorize-pending?user_id=1` against your dev server with both fixes in place
 -- see below for the actual result on your real transaction.
+
+## Use the Grab receipt's real merchant name, and a curated beverage-brand list
+
+Two follow-ups on the "Others" result above, both driven by the actual receipt screenshot you
+shared:
+
+1. **Merchant name now comes from the receipt.** `reconcile_grab_transaction` extracts the
+   `"Order from:"` line from the receipt body (e.g. `"CHAGEE - Tampines West Community Club"`,
+   bounded by the next known receipt-template label since HTML-stripping runs it straight into the
+   next field with no separator) and now returns a 3-tuple `(category, subcategory, merchant)`
+   instead of 2. Both call sites (`sync.py` for new transactions, `categorize-pending`'s backfill
+   pass for existing rows) now overwrite `merchant_raw`/`merchant_clean` with that real name when
+   present, instead of leaving the bank's generic `"GRAB"` string in place. Crucially, subcategory
+   is now derived from *that* real name via `food_subcategory`, not the generic one -- this is
+   what actually lets beverage-brand detection engage for Grab-mediated orders.
+2. **Curated beverage-brand list.** Researched (via web search, not guessed) current Singapore
+   bubble-tea/milk-tea chains and added ~20 to `_BEVERAGE_PATTERN` in `categorize.py`: Chagee,
+   Mixue, HEYTEA, ChaPanda, Naixue (+ its pre-rebrand name Nayuki), Molly Tea, Tiger Sugar,
+   PlayMade, Sharetea, Chicha San Chen, Xing Fu Tang, Kung Fu Tea, Kebuke, Bober Tea, TP Tea, Ten
+   Ren('s) Tea, R&B Tea, Each-A-Cup, Whale Tea, Yocha, Bobii Frutii. Deliberately left out a
+   several researched names that are too generic/collision-prone for plain substring matching
+   (e.g. "The Alley" alone, "Winnie's", "Tea Tree" -- collides with the skincare product line) --
+   short/ambiguous names get the same `\b`-word-boundary treatment the existing "KOI" entry
+   already used, so e.g. "TP TEA" won't match inside an unrelated string, and added a regression
+   test (`test_food_subcategory_koi_word_boundary_does_not_match_unrelated_merchant`) proving KOI's
+   guard still holds.
+
+**Tested:** `pytest` in `backend/` -> 151 passed (up from 128). New/updated cases: `parse_grab_receipt`
+now asserts the extracted merchant on both a synthetic and the real CHAGEE receipt text; a new
+`reconcile_grab_transaction` case proves the real receipt now resolves to `("Food", "Beverage",
+"CHAGEE - Tampines West Community Club")`; `test_categorize.py` gained 21 new beverage-brand
+parametrized cases plus the KOI word-boundary regression; `test_sync.py`/`test_transactions.py`
+updated to assert `merchant_raw`/`merchant_clean` actually change after reconciliation.
+
+**Manual step for the human:** I re-ran the fix against your real transaction directly (see below)
+since it had already flipped to `Food` in the previous round, so `categorize-pending`'s backfill
+pass -- which only re-scans rows still sitting at `Transport` -- wouldn't touch it again on its
+own.

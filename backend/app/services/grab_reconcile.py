@@ -20,6 +20,14 @@ GRAB_RECEIPT_SENDER = "no-reply@grab.com"
 # with no space at all (observed in practice: "TOTALSGD 5.12").
 _TOTAL_AMOUNT_RE = re.compile(r"\bTOTAL\b(?:\s*\([^)]*\))?\s*(?:S\$|SGD)\s*([\d,]+\.\d{2})", re.I)
 
+# The actual store/stall name (e.g. "CHAGEE - Tampines West Community Club"), bounded by the next
+# known receipt-template label -- verified against a real receipt where HTML-stripping runs the
+# merchant name directly into the next field with no separator ("Order from:CHAGEE - Tampines West
+# Community Club Profile:Personal"). Present for GrabFood/GrabMart; naturally absent for rides.
+_ORDER_FROM_RE = re.compile(
+    r"Order from:\s*(.+?)\s*(?:Profile:|Receipt Summary|Payment Method:|Rate your|$)", re.I
+)
+
 # Ordered: first keyword found in the receipt body wins. No match (a ride) means "no override" --
 # the caller keeps the existing default Transport/Private classification.
 _SERVICE_KEYWORDS: list[tuple[re.Pattern, str]] = [
@@ -33,6 +41,7 @@ _SERVICE_KEYWORDS: list[tuple[re.Pattern, str]] = [
 class GrabReceipt:
     amount: Decimal
     category: str
+    merchant: str | None = None
 
 
 def is_generic_grab_merchant(merchant: str) -> bool:
@@ -40,9 +49,10 @@ def is_generic_grab_merchant(merchant: str) -> bool:
 
 
 def parse_grab_receipt(text: str) -> GrabReceipt | None:
-    """Pure function, no I/O. Extracts the receipt total and sniffs the body for which Grab
-    service this was. Returns None if the amount can't be found or no recognized service keyword
-    is present (a ride, or an email that isn't actually a Grab receipt)."""
+    """Pure function, no I/O. Extracts the receipt total, the actual store name (if present), and
+    sniffs the body for which Grab service this was. Returns None if the amount can't be found or
+    no recognized service keyword is present (a ride, or an email that isn't actually a Grab
+    receipt)."""
     # A receipt's summary section and its itemized-detail section both restate the same total
     # (observed in practice) -- take the last match as the more likely "final" figure in case a
     # future receipt format ever shows an earlier estimated/pre-discount total under the same
@@ -52,19 +62,25 @@ def parse_grab_receipt(text: str) -> GrabReceipt | None:
         return None
     amount = Decimal(amount_matches[-1].group(1).replace(",", ""))
 
+    merchant_match = _ORDER_FROM_RE.search(text)
+    merchant = merchant_match.group(1).strip() if merchant_match else None
+
     for pattern, category in _SERVICE_KEYWORDS:
         if pattern.search(text):
-            return GrabReceipt(amount=amount, category=category)
+            return GrabReceipt(amount=amount, category=category, merchant=merchant)
     return None
 
 
 def reconcile_grab_transaction(
     mail_service, access_token: str, merchant_raw: str, amount: Decimal, txn_at: datetime
-) -> tuple[str, str | None] | None:
+) -> tuple[str, str | None, str | None] | None:
     """Search the same mailbox for a Grab receipt email matching this generic "GRAB" bank charge
-    and use it to determine the real category. Returns None (never raises) if no confident match
-    is found, so the caller can fall back to the default Transport/Private classification -- a
-    network hiccup or a not-yet-delivered receipt must never block a sync."""
+    and use it to determine the real category, subcategory, and merchant name. Returns None (never
+    raises) if no confident match is found, so the caller can fall back to the default
+    Transport/Private classification -- a network hiccup or a not-yet-delivered receipt must never
+    block a sync. Returns (category, subcategory, merchant) -- merchant is the receipt's actual
+    store name (e.g. "CHAGEE - Tampines West Community Club") when the receipt has one, else None
+    (the caller should keep the original generic "GRAB" merchant_raw in that case)."""
     try:
         candidates = mail_service.list_messages_from_sender(access_token, GRAB_RECEIPT_SENDER, around=txn_at)
         for stub in candidates:
@@ -80,8 +96,12 @@ def reconcile_grab_transaction(
             # day are an accepted, unresolvable edge case without a stronger cross-reference key.
             if receipt is not None and receipt.amount == amount:
                 if receipt.category == "Food":
-                    return "Food", food_subcategory(merchant_raw, txn_at)
-                return receipt.category, None
+                    # The real store name (when the receipt has one) is what actually lets
+                    # beverage-brand detection work -- the bank's generic "GRAB" string never
+                    # matches a beverage keyword.
+                    subject_merchant = receipt.merchant or merchant_raw
+                    return "Food", food_subcategory(subject_merchant, txn_at), receipt.merchant
+                return receipt.category, None, receipt.merchant
         return None
     except Exception:
         return None

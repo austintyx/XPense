@@ -15,8 +15,8 @@ SGT = ZoneInfo("Asia/Singapore")
 
 GRAB_FOOD_RECEIPT_TEXT = (
     "Your GrabFood receipt Thanks for ordering with GrabFood! Order #GF-88213012 "
-    "Chicken Rice Stall x1 S$7.20 Delivery fee S$2.60 Total S$9.80 Paid with DBS card "
-    "ending 1234 We hope you enjoyed your meal."
+    "Order from:Chicken Rice Stall Profile:Personal x1 S$7.20 Delivery fee S$2.60 Total S$9.80 "
+    "Paid with DBS card ending 1234 We hope you enjoyed your meal."
 )
 GRAB_MART_RECEIPT_TEXT = "Your GrabMart receipt Thanks for shopping with GrabMart! Total S$32.10 Paid with DBS card."
 GRAB_EXPRESS_RECEIPT_TEXT = "Your GrabExpress receipt Your parcel has been delivered. Total S$6.00 Paid with DBS card."
@@ -56,6 +56,7 @@ def test_parse_grab_receipt_identifies_grabfood():
     assert receipt is not None
     assert receipt.amount == Decimal("9.80")
     assert receipt.category == "Food"
+    assert receipt.merchant == "Chicken Rice Stall"
 
 
 def test_parse_grab_receipt_handles_a_real_receipt_ignoring_the_subtotal():
@@ -63,6 +64,7 @@ def test_parse_grab_receipt_handles_a_real_receipt_ignoring_the_subtotal():
     assert receipt is not None
     assert receipt.amount == Decimal("5.12")  # not 6.40 (the Subtotal), not a Subtotal-as-Total match
     assert receipt.category == "Food"
+    assert receipt.merchant == "CHAGEE - Tampines West Community Club"
 
 
 def test_parse_grab_receipt_identifies_grabmart():
@@ -123,8 +125,25 @@ def test_reconcile_grab_transaction_matches_grabfood_receipt_by_amount():
         mail_service, "fake-token", "GRAB", Decimal("9.80"), datetime(2026, 5, 12, 12, 30, tzinfo=SGT)
     )
 
-    assert result == ("Food", "Lunch")
+    assert result == ("Food", "Lunch", "Chicken Rice Stall")
     assert mail_service.list_calls == [GRAB_RECEIPT_SENDER]
+
+
+def test_reconcile_grab_transaction_uses_the_receipt_merchant_for_beverage_subcategory():
+    """The bank alert only ever says generic "GRAB" -- beverage-brand detection only works once
+    the real store name (from the receipt's "Order from" line) is used for subcategorization."""
+    mail_service = _FakeMailService(
+        stubs=[{"id": "receipt-1"}],
+        messages={"receipt-1": {"id": "receipt-1"}},
+        senders={"receipt-1": f"Grab <{GRAB_RECEIPT_SENDER}>"},
+        bodies={"receipt-1": REAL_GRAB_FOOD_RECEIPT_TEXT},
+    )
+
+    result = reconcile_grab_transaction(
+        mail_service, "fake-token", "GRAB", Decimal("5.12"), datetime(2026, 7, 25, 17, 16, tzinfo=SGT)
+    )
+
+    assert result == ("Food", "Beverage", "CHAGEE - Tampines West Community Club")
 
 
 def test_reconcile_grab_transaction_returns_none_when_amount_does_not_match():

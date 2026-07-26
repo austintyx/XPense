@@ -32,8 +32,8 @@ DBS_GRAB_CARD_TXN_TEXT = (
     "1234 To: GRAB If unauthorized, please call our DBS hotline. Thank you for banking with us."
 )
 GRAB_FOOD_RECEIPT_TEXT = (
-    "Your GrabFood receipt Thanks for ordering with GrabFood! Chicken Rice Stall x1 S$7.20 "
-    "Delivery fee S$2.60 Total S$9.80 Paid with DBS card ending 1234."
+    "Your GrabFood receipt Thanks for ordering with GrabFood! Order from:Chicken Rice Stall "
+    "Profile:Personal x1 S$7.20 Delivery fee S$2.60 Total S$9.80 Paid with DBS card ending 1234."
 )
 
 
@@ -206,9 +206,10 @@ def test_sync_reconciles_generic_grab_charge_with_matching_grabfood_receipt(
     assert response.status_code == 200
     assert response.json()["inserted"] == 1
 
-    txn = db_session.query(Transaction).filter_by(user_id=user.id, merchant_raw="GRAB").one()
+    txn = db_session.query(Transaction).filter_by(user_id=user.id).one()
     assert txn.category == "Food"
     assert txn.subcategory == "Lunch"
+    assert txn.merchant_raw == "Chicken Rice Stall"  # not the bank's generic "GRAB" string
 
 
 def test_sync_falls_back_to_transport_when_no_matching_grab_receipt_is_found(

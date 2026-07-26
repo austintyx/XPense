@@ -65,12 +65,40 @@ def test_food_subcategory_time_buckets(hour, expected):
         ("KOI THE", 14),
         ("Gong Cha Bugis", 20),
         ("LiHO TEA", 2),
+        ("CHAGEE - Tampines West Community Club", 17),
+        ("MIXUE Bishan", 10),
+        ("HEYTEA ION Orchard", 15),
+        ("ChaPanda Waterway Point", 12),
+        ("Naixue Jewel Changi", 19),
+        ("Molly Tea Clarke Quay", 21),
+        ("Tiger Sugar Somerset", 16),
+        ("PlayMade Bugis+", 13),
+        ("Sharetea Jurong Point", 9),
+        ("Chicha San Chen VivoCity", 20),
+        ("Xing Fu Tang Tampines", 11),
+        ("Kung Fu Tea NEX", 14),
+        ("Kebuke Plaza Singapura", 15),
+        ("Bober Tea Compass One", 16),
+        ("TP TEA Suntec City", 18),
+        ("Ten Ren's Tea Marina Square", 10),
+        ("R&B Tea 313@Somerset", 13),
+        ("Each-A-Cup AMK Hub", 14),
+        ("The Whale Tea Junction 8", 15),
+        ("Yocha Katong", 20),
+        ("Bobii Frutii Northpoint", 12),
     ],
 )
 def test_food_subcategory_beverage_merchant_overrides_time(merchant, hour):
     # Beverage-type merchants are "Beverage" regardless of time of day.
     txn_at = datetime(2026, 7, 23, hour, 0, tzinfo=SGT)
     assert food_subcategory(merchant, txn_at) == "Beverage"
+
+
+def test_food_subcategory_koi_word_boundary_does_not_match_unrelated_merchant():
+    # "koi" is a common word (koi fish/ponds) -- must not false-positive on unrelated merchants
+    # that happen to contain it as a substring without being the KOI bubble tea brand.
+    txn_at = datetime(2026, 7, 23, 12, 0, tzinfo=SGT)
+    assert food_subcategory("KOION SUSHI BAR", txn_at) != "Beverage"
 
 
 @pytest.mark.parametrize(

@@ -108,7 +108,10 @@ def categorize_pending(user_id: int, db: Session = Depends(get_db)):
                 mail_service, access_token, txn.merchant_raw, txn.amount, txn.txn_at
             )
             if result is not None:
-                txn.category, txn.subcategory = result
+                txn.category, txn.subcategory, grab_merchant = result
+                if grab_merchant is not None:
+                    txn.merchant_raw = grab_merchant
+                    txn.merchant_clean = grab_merchant
         except Exception:
             continue
 

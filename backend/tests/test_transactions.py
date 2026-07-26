@@ -199,8 +199,8 @@ def test_categorize_pending_reconciles_a_generic_grab_transport_row_against_a_ma
             "mimeType": "text/plain",
             "body": {
                 "data": base64.urlsafe_b64encode(
-                    b"Your GrabFood receipt Thanks for ordering with GrabFood! Total S$9.80 "
-                    b"Paid with DBS card ending 1234."
+                    b"Your GrabFood receipt Thanks for ordering with GrabFood! Order from:Nasi "
+                    b"Lemak Corner Profile:Personal Total S$9.80 Paid with DBS card ending 1234."
                 ).decode()
             },
         },
@@ -219,6 +219,8 @@ def test_categorize_pending_reconciles_a_generic_grab_transport_row_against_a_ma
     db_session.refresh(grab_txn)
     assert grab_txn.category == "Food"
     assert grab_txn.subcategory == "Lunch"
+    assert grab_txn.merchant_raw == "Nasi Lemak Corner"  # not the bank's generic "GRAB" string
+    assert grab_txn.merchant_clean == "Nasi Lemak Corner"
 
 
 def test_summary_sums_categories_and_excludes_transfers(client, db_session, user):

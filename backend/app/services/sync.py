@@ -77,7 +77,9 @@ def sync_email_account(db: Session, account: EmailAccount) -> int:
                     mail_service, access_token, parsed.merchant_raw, parsed.amount, parsed.txn_at
                 )
             if grab_result is not None:
-                parsed.category, parsed.subcategory = grab_result
+                parsed.category, parsed.subcategory, grab_merchant = grab_result
+                if grab_merchant is not None:
+                    parsed.merchant_raw = grab_merchant
             else:
                 parsed.category, parsed.subcategory = categorize_transaction(
                     parsed.merchant_raw, parsed.bank, parsed.txn_at

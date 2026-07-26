@@ -17,8 +17,19 @@ _PUBLIC_TRANSPORT_PATTERN = re.compile(r"BUS/MRT|\bMRT\b|TRANSIT|COMFORTDELGRO|E
 _PRIVATE_TRANSPORT_PATTERN = re.compile(r"\bGRAB\b|GOJEK|CABCHARGE|\bTADA\b", re.I)
 
 # Coffee/tea/juice-type merchants -- checked before time-of-day for Food subcategorization.
+# The bubble-tea/milk-tea brand names were curated from a web search of chains currently (or
+# recently) operating in Singapore -- not exhaustive, but covers the common ones. Short or
+# ordinary-word brand names (KOI, TP Tea) are \b-word-boundary-anchored to avoid false-positiving
+# on unrelated merchants (e.g. "koi" as in koi fish/ponds); deliberately excluded a few researched
+# names that are too generic/collision-prone for plain substring matching (e.g. "The Alley" alone,
+# "Winnie's", "Tea Tree" -- collides with the skincare product line).
 _BEVERAGE_PATTERN = re.compile(
-    r"STARBUCKS|COFFEE|\bCAFE\b|\bKOI\b|LIHO|GONG CHA|\bTEA\b|BUBBLE TEA|JUICE|SMOOTHIE", re.I
+    r"STARBUCKS|COFFEE|\bCAFE\b|\bKOI\b|LIHO|GONG\s?CHA|\bTEA\b|BUBBLE TEA|JUICE|SMOOTHIE"
+    r"|CHAGEE|MIXUE|HEY\s?TEA|CHA\s?PANDA|NAIXUE|NAYUKI|MOLLY\s?TEA"
+    r"|TIGER\s?SUGAR|PLAY\s?MADE|SHARE\s?TEA|CHICHA SAN CHEN|XING\s?FU\s?TANG"
+    r"|KUNG\s?FU\s?TEA|KEBUKE|BOBER\s?TEA|\bTP\s?TEA\b|TEN\s?REN|R&B\s?TEA"
+    r"|EACH[\s-]?A[\s-]?CUP|WHALE\s?TEA|YOCHA|BOBII\s?FRUTII",
+    re.I,
 )
 
 # Ordered rules: first pattern to match wins. Representative, not exhaustive -- unmatched
