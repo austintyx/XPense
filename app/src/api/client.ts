@@ -59,14 +59,44 @@ export async function getTransactions(
   return response.json();
 }
 
-export async function updateTransactionCategory(transactionId: number, category: string): Promise<Transaction> {
+export async function updateTransactionCategory(
+  transactionId: number,
+  category: string,
+  subcategory: string | null = null,
+): Promise<Transaction> {
   const response = await fetch(`${API_BASE_URL}/transactions/${transactionId}/category`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ category }),
+    body: JSON.stringify({ category, subcategory }),
   });
   if (!response.ok) {
     throw new Error(`Failed to update category (${response.status})`);
+  }
+  return response.json();
+}
+
+export interface TransactionDraft {
+  user_id: number;
+  amount: string;
+  currency?: string;
+  direction?: "debit" | "credit";
+  type?: TransactionType;
+  merchant_raw?: string | null;
+  merchant_clean?: string | null;
+  category: string;
+  subcategory?: string | null;
+  txn_at: string;
+  bank?: string | null;
+}
+
+export async function createTransaction(draft: TransactionDraft): Promise<Transaction> {
+  const response = await fetch(`${API_BASE_URL}/transactions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(draft),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to add transaction (${response.status})`);
   }
   return response.json();
 }
@@ -87,6 +117,90 @@ export async function getSummary(userId: number = CURRENT_USER_ID): Promise<Summ
   const response = await fetch(`${API_BASE_URL}/summary?user_id=${userId}`);
   if (!response.ok) {
     throw new Error(`Failed to fetch summary (${response.status})`);
+  }
+  return response.json();
+}
+
+export interface Budget {
+  user_id: number;
+  monthly_target: string;
+  weekly_target: string;
+  daily_target: string;
+}
+
+export async function getBudget(userId: number = CURRENT_USER_ID): Promise<Budget> {
+  const response = await fetch(`${API_BASE_URL}/budget?user_id=${userId}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch budget (${response.status})`);
+  }
+  return response.json();
+}
+
+export async function updateBudget(monthlyTarget: string, userId: number = CURRENT_USER_ID): Promise<Budget> {
+  const response = await fetch(`${API_BASE_URL}/budget?user_id=${userId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ monthly_target: monthlyTarget }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update budget (${response.status})`);
+  }
+  return response.json();
+}
+
+export interface SavingsGoal {
+  user_id: number;
+  name: string;
+  target_amount: string;
+  saved_amount: string;
+}
+
+export async function getGoal(userId: number = CURRENT_USER_ID): Promise<SavingsGoal> {
+  const response = await fetch(`${API_BASE_URL}/goal?user_id=${userId}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch goal (${response.status})`);
+  }
+  return response.json();
+}
+
+export async function updateGoal(
+  goal: { name: string; target_amount: string; saved_amount: string },
+  userId: number = CURRENT_USER_ID,
+): Promise<SavingsGoal> {
+  const response = await fetch(`${API_BASE_URL}/goal?user_id=${userId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(goal),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update goal (${response.status})`);
+  }
+  return response.json();
+}
+
+export interface AppUser {
+  id: number;
+  email: string;
+  name: string | null;
+  created_at: string;
+}
+
+export async function getUser(userId: number = CURRENT_USER_ID): Promise<AppUser> {
+  const response = await fetch(`${API_BASE_URL}/user?user_id=${userId}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch user (${response.status})`);
+  }
+  return response.json();
+}
+
+export async function updateUserName(name: string, userId: number = CURRENT_USER_ID): Promise<AppUser> {
+  const response = await fetch(`${API_BASE_URL}/user?user_id=${userId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update name (${response.status})`);
   }
   return response.json();
 }

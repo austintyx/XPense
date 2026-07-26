@@ -583,3 +583,106 @@ future sync auto-categorizes new transactions the same way). No code changes nee
 reload the app (Fast Refresh should pick up the `Transactions.tsx` change automatically) and
 confirm on your phone that transaction rows now show the time and that Food rows show a
 Lunch/Dinner/Drinks/Snacks subcategory.
+
+## Full UI redesign ("Spendly")
+
+The human supplied a complete design handoff (`design_handoff_expense_tracker/`) -- an HTML
+prototype (`Spendly.dc.html`, option `1a`) plus a detailed spec README -- and asked for the whole
+app UI to be rebuilt to match it: a new 4-tab shell (Home, Summary, Activity, Settings), two
+pushed full-screen flows (Quick Sort, Circle), two bottom sheets (Categorise, Add transaction),
+and a from-scratch design-token system (the app previously had zero shared theme -- every screen
+hardcoded its own hex colors).
+
+**Scope decisions confirmed with the human up front:** Budget and savings-goal are real,
+backend-persisted data (not mocked). Circle (friends) is built fully with mocked/static data, per
+the design doc's own framing of it as a later-phase feature "shown in full." Settings' "where
+transactions come from" list shows only real linked email accounts -- the design's fake SMS/phone
+row was dropped since the backend has no SMS ingestion. Everything was built in one pass.
+
+**Deliberate deviations from the literal design spec** (documented so they aren't mistaken for
+bugs): kept the real 8-category taxonomy (`Food, Groceries, Transport, Shopping, Bills,
+Entertainment, Health, Other`) instead of the design's fictional 5, with 8 hues assigned (4 new:
+Shopping 300, Bills 190, Health 350, Other 80). Food subcategories stay `Lunch/Snacks/Dinner/
+Drinks` (the human's own spec from the categorization feature) rather than the design's fictional
+`Lunch/Dinner/Coffee/Takeaway`. Only Food has a subcategory step/breakdown anywhere in the UI --
+the other 7 categories have no subcategory data server-side, so their categorise flow ends after
+step 1 and their Summary row has no expand chevron. Quick Sort's "reason" hint is one static
+sentence rather than fabricated per-merchant text, since the backend doesn't compute or store a
+reason. Settings gained two rows the design didn't spec (Monthly budget, Savings goal edit panels,
+styled like the design's existing Edit Name panel) since real backend data needs to be editable
+somehow. "Week" = trailing 7 days; "Month" reuses `GET /summary`'s existing current-calendar-month
+total directly, so Home's month figure and Summary's donut total are provably the same number.
+
+**Backend:**
+- New tables: `Budget` (`user_id` unique, `monthly_target`), `SavingsGoal` (`user_id` unique,
+  `name`, `target_amount`, `saved_amount`); new `users.name` column. Migration `baab750f38e8`.
+- New routers: `routers/budget.py` (`GET`/`PATCH /budget`, get-or-create with a `S$2,000/month`
+  default), `routers/goals.py` (`GET`/`PATCH /goal`, get-or-create default `"Savings goal"` /
+  `S$1,000` target / `S$0` saved), `routers/users.py` (`GET`/`PATCH /user` for the display name).
+- `CategoryUpdateIn` and `TransactionCreateIn` extended with an optional `subcategory` field, so
+  the app can explicitly set (or clear) a Food subcategory instead of only ever getting the
+  auto time-derived guess.
+- `routers/auth.py`'s Google/Microsoft OAuth callbacks now opportunistically set `User.name` from
+  the provider profile (`name` / `displayName`) the first time an account links, if not already
+  set -- no new API calls, that data is already fetched during the existing token exchange.
+
+**App:** full rewrite. New `src/theme/` (`oklch.ts` -- a from-scratch OKLab->sRGB converter using
+Björn Ottosson's public-domain matrices, since React Native has no `oklch()` support and every
+design color is specified that way; `tokens.ts` -- colors/typography/spacing/radii/shadows).
+New `src/components/` (`Toast`+`ToastProvider`, `BottomSheet`, `Donut` -- hand-drawn SVG arc
+paths, `CategoryChip`, `ProgressBar`). New `src/utils/derive.ts` (pure functions: `formatMoney`,
+`deriveSource`, `groupByDay`, `categoryTotals`, `topCategories`, `subcategoryTotals`,
+`calendarDailyTotals`, `today/weekSpend`, etc. -- all operating on the already-fetched transaction
+list, no new endpoints needed for day-grouping, the calendar heatmap, or "needs a category"
+filtering). New `src/store/TransactionsProvider.tsx` -- a plain React Context fetching
+transactions/summary/budget/goal/user once at the root and exposing mutation actions to every
+screen, which is what makes Home's month figure and Summary's donut total provably the same
+number instead of two independently-fetched values that can drift.
+
+Navigation rewritten: root `native-stack` (the dependency existed but was unused) holding
+`MainTabs` (`bottom-tabs`, a fully custom `TabBar` component with hand-drawn SVG icons and an
+`expo-blur` frosted background rather than fighting React Navigation's default theming) plus
+`QuickSort` and `Circle` as pushed transparent-modal screens. `App.tsx` now gates rendering on
+`useFonts()` for the three required Google Fonts (DM Sans, Instrument Serif, JetBrains Mono).
+
+Screens: `Home.tsx` (new -- greeting, budget card with Today/Week/Month segmented control,
+needs-a-category card, SVG savings-goal ring, top-4-categories list), `Summary.tsx` (rewritten --
+SVG donut + expandable category rows in chart view, a computed weekday-start heatmap grid + day
+detail card in calendar view), `Activity.tsx` (renamed from `Transactions.tsx` -- day-grouped
+list, filter pills, Quick Sort banner, empty state, `+` add button) plus `CategorizeSheet.tsx` and
+`AddTransactionSheet.tsx`, `Settings.tsx` (new, replaces the standalone `ConnectEmail` tab --
+profile edit, real linked-email rows with a "Change" action that re-runs the OAuth flow,
+preference toggles, the new Budget/Goal edit rows, Circle entry card), `QuickSort.tsx` (new --
+card-stack flow over the real uncategorized queue), `Circle.tsx` (new -- fully mocked friend data,
+local-only nudge state).
+
+New dependencies: `@expo-google-fonts/dm-sans`, `@expo-google-fonts/instrument-serif`,
+`@expo-google-fonts/jetbrains-mono`, `expo-blur`. Removed `react-native-chart-kit` (the donut and
+goal ring are hand-drawn SVG now, no charting library needed).
+
+**Tested:** `pytest` in `backend/` -> 81 passed (new `test_budget.py`, `test_goals.py`,
+`test_users.py`; extended `test_transactions.py` for subcategory pass-through and
+`test_auth.py`/`test_ms_auth.py` for the OAuth name-capture behavior, including the
+does-not-overwrite-an-existing-name case). `npm test` in `app/` -> 28 passed across 7 suites
+(new `Home.test.tsx`, `Summary.test.tsx`, `Activity.test.tsx`, `Settings.test.tsx`,
+`QuickSort.test.tsx`, `Circle.test.tsx`, `App.test.tsx`, plus a shared `src/testUtils.tsx` mock
+helper) -- covering the month/today spend split, the needs-a-category card and Quick-Sort
+hand-off, donut<->category-row selection sync, the July-2026-starts-Wednesday calendar offset
+computed (not hardcoded), the one-step-for-non-Food/two-step-for-Food categorise flow in both the
+Activity sheet and Quick Sort, Settings' edit panels actually calling the budget/goal/name APIs,
+and Circle's nudge being confirmed local-only state. `npx tsc --noEmit` clean across all source
+files (pre-existing `@types/jest`-related noise in test files only, unrelated to this change).
+
+**Live-verified against the real dev Postgres:** `GET /budget?user_id=1` and `GET /goal?user_id=1`
+both correctly get-or-created their defaults (`S$2,000.00`/month; `"Savings goal"`, `S$0.00` of
+`S$1,000.00`) on first call.
+
+**Manual steps for the human:** this touches fonts, navigation structure, and new native
+dependencies (`expo-blur`, three font packages), so a full `npx expo start --clear` restart and a
+fresh Expo Go scan is needed -- Metro won't have these in its dependency graph from a
+still-running session. Please walk all 4 tabs, both bottom sheets, Quick Sort, and Circle on your
+phone -- this is the one part I can't verify from here (native frosted-glass tab bar, the
+hand-drawn SVG donut/ring actually painting correctly, real device safe-area insets). Your
+existing real transaction data flows straight into the new Home/Summary/Activity screens
+unchanged. Budget starts at S$2,000/month and the goal starts at "Savings goal" S$0/S$1,000 --
+both editable immediately from the new Settings screen's "Budget & goals" section.
