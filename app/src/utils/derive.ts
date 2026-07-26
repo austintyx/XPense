@@ -170,3 +170,53 @@ export function currentMonthTransactions(transactions: Transaction[], now: Date 
     return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
   });
 }
+
+export function isSameMonth(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
+}
+
+/** Sunday-start calendar week containing `date`, matching the calendar grid's S M T W T F S
+ * header -- distinct from Home's rolling trailing-7-days `weekRangeTransactions`. */
+export function startOfWeek(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - d.getDay());
+  return d;
+}
+
+export function endOfWeek(date: Date): Date {
+  const start = startOfWeek(date);
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  end.setHours(23, 59, 59, 999);
+  return end;
+}
+
+export function calendarWeekTransactions(transactions: Transaction[], anchor: Date): Transaction[] {
+  const start = startOfWeek(anchor);
+  const end = endOfWeek(anchor);
+  return transactions.filter((t) => {
+    if (!isExpense(t)) return false;
+    const date = new Date(t.txn_at);
+    return date >= start && date <= end;
+  });
+}
+
+/** Chunks a leading-blanks count + a month's daily totals into rows of exactly 7 cells (day
+ * number, 1-indexed; `-1` for a blank/no-day cell), padding the final row with trailing blanks.
+ * React Native has no CSS grid, and a flat `flexWrap` row of `width: '${100/7}%'` cells drops a
+ * column (visually) because 100/7 is a repeating decimal that rounds over 100% across 7 siblings
+ * -- chunking into fixed rows of `flex: 1` cells sidesteps that entirely. */
+export function calendarWeeks(leadingBlanks: number, dailyAmounts: number[]): number[][] {
+  const cells: number[] = [
+    ...new Array(leadingBlanks).fill(-1),
+    ...dailyAmounts.map((_, idx) => idx + 1),
+  ];
+  while (cells.length % 7 !== 0) cells.push(-1);
+
+  const weeks: number[][] = [];
+  for (let i = 0; i < cells.length; i += 7) {
+    weeks.push(cells.slice(i, i + 7));
+  }
+  return weeks;
+}

@@ -7,15 +7,19 @@ import { categoryColor, categoryColorBar, colors, radii, shadow, spacing, typogr
 import { oklchToHex } from "../theme/oklch";
 import {
   calendarDailyTotals,
+  calendarWeekTransactions,
+  calendarWeeks,
   categoryTotals,
   categoryTransactions,
   currentMonthTransactions,
   dayLabel,
+  endOfWeek,
   firstWeekdayOfMonth,
   formatMoney,
   isExpense,
+  isSameMonth,
+  startOfWeek,
   subcategoryTotals,
-  weekRangeTransactions,
   yearRangeTransactions,
 } from "../utils/derive";
 
@@ -30,6 +34,8 @@ export default function Summary() {
   const [sumView, setSumView] = useState<SumView>("chart");
   const [openCat, setOpenCat] = useState<CategoryId | null>(null);
   const now = useMemo(() => new Date(), []);
+  const [viewAnchor, setViewAnchor] = useState<Date>(now);
+  const [calendarAnchor, setCalendarAnchor] = useState<Date>(now);
   const [selectedDay, setSelectedDay] = useState<number>(now.getDate());
   const [refreshing, setRefreshing] = useState(false);
 
@@ -39,38 +45,78 @@ export default function Summary() {
     setRefreshing(false);
   };
 
+  const selectSumPeriod = (p: SumPeriod) => {
+    setSumPeriod(p);
+    setViewAnchor(new Date());
+  };
+
+  const pageViewAnchor = (direction: 1 | -1) => {
+    setViewAnchor((prev) => {
+      const next = new Date(prev);
+      if (sumPeriod === "week") next.setDate(next.getDate() + direction * 7);
+      else if (sumPeriod === "year") next.setFullYear(next.getFullYear() + direction);
+      else next.setMonth(next.getMonth() + direction);
+      return next;
+    });
+  };
+
+  const pageCalendarAnchor = (direction: 1 | -1) => {
+    setCalendarAnchor((prev) => {
+      const next = new Date(prev);
+      next.setMonth(next.getMonth() + direction);
+      return next;
+    });
+    setSelectedDay(1);
+  };
+
   const periodTransactions = useMemo(() => {
-    if (sumPeriod === "week") return weekRangeTransactions(transactions, now);
-    if (sumPeriod === "year") return yearRangeTransactions(transactions, now);
-    return currentMonthTransactions(transactions, now);
-  }, [transactions, sumPeriod, now]);
+    if (sumPeriod === "week") return calendarWeekTransactions(transactions, viewAnchor);
+    if (sumPeriod === "year") return yearRangeTransactions(transactions, viewAnchor);
+    return currentMonthTransactions(transactions, viewAnchor);
+  }, [transactions, sumPeriod, viewAnchor]);
 
   const totals = useMemo(() => categoryTotals(periodTransactions), [periodTransactions]);
+  const isCurrentRealMonth = sumPeriod === "month" && isSameMonth(viewAnchor, now);
   const grand =
-    sumPeriod === "month" && summary ? Number(summary.total) : Object.values(totals).reduce((a, b) => a + b, 0);
+    isCurrentRealMonth && summary ? Number(summary.total) : Object.values(totals).reduce((a, b) => a + b, 0);
   const sortedCats = useMemo(
     () => Object.entries(totals).sort((a, b) => b[1] - a[1]) as [CategoryId, number][],
     [totals],
   );
 
-  const donutCenterLabel = sumPeriod === "week" ? "This week" : sumPeriod === "year" ? "This year" : "This month";
+  const periodLabel = useMemo(() => {
+    if (sumPeriod === "year") return String(viewAnchor.getFullYear());
+    if (sumPeriod === "week") {
+      const start = startOfWeek(viewAnchor);
+      const end = endOfWeek(viewAnchor);
+      const startStr = start.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+      const endStr = end.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+      return `${startStr} – ${endStr}`;
+    }
+    return viewAnchor.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  }, [sumPeriod, viewAnchor]);
 
-  const monthName = now.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  const calendarMonthName = calendarAnchor.toLocaleDateString(undefined, { month: "long", year: "numeric" });
   const dailyAmounts = useMemo(
-    () => calendarDailyTotals(transactions, now.getFullYear(), now.getMonth()),
-    [transactions, now],
+    () => calendarDailyTotals(transactions, calendarAnchor.getFullYear(), calendarAnchor.getMonth()),
+    [transactions, calendarAnchor],
   );
   const maxDay = Math.max(1, ...dailyAmounts);
-  const leadingBlanks = firstWeekdayOfMonth(now.getFullYear(), now.getMonth());
+  const leadingBlanks = firstWeekdayOfMonth(calendarAnchor.getFullYear(), calendarAnchor.getMonth());
+  const weeks = useMemo(() => calendarWeeks(leadingBlanks, dailyAmounts), [leadingBlanks, dailyAmounts]);
   const dayAmt = dailyAmounts[selectedDay - 1] ?? 0;
   const dayItems = useMemo(
     () =>
       transactions.filter((t) => {
         if (!isExpense(t)) return false;
         const d = new Date(t.txn_at);
-        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === selectedDay;
+        return (
+          d.getFullYear() === calendarAnchor.getFullYear() &&
+          d.getMonth() === calendarAnchor.getMonth() &&
+          d.getDate() === selectedDay
+        );
       }),
-    [transactions, now, selectedDay],
+    [transactions, calendarAnchor, selectedDay],
   );
 
   if (loading) {
@@ -89,7 +135,7 @@ export default function Summary() {
         {(["week", "month", "year"] as SumPeriod[]).map((p) => (
           <Pressable
             key={p}
-            onPress={() => setSumPeriod(p)}
+            onPress={() => selectSumPeriod(p)}
             style={[styles.pill, sumPeriod === p ? styles.pillActive : styles.pillInactive]}
             testID={`sum-period-${p}`}
           >
@@ -110,6 +156,15 @@ export default function Summary() {
 
       {sumView === "chart" ? (
         <>
+          <View style={styles.navRow}>
+            <Pressable onPress={() => pageViewAnchor(-1)} style={styles.navChevron} testID="chart-prev">
+              <Text style={styles.navChevronText}>‹</Text>
+            </Pressable>
+            <Text style={styles.navLabel}>{periodLabel}</Text>
+            <Pressable onPress={() => pageViewAnchor(1)} style={styles.navChevron} testID="chart-next">
+              <Text style={styles.navChevronText}>›</Text>
+            </Pressable>
+          </View>
           <View style={[styles.card, styles.donutCard, shadow.card]}>
             <View style={styles.donutWrap}>
               <Donut
@@ -118,7 +173,7 @@ export default function Summary() {
                 onSelect={(id) => setOpenCat(openCat === id ? null : (id as CategoryId))}
               />
               <View style={styles.donutCenter} pointerEvents="none">
-                <Text style={styles.donutEyebrow}>{donutCenterLabel.toUpperCase()}</Text>
+                <Text style={styles.donutEyebrow}>{periodLabel.toUpperCase()}</Text>
                 <Text style={styles.donutAmount}>{formatMoney(grand, false)}</Text>
               </View>
             </View>
@@ -186,7 +241,15 @@ export default function Summary() {
         <>
           <View style={[styles.card, styles.calendarCard, shadow.card]}>
             <View style={styles.calendarHeaderRow}>
-              <Text style={styles.calTitle}>{monthName}</Text>
+              <View style={styles.calNavGroup}>
+                <Pressable onPress={() => pageCalendarAnchor(-1)} style={styles.navChevron} testID="cal-prev">
+                  <Text style={styles.navChevronText}>‹</Text>
+                </Pressable>
+                <Text style={styles.calTitle}>{calendarMonthName}</Text>
+                <Pressable onPress={() => pageCalendarAnchor(1)} style={styles.navChevron} testID="cal-next">
+                  <Text style={styles.navChevronText}>›</Text>
+                </Pressable>
+              </View>
               <Text style={styles.calCaption}>darker = more spent</Text>
             </View>
             <View style={styles.weekdayRow}>
@@ -197,33 +260,39 @@ export default function Summary() {
               ))}
             </View>
             <View style={styles.calGrid}>
-              {Array.from({ length: leadingBlanks }).map((_, i) => (
-                <View key={`blank-${i}`} style={styles.calCell} />
+              {weeks.map((week, weekIdx) => (
+                <View key={weekIdx} style={styles.calWeekRow}>
+                  {week.map((day, dayIdx) => {
+                    if (day === -1) {
+                      return <View key={dayIdx} style={styles.calCell} />;
+                    }
+                    const amt = dailyAmounts[day - 1] ?? 0;
+                    const k = amt / maxDay;
+                    const selected = selectedDay === day;
+                    const bg = amt > 0 ? oklchToHex(0.95 - k * 0.3, 0.02 + k * 0.07, 158) : colors.ink04;
+                    const textColor = k > 0.62 ? colors.onDark : colors.ink70;
+                    return (
+                      <Pressable
+                        key={dayIdx}
+                        onPress={() => setSelectedDay(day)}
+                        style={[styles.calCell, { backgroundColor: bg }, selected && styles.calCellSelected]}
+                        testID={`cal-day-${day}`}
+                      >
+                        <Text style={[styles.calCellText, { color: textColor }]}>{day}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
               ))}
-              {dailyAmounts.map((amt, idx) => {
-                const day = idx + 1;
-                const k = amt / maxDay;
-                const selected = selectedDay === day;
-                const bg = amt > 0 ? oklchToHex(0.95 - k * 0.3, 0.02 + k * 0.07, 158) : colors.ink04;
-                const textColor = k > 0.62 ? colors.onDark : colors.ink70;
-                return (
-                  <Pressable
-                    key={day}
-                    onPress={() => setSelectedDay(day)}
-                    style={[styles.calCell, { backgroundColor: bg }, selected && styles.calCellSelected]}
-                    testID={`cal-day-${day}`}
-                  >
-                    <Text style={[styles.calCellText, { color: textColor }]}>{day}</Text>
-                  </Pressable>
-                );
-              })}
             </View>
           </View>
 
           <View style={[styles.card, styles.dayDetailCard, shadow.card]}>
             <View style={styles.dayDetailHeader}>
               <Text style={styles.dayTitle}>
-                {dayAmt ? `${selectedDay} ${monthName}` : `${selectedDay} ${monthName} — nothing spent`}
+                {dayAmt
+                  ? `${selectedDay} ${calendarMonthName}`
+                  : `${selectedDay} ${calendarMonthName} — nothing spent`}
               </Text>
               <Text style={styles.dayTotal} testID="day-total">{formatMoney(dayAmt)}</Text>
             </View>
@@ -262,6 +331,11 @@ const styles = StyleSheet.create({
   pillTextActive: { color: colors.canvas },
   toggleButton: { paddingVertical: 7, paddingHorizontal: 12, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.ink14, backgroundColor: colors.surface },
   toggleButtonText: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.sm5, color: colors.ink },
+  navRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 16, marginBottom: 14 },
+  navChevron: { paddingHorizontal: 6, paddingVertical: 4 },
+  navChevronText: { fontSize: 20, color: colors.ink, lineHeight: 22 },
+  navLabel: { fontFamily: typography.fontFamily.serif, fontSize: typography.size.displaySm, color: colors.ink, minWidth: 150, textAlign: "center" },
+  calNavGroup: { flexDirection: "row", alignItems: "center", gap: 10 },
   card: { backgroundColor: colors.surface, borderRadius: radii.hero },
   donutCard: { paddingVertical: 24, paddingHorizontal: 22, alignItems: "center" },
   donutWrap: { width: 196, height: 196, alignItems: "center", justifyContent: "center" },
@@ -294,14 +368,14 @@ const styles = StyleSheet.create({
   calCaption: { fontFamily: typography.fontFamily.mono, fontSize: typography.size.xs, color: colors.ink42 },
   weekdayRow: { flexDirection: "row", marginBottom: 8 },
   weekdayLabel: { flex: 1, textAlign: "center", fontFamily: typography.fontFamily.mono, fontSize: typography.size.xs, color: colors.ink35 },
-  calGrid: { flexDirection: "row", flexWrap: "wrap" },
+  calGrid: { gap: 5 },
+  calWeekRow: { flexDirection: "row", gap: 5 },
   calCell: {
-    width: `${100 / 7}%`,
+    flex: 1,
     height: 42,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 11,
-    marginBottom: 5,
   },
   calCellSelected: { borderWidth: 2, borderColor: colors.ink },
   calCellText: { fontFamily: typography.fontFamily.mono, fontSize: typography.size.base },

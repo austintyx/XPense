@@ -78,6 +78,75 @@ test('expanding a non-Food category row lists its actual transactions (no subcat
   expect(screen.getByText('BUS/MRT')).toBeTruthy();
 });
 
+test('paging the month chart view back a month shows that month\'s own total, not the current-month summary total', async () => {
+  mockClientDefaults({
+    summary: { user_id: 1, month: '2026-07', categories: [{ category: 'Food', total: '40.00' }], total: '40.00' },
+    transactions: [
+      makeTxn({ id: 1, category: 'Food', amount: '40.00', txn_at: '2026-07-15T10:00:00Z' }),
+      makeTxn({ id: 2, category: 'Food', amount: '5.00', txn_at: '2026-06-20T10:00:00Z' }),
+    ],
+  });
+
+  renderWithProviders(<Summary />);
+
+  expect(await screen.findByText('S$40')).toBeTruthy();
+  expect(screen.getByText('July 2026')).toBeTruthy();
+
+  fireEvent.press(screen.getByTestId('chart-prev'));
+
+  expect(await screen.findByText('June 2026')).toBeTruthy();
+  expect(await screen.findByText('S$5')).toBeTruthy();
+  expect(screen.queryByText('S$40')).toBeNull();
+});
+
+test('week view uses the Sunday-Saturday calendar week, not a rolling 7-day window', async () => {
+  mockClientDefaults({
+    transactions: [
+      makeTxn({ id: 1, category: 'Food', amount: '9.00', txn_at: '2026-07-11T10:00:00Z', merchant_raw: 'LAST SATURDAY' }),
+      makeTxn({ id: 2, category: 'Food', amount: '6.00', txn_at: '2026-07-12T10:00:00Z', merchant_raw: 'THIS SUNDAY' }),
+    ],
+  });
+
+  renderWithProviders(<Summary />);
+
+  fireEvent.press(await screen.findByTestId('sum-period-week'));
+
+  expect(await screen.findByText('S$6')).toBeTruthy();
+  expect(screen.queryByText('S$15')).toBeNull();
+});
+
+test('paging the calendar view to a different month resets the selected day and shows that month\'s data', async () => {
+  mockClientDefaults({
+    transactions: [
+      makeTxn({ id: 1, category: 'Food', amount: '12.00', txn_at: '2026-06-01T10:00:00Z', merchant_raw: 'JUNE FIRST' }),
+    ],
+  });
+
+  renderWithProviders(<Summary />);
+
+  fireEvent.press(await screen.findByTestId('toggle-view'));
+  fireEvent.press(await screen.findByTestId('cal-prev'));
+
+  expect(await screen.findByText('June 2026')).toBeTruthy();
+  expect(await screen.findByText('JUNE FIRST')).toBeTruthy();
+  expect(screen.getByTestId('day-total')).toHaveTextContent('S$12.00');
+});
+
+test('calendar grid renders every day of the month, including Saturdays, in row-chunked groups of 7', async () => {
+  mockClientDefaults({ transactions: [] });
+
+  renderWithProviders(<Summary />);
+
+  fireEvent.press(await screen.findByTestId('toggle-view'));
+
+  // July 2026 has 31 days; Saturdays fall on 4, 11, 18, 25.
+  expect(await screen.findByTestId('cal-day-4')).toBeTruthy();
+  expect(screen.getByTestId('cal-day-11')).toBeTruthy();
+  expect(screen.getByTestId('cal-day-18')).toBeTruthy();
+  expect(screen.getByTestId('cal-day-25')).toBeTruthy();
+  expect(screen.getByTestId('cal-day-31')).toBeTruthy();
+});
+
 test('calendar view shows 3 leading blank cells for July 2026 (starts on a Wednesday) and selecting a day updates the detail card', async () => {
   mockClientDefaults({
     transactions: [

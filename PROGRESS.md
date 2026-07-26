@@ -686,3 +686,56 @@ hand-drawn SVG donut/ring actually painting correctly, real device safe-area ins
 existing real transaction data flows straight into the new Home/Summary/Activity screens
 unchanged. Budget starts at S$2,000/month and the goal starts at "Savings goal" S$0/S$1,000 --
 both editable immediately from the new Settings screen's "Budget & goals" section.
+
+## Redesign follow-ups: period-aware Home, Summary donut drilldown, browsable week/month/year
+
+Two rounds of feedback on the redesign, both app-only (no backend changes):
+
+**Round 1 -- Home's "Where it went" was period-blind; Summary's donut only expanded for Food.**
+`Home.tsx`'s "Where it went" top-categories list always used the full all-time transaction list
+regardless of the Today/Week/Month segmented control above it -- now it derives from the same
+period (`todayRangeTransactions`/`weekRangeTransactions`/`currentMonthTransactions`, new
+`todayRangeTransactions` added to `derive.ts`). Every Summary category row is now expandable (the
+chevron used to be hidden unless the category had subcategory data, which only Food has) and
+reveals the actual transactions behind that slice via a new `categoryTransactions` derive
+function; Food additionally still shows its Lunch/Snacks/Dinner/Drinks bars above the list.
+
+**Round 2 -- Summary couldn't browse to a different week/month/year, the calendar was locked to
+the current month, and the calendar grid was silently dropping Saturdays.** The Saturday bug was
+a real React Native flexbox pitfall: the day grid was one flat `flexWrap` row of cells styled
+`width: '${100/7}%'` -- `100/7` is a repeating decimal, so the summed percentage width across 7
+siblings rounds fractionally over 100% of the row's pixel width, pushing the 7th cell (Saturday,
+since the grid starts Sunday) onto the next line every time. Fixed by chunking the month into
+explicit rows of exactly 7 `flex: 1` cells (new `calendarWeeks` helper in `derive.ts`) instead of
+one wrapping container -- Yoga always divides `flex: 1` siblings evenly, no rounding drift
+possible. Added two independent navigable "anchor" dates: `viewAnchor` for the chart view (paged
+±7 days/±1 month/±1 year to match whichever of Week/Month/Year is selected; tapping a period pill
+resets it to today, including tapping the already-active pill as a free jump-to-now), and
+`calendarAnchor` for the calendar view (paged ±1 month, independent of the chart's period, resets
+`selectedDay` to 1 on every page since the previously-selected day may not exist in the new
+month). Browsable weeks needed a real Sun-Sat calendar week rather than Home's rolling
+trailing-7-days window, so a `startOfWeek`/`endOfWeek`/`calendarWeekTransactions` trio was added
+rather than reusing `weekRangeTransactions`. Also fixed a real correctness bug this surfaced: the
+donut/category-rows total used to read `summary.total` (the server's always-current-month figure)
+any time `sumPeriod === "month"`, unconditionally -- once month-paging existed that would show a
+past month's label next to the *current* month's total. Now `summary.total` is only used when the
+viewed month is genuinely today's real month (`isSameMonth`); any paged historical month falls
+back to the client-derived sum, exactly like week/year already did.
+
+**Tested:** `npm test` in `app/` -> 34 passed across 7 suites (up from 28). New Summary cases:
+paging the month view back a month shows that month's own total and no longer equals
+`summary.total`; the week view uses the Sun-Sat boundary (a transaction the day before that
+boundary is correctly excluded, proving it isn't the old rolling-window logic); paging the
+calendar resets the selected day and shows the new month's data; a grid-chunking sanity check that
+every day 1-31 (including all four Saturdays: 4, 11, 18, 25 for July 2026) gets a `cal-day-N`
+testID. Flagged honestly in the plan and here: `react-test-renderer` doesn't compute real pixel
+layout, so no jest assertion can *prove* the visual Saturday-dropping bug is fixed -- the
+row-chunked-`flex:1` structure is the textbook-correct fix for this exact class of bug, but final
+confirmation needs a look on-device. `npx tsc --noEmit` clean. `pytest` in `backend/` unaffected
+(still 81 passed) since neither round touched the backend.
+
+**Manual step for the human:** please re-check Summary on your phone -- confirm every calendar row
+now shows a Saturday, and that the new ‹ › chevrons (next to the Week/Month/Year pills, and next
+to the calendar's month name) let you browse to a past period. This is a pure JS/rendering change
+(no new native dependencies), so Fast Refresh on your already-running Expo session should pick it
+up without a restart.
