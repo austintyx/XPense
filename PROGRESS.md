@@ -1515,10 +1515,44 @@ PayNow/Scan-and-Pay is also missing, that's the next place to check with a real 
 **Tested:** full backend suite `pytest -q` -- 179 passed, no regressions. Also ran `parse_email`
 directly against the *exact* text transcribed from both screenshots (not just the fixture files)
 to confirm the real-world match: NETS Scan & Pay → S$6.00 CHICKEN RICE (expense), PayNow →
-S$2.20 LEX KOX SIXX (transfer) -- both correct.
+S$2.20 LEX KOX SIXX (`type` since reclassified -- see next entry below).
 
 **Manual steps for the human:** trigger a sync and confirm PayNow/Scan-and-Pay transactions now
 appear. As with the previous fix, this only helps going forward -- re-run a backfill sync
 (Settings → account → re-link) to pick up any missed since the original allowlist change. If you
 also use UOB PayNow, forward a sample alert (or a screenshot like the DBS ones) if it's still not
 showing up -- its regex is unverified and likely has the same class of bug.
+
+## Bug fix #3: PayNow transaction type was guessed from payee ID type, not from the money's direction
+
+The human flagged that `type` (expense vs transfer) was still wrong for some PayNow transactions.
+The old `_classify_paynow` guessed from the payee's ID suffix on the "To:" field -- UEN (business)
+-> expense, mobile/NRIC (person) -> transfer -- on the assumption that paying a business is always
+spending and paying a person never is. That assumption doesn't hold: plenty of real merchants
+(hawker stalls, small vendors) register PayNow on a personal mobile number instead of a UEN, so
+those legitimate expenses were being silently excluded from spend totals and budgets as "transfers".
+
+**New rule (confirmed with the human):** `type` is now decided by whether the email text contains
+the word "receive" or "received" -- money coming *into* the account isn't spending (transfer),
+anything else is money going out (expense), regardless of who the payee is. This replaces
+`_classify_paynow`'s UEN/mobile/NRIC check everywhere it's already called (both DBS's and UOB's
+PayNow parsing); DBS's "Own Funds Transfer" (moving money between your own accounts) is
+deliberately *not* touched by this rule and stays hardcoded as `transfer` -- confirmed with the
+human as out of scope, since that's unambiguously not spending regardless of wording.
+
+One nuance: under the current table-parsing structure, `_classify_paynow` only runs on the
+*outgoing*-shaped PayNow branch (a "To:" field with a "(... ending NNNN)" suffix) -- so with real
+emails observed so far (neither of which contains "receive"/"received"), every PayNow-to-a-person
+case now comes out as `expense`, same as PayNow-to-a-business. The `transfer` branch is exercised
+by a synthetic test rather than a verified real "you received a payment" email (none has been seen
+yet); if that alert type turns out to have a different shape entirely, it may need its own parsing
+path later.
+
+**Tested:** full backend suite -- 180 passed (was 179; +1 new test covering the receive/received
+branch directly). Updated `dbs_paynow_person`/`uob_paynow` fixture-test expectations from
+`transfer` to `expense` to match the new rule.
+
+**Manual steps for the human:** watch upcoming PayNow-to-a-person transactions in Activity --
+they'll now show as expenses. If you get an actual "payment received" alert email, forward it (or
+a screenshot) so the receive-detection path can be verified against real wording instead of the
+synthetic test text.
