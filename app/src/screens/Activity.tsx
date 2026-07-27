@@ -171,7 +171,10 @@ export default function Activity() {
                       </Text>
                     </View>
                     <View style={styles.amountCol}>
-                      <Text style={styles.amount}>{formatMoney(txn.amount)}</Text>
+                      <Text style={[styles.amount, txn.type === "transfer" && styles.amountTransfer]}>
+                        {txn.type === "transfer" ? "+" : ""}
+                        {formatMoney(txn.amount)}
+                      </Text>
                       <Text style={styles.source}>{deriveSource(txn)}</Text>
                     </View>
                   </Pressable>
@@ -252,5 +255,6 @@ const styles = StyleSheet.create({
   subLabelWarn: { fontFamily: typography.fontFamily.sansMedium, fontSize: typography.size.sm5, color: colors.warnText, marginTop: 3 },
   amountCol: { alignItems: "flex-end", flexShrink: 0, marginLeft: 8 },
   amount: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.md5, color: colors.ink },
+  amountTransfer: { color: colors.success },
   source: { fontFamily: typography.fontFamily.mono, fontSize: typography.size.xs, color: colors.ink35, marginTop: 3 },
 });

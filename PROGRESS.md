@@ -1622,3 +1622,29 @@ fixture was even written.
 
 **Manual steps for the human:** trigger a sync and confirm this and any future "you've received a
 transfer" emails now appear in Activity's "All" filter as transfer-type, credit-direction rows.
+
+## Transfer rows: green "+" prefix, and subtract from the day's total instead of adding
+
+The human asked for transfer rows in Activity to render in green with a "+" before the amount,
+and for the day-group total to subtract transfers rather than add them -- so a day mixing an
+expense and an incoming transfer shows a net-spend total, not an inflated sum of two unrelated
+cash flows.
+
+`groupByDay` (`derive.ts`) now applies a signed amount per transaction (`-amount` for `type ===
+"transfer"`, `+amount` otherwise) when accumulating each day's `total`. This only changes anything
+for Activity's "All" filter, the one place transfer and expense rows are mixed together (per the
+previous entry) -- every other `groupByDay` caller (Summary's calendar drill-down) still only ever
+sees expense-typed input, so the new branch is a no-op there. `Activity.tsx`'s row now renders a
+"+" prefix and `colors.success` (the same green used for "Change"/success links elsewhere) when
+`txn.type === "transfer"`, expense rows unchanged.
+
+Since a day's total can now go negative (an all-transfer day, or transfers outweighing that day's
+spend), fixed `formatMoney` to put the sign before the currency prefix ("-S$5.00", not the
+previous "S$-5.00").
+
+**Tested:** frontend suite -- still 85 passed (extended the existing transfer-visibility test with
+assertions for the "+S$10.00" text, its green color, and the net "S$0.00" day total, rather than
+adding a new test). `npx tsc --noEmit` clean. Web bundle still compiles (200, ~3.7MB).
+
+**Manual steps for the human:** open Activity's "All" filter and confirm transfer rows show green
+with a "+", and that a day mixing both types shows the net total rather than the sum.

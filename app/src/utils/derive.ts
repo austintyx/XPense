@@ -3,10 +3,14 @@ import { CATEGORIES, subcategoriesFor, type CategoryId } from "../theme/tokens";
 
 export function formatMoney(amount: number | string, decimals = true): string {
   const value = typeof amount === "string" ? Number(amount) : amount;
+  // A day group's total can go negative once transfers subtract from it (see groupByDay) -- put
+  // the sign before "S$" ("-S$5.00"), not after it ("S$-5.00").
+  const sign = value < 0 ? "-" : "";
+  const abs = Math.abs(value);
   if (decimals) {
-    return "S$" + value.toLocaleString("en-SG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return sign + "S$" + abs.toLocaleString("en-SG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
-  return "S$" + Math.round(value).toLocaleString("en-SG");
+  return sign + "S$" + Math.round(abs).toLocaleString("en-SG");
 }
 
 export function deriveSource(txn: Pick<Transaction, "provider" | "bank">): string {
@@ -43,8 +47,10 @@ export interface DayGroup {
   items: Transaction[];
 }
 
-/** Groups already-expense-filtered transactions by calendar day, newest group first, rows
- * within a group preserving the caller's (already txn_at-desc) ordering. */
+/** Groups transactions by calendar day, newest group first, rows within a group preserving the
+ * caller's (already txn_at-desc) ordering. Transfers (money coming in) subtract from the day's
+ * total rather than adding to it -- callers mixing expense and transfer rows (Activity's "All"
+ * filter) get a net-spend total per day, not an inflated sum of unrelated inflows and outflows. */
 export function groupByDay(transactions: Transaction[], now: Date = new Date()): DayGroup[] {
   const groups: DayGroup[] = [];
   const indexByLabel = new Map<string, number>();
@@ -58,7 +64,8 @@ export function groupByDay(transactions: Transaction[], now: Date = new Date()):
       groups.push({ label, total: 0, items: [] });
     }
     groups[idx].items.push(txn);
-    groups[idx].total += Number(txn.amount);
+    const signedAmount = txn.type === "transfer" ? -Number(txn.amount) : Number(txn.amount);
+    groups[idx].total += signedAmount;
   }
 
   return groups;
