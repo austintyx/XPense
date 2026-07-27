@@ -39,16 +39,18 @@ export function PageHeader({ activeRoute }: PageHeaderProps) {
         <Text style={styles.title}>{title}</Text>
       </View>
       <View style={styles.right}>
-        <View style={styles.searchBox}>
-          <View style={styles.searchDot} />
-          <TextInput
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search merchants"
-            style={styles.searchInput}
-            testID="header-search"
-          />
-        </View>
+        {activeRoute === "Activity" && (
+          <View style={styles.searchBox}>
+            <View style={styles.searchDot} />
+            <TextInput
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search merchants"
+              style={styles.searchInput}
+              testID="header-search"
+            />
+          </View>
+        )}
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{initialsOf(user?.name ?? null)}</Text>
         </View>

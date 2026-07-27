@@ -1335,3 +1335,40 @@ actually filtering Activity's list; Add-expense/Categorize opening as centered d
 "Manage budgets" link from Settings; and a spot-check on a phone/Expo Go that Home, Summary, and
 the Add/Categorize sheets are pixel-identical to before this feature (everything here is additive
 on web only).
+
+## Five fixes to the web dashboard redesign
+
+Follow-up polish after trying the redesign against the mockup for real. All web-only, no backend
+changes: (1) the header search box now only renders on the Activity tab, since that's the only
+screen it actually filters; (2) Home's layout toggle renamed `"a"/"b"` -> `"focused"/"command"`,
+plus two things that were just missing versus the mockup -- a "LAYOUT" label beside the toggle and
+a highlighted background on the active pill (previously only the text changed); (3) the "where it
+went" donut was pinned to the left edge of a wide card with the category list stretched to fill
+the rest -- fixed by giving the list a fixed width and centering the row as one compact block; (4)
+Settings' two web columns started at different heights (the right column's first label carried a
+top margin meant for mid-stack use, the left column's first item didn't) and Preferences was in
+the wrong column per the mockup -- moved to the left column, with each section defined once and
+composed in a *different order* for native vs. web (not just conditional styling), so native's
+original stacked order stays completely untouched.
+
+(5), the largest: the calendar view's Week/Month/Year pills previously did nothing -- calendar
+always showed a fixed month grid with its own separate state, ignoring the period selector
+entirely. Unified onto one shared `sumPeriod`/`viewAnchor` pair that now drives both Chart and
+Calendar view, added a 4th "Day" option, and made the calendar grid genuinely period-shaped: day
+shows a notice + the day-detail panel directly, week is a single 7-cell row (new use of
+`dailyTotalsForRange` from the derived-stats work), month is the existing grid unchanged, year is
+a new 12-tile month heat-map that drills into that month (switches period to "month") on click.
+Added a period-total line at the bottom of the calendar card, reusing the same period-scoped
+`grand` value the chart view already computed.
+
+**Tested:** `npx tsc --noEmit` clean, frontend `jest` still 84 passed (no count change expected --
+the touched files are either `.web.tsx`, invisible to this repo's Jest config same as every prior
+`.web.tsx` file, or `Settings.tsx`'s native path, which `Settings.test.tsx`'s existing 11 cases
+confirmed still passes unchanged after the section-reordering refactor). Web bundle recompiled
+cleanly (692 modules) after every fix as a runtime sanity check.
+
+**Manual steps for the human:** verify in the browser -- search only on Activity; the Home toggle
+reads "LAYOUT  Focused  Command" with a visible active highlight; the donut reads centered, not
+stretched; Settings' columns start level with Preferences on the left; and the big one, Summary's
+calendar view actually responding to Day/Week/Month/Year with a period total at the bottom and
+Year's tiles drilling into a month on click.

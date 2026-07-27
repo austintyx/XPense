@@ -19,7 +19,8 @@ import {
   uncategorized,
 } from "../utils/derive";
 
-type HomeLayout = "a" | "b";
+type HomeLayout = "focused" | "command";
+const LAYOUT_LABELS: Record<HomeLayout, string> = { focused: "Focused", command: "Command" };
 const GOAL_RING_CIRCUMFERENCE = 2 * Math.PI * 37;
 const SPARK_DAYS = 14;
 
@@ -30,7 +31,7 @@ function daysInMonth(date: Date): number {
 export default function Home() {
   const navigation = useNavigation<any>();
   const { transactions, budget, goal, loading } = useAppData();
-  const [layout, setLayout] = useState<HomeLayout>("a");
+  const [layout, setLayout] = useState<HomeLayout>("focused");
   const [selected, setSelected] = useState<Transaction | null>(null);
 
   const now = useMemo(() => new Date(), []);
@@ -116,16 +117,22 @@ export default function Home() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} testID="home-screen">
       <View style={styles.toolbar}>
+        <Text style={styles.eyebrow}>LAYOUT</Text>
         <View style={styles.segmented}>
-          {(["a", "b"] as HomeLayout[]).map((l) => (
-            <Pressable key={l} onPress={() => setLayout(l)} style={styles.segmentItem} testID={`home-layout-${l}`}>
-              <Text style={[styles.segmentText, layout === l && styles.segmentTextActive]}>Layout {l.toUpperCase()}</Text>
+          {(["focused", "command"] as HomeLayout[]).map((l) => (
+            <Pressable
+              key={l}
+              onPress={() => setLayout(l)}
+              style={[styles.segmentItem, layout === l && styles.segmentItemActive]}
+              testID={`home-layout-${l}`}
+            >
+              <Text style={[styles.segmentText, layout === l && styles.segmentTextActive]}>{LAYOUT_LABELS[l]}</Text>
             </Pressable>
           ))}
         </View>
       </View>
 
-      {layout === "a" ? (
+      {layout === "focused" ? (
         <View style={{ gap: 16 }}>
           <View style={styles.row}>
             <View style={[styles.card, { flex: 8 }, shadow.card]}>
@@ -224,7 +231,7 @@ export default function Home() {
                   innerRadius={36}
                   outerRadius={58}
                 />
-                <View style={{ flex: 1, gap: 12 }}>
+                <View style={styles.donutList}>
                   {sortedCats.slice(0, 4).map(([cat, total]) => (
                     <View key={cat} style={styles.catLine}>
                       <View style={[styles.dot, { backgroundColor: categoryColor(cat) }]} />
@@ -422,11 +429,12 @@ export default function Home() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.canvas },
   content: { paddingHorizontal: 34, paddingBottom: 56, maxWidth: 1360, width: "100%" },
-  toolbar: { flexDirection: "row", justifyContent: "flex-end", marginBottom: 16 },
-  segmented: { flexDirection: "row", backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.ink06, borderRadius: radii.chip, padding: 4 },
+  toolbar: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 10, marginBottom: 16 },
+  segmented: { flexDirection: "row", gap: 4, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.ink06, borderRadius: radii.chip, padding: 4 },
   segmentItem: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: radii.pill },
+  segmentItemActive: { backgroundColor: colors.ink },
   segmentText: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.base, color: colors.ink55 },
-  segmentTextActive: { color: colors.ink, fontFamily: typography.fontFamily.sansMedium },
+  segmentTextActive: { color: colors.onDark, fontFamily: typography.fontFamily.sansMedium },
   row: { flexDirection: "row", gap: 16, alignItems: "stretch" },
   card: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.ink06, borderRadius: radii.hero, padding: 22 },
   eyebrow: { fontFamily: typography.fontFamily.mono, fontSize: typography.size.xs5, letterSpacing: 1.4, textTransform: "uppercase", color: colors.ink45 },
@@ -455,7 +463,8 @@ const styles = StyleSheet.create({
   goalMeta: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.sm5, color: colors.onDark60 },
   cardHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
   linkText: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.sm5, color: colors.ink50 },
-  donutRow: { flexDirection: "row", alignItems: "center", gap: 20 },
+  donutRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 24, flex: 1 },
+  donutList: { width: 220, gap: 12 },
   catLine: { flexDirection: "row", alignItems: "center", gap: 10 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   catName: { flex: 1, fontFamily: typography.fontFamily.sans, fontSize: typography.size.md },
