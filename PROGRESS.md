@@ -1447,3 +1447,38 @@ needs-review card shows the centered message (both dashboard layouts); open Budg
 confirm every category shows an input (existing limits verbatim, unset built-ins prefilled with a
 sensible suggested number, custom categories empty), and that Save all persists the changes while
 Cancel discards them.
+
+## Bug fix: PayNow / Scan-and-Pay alerts were silently dropped by the bank-sender allowlist
+
+The human reported PayNow and Scan-and-Pay transactions weren't showing up at all. Root cause was
+in the bank-sender allowlist added last round (`bank_senders.py`, "Restrict sync to an exact
+bank-sender allowlist"): it assumed all of a bank's alert types share one sender address
+(`ibanking.alert@dbs.com` for DBS, `unialerts@uobgroup.com` for UOB) and hard-filtered out anything
+else in `sync.py` before the parser ever ran. In reality each bank uses a *different* address per
+alert type -- DBS sends card transactions from `ibanking.alert@dbs.com` but PayNow/NETS Scan & Pay/
+own-account transfers from `alerts@dbs.com.sg`; UOB's card alerts come from `unialerts@uobgroup.com`
+but PayNow from `alerts@uob.com.sg`. The parser itself (`parser.py`) already handled these emails
+correctly -- confirmed by `test_parser.py`'s fixtures, which use exactly these addresses and were
+passing the whole time -- they just never reached it in the live sync path. There was even a test
+(`test_bank_senders.py`) that explicitly asserted `alerts@dbs.com.sg` should be *rejected* as a
+lookalike sender, which was the mistake: it's a real bank address, not a spoof.
+
+**Fix:** `KNOWN_BANK_SENDERS` in `bank_senders.py` now maps each bank to a *list* of addresses
+instead of one (`dbs: [ibanking.alert@dbs.com, alerts@dbs.com.sg]`, `uob: [unialerts@uobgroup.com,
+alerts@uob.com.sg]`), confirmed with the human before changing since this is a security-relevant
+allowlist controlling which senders' email bodies get read. `GMAIL_SENDER_FILTER`/
+`GRAPH_SENDER_QUERY`/`is_allowlisted_sender` all now consider every address across every bank.
+`gmail.py`, `graph.py`, and `sync.py` needed no changes -- they only ever consumed the derived
+filter/query/predicate, not the dict shape directly. Corrected the wrong `test_bank_senders.py`
+assertion and added a positive test that both PayNow addresses are now accepted; the "reject
+lookalikes" test now uses an actual look-alike domain (`alerts@dbs.com.sg.evil.com`) instead of a
+real address.
+
+**Tested:** full backend suite `pytest -q` -- 179 passed (was 178; +1 new allowlist test), no
+regressions across `test_bank_senders.py`, `test_sync.py`, or `test_parser.py`.
+
+**Manual steps for the human:** trigger a manual sync (or wait for the next scheduled one) and
+confirm PayNow and Scan-and-Pay transactions now appear in Activity going forward. This only fixes
+sync *going forward* -- any PayNow/Scan-and-Pay alerts received since the allowlist was added won't
+retroactively appear unless a backfill sync is re-run for the affected date range (Settings →
+account → re-link triggers the backfill-sync prompt covering the last 60 days).
