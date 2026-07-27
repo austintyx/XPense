@@ -1,6 +1,6 @@
 def test_cors_allows_configured_origin(client):
-    response = client.get("/health", headers={"Origin": "http://localhost:8081"})
-    assert response.headers["access-control-allow-origin"] == "http://localhost:8081"
+    response = client.get("/health", headers={"Origin": "http://localhost:8090"})
+    assert response.headers["access-control-allow-origin"] == "http://localhost:8090"
 
 
 def test_cors_rejects_unlisted_origin(client):
@@ -14,11 +14,11 @@ def test_cors_preflight_allows_post_to_sync(client):
     response = client.options(
         "/sync",
         headers={
-            "Origin": "http://localhost:8081",
+            "Origin": "http://localhost:8090",
             "Access-Control-Request-Method": "POST",
             "Access-Control-Request-Headers": "content-type",
         },
     )
     assert response.status_code == 200
-    assert response.headers["access-control-allow-origin"] == "http://localhost:8081"
+    assert response.headers["access-control-allow-origin"] == "http://localhost:8090"
     assert "POST" in response.headers["access-control-allow-methods"]
