@@ -4,14 +4,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { colors, typography } from "../theme/tokens";
-import { ActivityIcon, HomeIcon, SettingsIcon, SummaryIcon } from "./icons";
-
-const ICONS: Record<string, typeof HomeIcon> = {
-  Home: HomeIcon,
-  Summary: SummaryIcon,
-  Activity: ActivityIcon,
-  Settings: SettingsIcon,
-};
+import { HomeIcon, ROUTE_ICONS } from "./icons";
 
 export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
@@ -25,7 +18,7 @@ export function TabBar({ state, descriptors, navigation }: BottomTabBarProps) {
         const { options } = descriptors[route.key];
         const label = options.tabBarLabel !== undefined ? String(options.tabBarLabel) : route.name;
         const isFocused = state.index === index;
-        const Icon = ICONS[route.name] ?? HomeIcon;
+        const Icon = ROUTE_ICONS[route.name] ?? HomeIcon;
         const color = isFocused ? colors.ink : colors.ink38;
 
         const onPress = () => {

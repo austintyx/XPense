@@ -1,7 +1,7 @@
 import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { buildAuthUrl, syncTransactions, type Provider } from "../api/client";
 import { SyncBackfillSheet } from "../components/SyncBackfillSheet";
@@ -116,7 +116,10 @@ export default function Login() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.canvas, justifyContent: "center" },
-  content: { paddingHorizontal: spacing.screenH },
+  content: {
+    paddingHorizontal: spacing.screenH,
+    ...(Platform.OS === "web" ? { maxWidth: 420, width: "100%" as const, alignSelf: "center" as const } : null),
+  },
   title: {
     fontFamily: typography.fontFamily.serif,
     fontSize: typography.size.heading,

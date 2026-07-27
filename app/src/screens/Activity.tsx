@@ -1,6 +1,6 @@
 import { useNavigation } from "@react-navigation/native";
 import { useMemo, useState } from "react";
-import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { FlatList, Platform, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 
 import { AddTransactionSheet } from "./AddTransactionSheet";
 import { CategorizeSheet } from "./CategorizeSheet";
@@ -151,7 +151,12 @@ export default function Activity() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.canvas },
-  content: { paddingHorizontal: spacing.screenH, paddingTop: spacing.screenTop, paddingBottom: spacing.screenBottom },
+  content: {
+    paddingHorizontal: spacing.screenH,
+    paddingTop: spacing.screenTop,
+    paddingBottom: spacing.screenBottom,
+    ...(Platform.OS === "web" ? { maxWidth: 1100, width: "100%" as const, alignSelf: "center" as const } : null),
+  },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.lg },
   title: { fontFamily: typography.fontFamily.serif, fontSize: typography.size.heading, color: colors.ink },
   addButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.ink, alignItems: "center", justifyContent: "center" },

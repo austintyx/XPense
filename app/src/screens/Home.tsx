@@ -1,9 +1,10 @@
 import { useNavigation } from "@react-navigation/native";
 import { useMemo, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 
 import { ProgressBar } from "../components/ProgressBar";
+import { ResponsiveColumns } from "../components/ResponsiveColumns";
 import { useAppData } from "../store/TransactionsProvider";
 import { categoryColor, colors, radii, shadow, spacing, typography, type CategoryId } from "../theme/tokens";
 import {
@@ -98,114 +99,123 @@ export default function Home() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       testID="home-screen"
     >
-      <View style={styles.greetingRow}>
-        <View>
-          <Text style={styles.eyebrow}>{todayLabel}</Text>
-          <Text style={styles.greeting}>
-            Good evening,{"\n"}
-            {firstNameOf(user?.name ?? null)}
-          </Text>
-        </View>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{initialsOf(user?.name ?? null)}</Text>
-        </View>
-      </View>
-
-      <View style={[styles.card, styles.heroCard, shadow.hero]}>
-        <View style={styles.segmented}>
-          {(["today", "week", "month"] as Period[]).map((p) => (
-            <Text
-              key={p}
-              onPress={() => setPeriod(p)}
-              testID={`period-${p}`}
-              style={[styles.segmentItem, period === p && styles.segmentItemActive]}
-            >
-              {p === "today" ? "Today" : p === "week" ? "Week" : "Month"}
-            </Text>
-          ))}
-        </View>
-        <Text style={styles.eyebrow}>{periodData.label.toUpperCase()}</Text>
-        <View style={styles.amountRow}>
-          <Text style={styles.amount} testID="period-amount">{formatMoney(periodData.amount)}</Text>
-          <Text style={styles.amountOf}>of {periodData.budgetLabel}</Text>
-        </View>
-        <View style={styles.progressWrap}>
-          <ProgressBar pct={pct * 100} fillColor={pct > 0.9 ? colors.over : colors.success} testID="budget-progress" />
-        </View>
-        <View style={styles.footerRow}>
-          <Text style={styles.footerLeft}>{Math.round(pct * 100)}% of budget used</Text>
-          <Text style={styles.footerRight}>{formatMoney(periodData.target - periodData.amount, false)} left</Text>
-        </View>
-      </View>
-
-      {uncat.length > 0 && (
-        <Pressable
-          style={[styles.card, styles.needsCard]}
-          onPress={() => navigation.navigate("QuickSort")}
-          testID="needs-category-card"
-        >
-          <View style={styles.needsBadge}>
-            <Text style={styles.needsBadgeText}>{uncat.length}</Text>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.needsTitle}>Need a category</Text>
-            <Text style={styles.needsSub}>Quick sort them — one card at a time.</Text>
-          </View>
-          <Text style={styles.chevron}>›</Text>
-        </Pressable>
-      )}
-
-      <View style={[styles.card, styles.goalCard]}>
-        <View style={styles.goalRingWrap}>
-          <Svg width={88} height={88} viewBox="0 0 88 88">
-            <Circle cx={44} cy={44} r={37} fill="none" stroke={colors.onDark15} strokeWidth={9} />
-            <Circle
-              cx={44}
-              cy={44}
-              r={37}
-              fill="none"
-              stroke={colors.successRing}
-              strokeWidth={9}
-              strokeLinecap="round"
-              strokeDasharray={`${goalPctClamped * GOAL_RING_CIRCUMFERENCE} ${GOAL_RING_CIRCUMFERENCE}`}
-              transform="rotate(-90 44 44)"
-            />
-          </Svg>
-          <View style={styles.goalRingLabel}>
-            <Text style={styles.goalRingText}>{Math.round(goalPctClamped * 100)}%</Text>
-          </View>
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.goalEyebrow}>SAVINGS GOAL</Text>
-          <Text style={styles.goalName}>{goal.name}</Text>
-          <Text style={styles.goalMeta}>
-            {formatMoney(goal.saved_amount, false)} of {formatMoney(goal.target_amount, false)} · on track
-          </Text>
-        </View>
-      </View>
-
-      <Text style={[styles.eyebrow, styles.whereItWent]}>WHERE IT WENT</Text>
-      <View style={styles.topCatsList}>
-        {top4.map((c) => (
-          <View key={c.category} style={styles.topCatRow}>
-            <View style={[styles.dot, { backgroundColor: categoryColor(c.category as CategoryId) }]} />
-            <View style={{ flex: 1 }}>
-              <View style={styles.topCatLine}>
-                <Text style={styles.topCatName}>{c.category}</Text>
-                <Text style={styles.topCatAmount}>{formatMoney(c.total)}</Text>
+      <ResponsiveColumns
+        left={
+          <>
+            <View style={styles.greetingRow}>
+              <View>
+                <Text style={styles.eyebrow}>{todayLabel}</Text>
+                <Text style={styles.greeting}>
+                  Good evening,{"\n"}
+                  {firstNameOf(user?.name ?? null)}
+                </Text>
               </View>
-              <View style={styles.topCatTrack}>
-                <View
-                  style={[
-                    styles.topCatBar,
-                    { width: `${(c.total / maxTop) * 100}%`, backgroundColor: categoryColor(c.category as CategoryId) },
-                  ]}
-                />
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{initialsOf(user?.name ?? null)}</Text>
               </View>
             </View>
-          </View>
-        ))}
-      </View>
+
+            <View style={[styles.card, styles.heroCard, shadow.hero]}>
+              <View style={styles.segmented}>
+                {(["today", "week", "month"] as Period[]).map((p) => (
+                  <Text
+                    key={p}
+                    onPress={() => setPeriod(p)}
+                    testID={`period-${p}`}
+                    style={[styles.segmentItem, period === p && styles.segmentItemActive]}
+                  >
+                    {p === "today" ? "Today" : p === "week" ? "Week" : "Month"}
+                  </Text>
+                ))}
+              </View>
+              <Text style={styles.eyebrow}>{periodData.label.toUpperCase()}</Text>
+              <View style={styles.amountRow}>
+                <Text style={styles.amount} testID="period-amount">{formatMoney(periodData.amount)}</Text>
+                <Text style={styles.amountOf}>of {periodData.budgetLabel}</Text>
+              </View>
+              <View style={styles.progressWrap}>
+                <ProgressBar pct={pct * 100} fillColor={pct > 0.9 ? colors.over : colors.success} testID="budget-progress" />
+              </View>
+              <View style={styles.footerRow}>
+                <Text style={styles.footerLeft}>{Math.round(pct * 100)}% of budget used</Text>
+                <Text style={styles.footerRight}>{formatMoney(periodData.target - periodData.amount, false)} left</Text>
+              </View>
+            </View>
+
+            {uncat.length > 0 && (
+              <Pressable
+                style={[styles.card, styles.needsCard]}
+                onPress={() => navigation.navigate("QuickSort")}
+                testID="needs-category-card"
+              >
+                <View style={styles.needsBadge}>
+                  <Text style={styles.needsBadgeText}>{uncat.length}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.needsTitle}>Need a category</Text>
+                  <Text style={styles.needsSub}>Quick sort them — one card at a time.</Text>
+                </View>
+                <Text style={styles.chevron}>›</Text>
+              </Pressable>
+            )}
+
+            <View style={[styles.card, styles.goalCard]}>
+              <View style={styles.goalRingWrap}>
+                <Svg width={88} height={88} viewBox="0 0 88 88">
+                  <Circle cx={44} cy={44} r={37} fill="none" stroke={colors.onDark15} strokeWidth={9} />
+                  <Circle
+                    cx={44}
+                    cy={44}
+                    r={37}
+                    fill="none"
+                    stroke={colors.successRing}
+                    strokeWidth={9}
+                    strokeLinecap="round"
+                    strokeDasharray={`${goalPctClamped * GOAL_RING_CIRCUMFERENCE} ${GOAL_RING_CIRCUMFERENCE}`}
+                    transform="rotate(-90 44 44)"
+                  />
+                </Svg>
+                <View style={styles.goalRingLabel}>
+                  <Text style={styles.goalRingText}>{Math.round(goalPctClamped * 100)}%</Text>
+                </View>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.goalEyebrow}>SAVINGS GOAL</Text>
+                <Text style={styles.goalName}>{goal.name}</Text>
+                <Text style={styles.goalMeta}>
+                  {formatMoney(goal.saved_amount, false)} of {formatMoney(goal.target_amount, false)} · on track
+                </Text>
+              </View>
+            </View>
+          </>
+        }
+        right={
+          <>
+            <Text style={[styles.eyebrow, styles.whereItWent]}>WHERE IT WENT</Text>
+            <View style={styles.topCatsList}>
+              {top4.map((c) => (
+                <View key={c.category} style={styles.topCatRow}>
+                  <View style={[styles.dot, { backgroundColor: categoryColor(c.category as CategoryId) }]} />
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.topCatLine}>
+                      <Text style={styles.topCatName}>{c.category}</Text>
+                      <Text style={styles.topCatAmount}>{formatMoney(c.total)}</Text>
+                    </View>
+                    <View style={styles.topCatTrack}>
+                      <View
+                        style={[
+                          styles.topCatBar,
+                          { width: `${(c.total / maxTop) * 100}%`, backgroundColor: categoryColor(c.category as CategoryId) },
+                        ]}
+                      />
+                    </View>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </>
+        }
+      />
     </ScrollView>
   );
 }
@@ -213,7 +223,12 @@ export default function Home() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.canvas },
   center: { alignItems: "center", justifyContent: "center" },
-  content: { paddingHorizontal: spacing.screenH, paddingTop: spacing.screenTop, paddingBottom: spacing.screenBottom },
+  content: {
+    paddingHorizontal: spacing.screenH,
+    paddingTop: spacing.screenTop,
+    paddingBottom: spacing.screenBottom,
+    ...(Platform.OS === "web" ? { maxWidth: 1100, width: "100%" as const, alignSelf: "center" as const } : null),
+  },
   greetingRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", marginBottom: spacing.xxl },
   eyebrow: {
     fontFamily: typography.fontFamily.mono,

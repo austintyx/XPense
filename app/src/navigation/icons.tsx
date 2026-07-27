@@ -39,3 +39,10 @@ export function SettingsIcon({ color, size = 22 }: IconProps) {
     </Svg>
   );
 }
+
+export const ROUTE_ICONS: Record<string, typeof HomeIcon> = {
+  Home: HomeIcon,
+  Summary: SummaryIcon,
+  Activity: ActivityIcon,
+  Settings: SettingsIcon,
+};
