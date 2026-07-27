@@ -212,6 +212,44 @@ export async function updateBudget(monthlyTarget: string, userId: number = CURRE
   return response.json();
 }
 
+export interface CategoryBudget {
+  category: string;
+  monthly_limit: string;
+}
+
+export async function getCategoryBudgets(userId: number = CURRENT_USER_ID): Promise<CategoryBudget[]> {
+  const response = await fetch(`${API_BASE_URL}/category-budgets?user_id=${userId}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch category budgets (${response.status})`);
+  }
+  return response.json();
+}
+
+export async function updateCategoryBudget(
+  category: string,
+  monthlyLimit: string,
+  userId: number = CURRENT_USER_ID,
+): Promise<CategoryBudget> {
+  const response = await fetch(`${API_BASE_URL}/category-budgets/${encodeURIComponent(category)}?user_id=${userId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ monthly_limit: monthlyLimit }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update category budget (${response.status})`);
+  }
+  return response.json();
+}
+
+export async function deleteCategoryBudget(category: string, userId: number = CURRENT_USER_ID): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/category-budgets/${encodeURIComponent(category)}?user_id=${userId}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to delete category budget (${response.status})`);
+  }
+}
+
 export interface SavingsGoal {
   user_id: number;
   name: string;
