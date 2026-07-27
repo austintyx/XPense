@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert } from 'react-native';
-import { fireEvent, screen } from '@testing-library/react-native';
+import { fireEvent, screen, waitFor } from '@testing-library/react-native';
+import * as WebBrowser from 'expo-web-browser';
 
 import Settings from '../src/screens/Settings';
 import * as client from '../src/api/client';
@@ -137,6 +138,39 @@ test('signing out confirms, then clears the stored login', async () => {
   fireEvent.press(await screen.findByTestId('sign-out'));
 
   expect(await AsyncStorage.getItem('xpense.userId')).toBeNull();
+});
+
+test('connecting a brand-new provider shows the backfill sheet', async () => {
+  mockClientDefaults();
+  (WebBrowser.openAuthSessionAsync as jest.Mock).mockResolvedValue({
+    type: 'success',
+    url: 'exp://127.0.0.1:8081/--/?linked=true&provider=microsoft&email=someone%40outlook.com&user_id=1&is_new_account=true',
+  });
+
+  renderWithProviders(<Settings />);
+
+  fireEvent.press(await screen.findByTestId('connect-microsoft'));
+
+  expect(await screen.findByTestId('sync-backfill-sheet')).toBeTruthy();
+});
+
+test('re-linking an already-connected provider does not show the backfill sheet', async () => {
+  mockClientDefaults({
+    accounts: [
+      { id: 1, provider: 'microsoft', provider_email: 'someone@outlook.com', last_synced_at: null, created_at: '2026-01-01T00:00:00Z' },
+    ],
+  });
+  (WebBrowser.openAuthSessionAsync as jest.Mock).mockResolvedValue({
+    type: 'success',
+    url: 'exp://127.0.0.1:8081/--/?linked=true&provider=microsoft&email=someone%40outlook.com&user_id=1&is_new_account=false',
+  });
+
+  renderWithProviders(<Settings />);
+
+  fireEvent.press(await screen.findByTestId('change-microsoft'));
+
+  await waitFor(() => expect(WebBrowser.openAuthSessionAsync).toHaveBeenCalled());
+  expect(screen.queryByTestId('sync-backfill-sheet')).toBeNull();
 });
 
 test('tapping the manage-categories entry navigates to ManageCategories', async () => {

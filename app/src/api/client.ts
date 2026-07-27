@@ -37,6 +37,24 @@ export function buildAuthUrl(provider: Provider, redirectUri: string, userId?: n
   return `${API_BASE_URL}/auth/${provider}?${params.toString()}`;
 }
 
+export interface SyncResult {
+  user_id: number;
+  inserted: number;
+  accounts: { provider: Provider; provider_email: string; inserted: number }[];
+}
+
+export async function syncTransactions(userId: number, since?: string): Promise<SyncResult> {
+  const params = new URLSearchParams({ user_id: String(userId) });
+  if (since !== undefined) {
+    params.set("since", since);
+  }
+  const response = await fetch(`${API_BASE_URL}/sync?${params.toString()}`, { method: "POST" });
+  if (!response.ok) {
+    throw new Error(`Failed to sync transactions (${response.status})`);
+  }
+  return response.json();
+}
+
 export async function deleteEmailAccount(accountId: number, userId: number = CURRENT_USER_ID): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/email-accounts/${accountId}?user_id=${userId}`, {
     method: "DELETE",

@@ -3,7 +3,8 @@ import * as WebBrowser from "expo-web-browser";
 import { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { buildAuthUrl, type Provider } from "../api/client";
+import { buildAuthUrl, syncTransactions, type Provider } from "../api/client";
+import { SyncBackfillSheet } from "../components/SyncBackfillSheet";
 import { useToast } from "../components/Toast";
 import { useAuth } from "../store/AuthProvider";
 import { colors, radii, spacing, typography } from "../theme/tokens";
@@ -19,6 +20,7 @@ export default function Login() {
   const { login } = useAuth();
   const { showToast } = useToast();
   const [connecting, setConnecting] = useState<Provider | null>(null);
+  const [backfillPrompt, setBackfillPrompt] = useState<{ userId: number; provider: Provider } | null>(null);
 
   const connect = async (provider: Provider) => {
     setConnecting(provider);
@@ -36,16 +38,44 @@ export default function Login() {
         return;
       }
 
-      const queryString = result.url.split("?")[1] ?? "";
-      const userId = new URLSearchParams(queryString).get("user_id");
+      const params = new URLSearchParams(result.url.split("?")[1] ?? "");
+      const userId = params.get("user_id");
       if (!userId) {
         showToast("Something went wrong connecting your account");
+        return;
+      }
+
+      if (params.get("is_new_account") === "true") {
+        // Don't log in yet -- offer the backfill sheet first, which itself calls login() once
+        // the person picks Sync or Skip.
+        setBackfillPrompt({ userId: Number(userId), provider });
         return;
       }
       await login(Number(userId));
     } finally {
       setConnecting(null);
     }
+  };
+
+  const handleSync = async (since: string) => {
+    if (!backfillPrompt) return;
+    try {
+      await syncTransactions(backfillPrompt.userId, since);
+    } catch {
+      // The account itself already connected successfully -- a best-effort backfill failing
+      // must never strand an already-connected user on this screen.
+      showToast("Couldn't sync past transactions, but your account is connected");
+    }
+    const { userId } = backfillPrompt;
+    setBackfillPrompt(null);
+    await login(userId);
+  };
+
+  const handleSkip = async () => {
+    if (!backfillPrompt) return;
+    const { userId } = backfillPrompt;
+    setBackfillPrompt(null);
+    await login(userId);
   };
 
   return (
@@ -74,6 +104,12 @@ export default function Login() {
           ))}
         </View>
       </View>
+      <SyncBackfillSheet
+        visible={backfillPrompt !== null}
+        provider={backfillPrompt?.provider ?? "google"}
+        onSync={handleSync}
+        onSkip={handleSkip}
+      />
     </View>
   );
 }
