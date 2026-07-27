@@ -68,6 +68,31 @@ def list_messages_from_sender(
     return list_bank_messages(access_token, query=f"from:{sender_email} after:{start} before:{end}")
 
 
+def list_bank_messages_since(access_token: str, since: datetime) -> list[dict]:
+    """A manual historical backfill can easily span months, so unlike list_bank_messages (a
+    single unpaginated page, fine for the normal small incremental/60-day window) this follows
+    nextPageToken until exhausted -- a single-page scan here would silently miss older mail,
+    the same class of bug list_messages_from_sender's docstring already documents for Graph."""
+    query = f"{GMAIL_SENDER_FILTER} after:{int(since.timestamp())}"
+    messages: list[dict] = []
+    page_token: str | None = None
+    while True:
+        params = {"q": query, "maxResults": 500}
+        if page_token is not None:
+            params["pageToken"] = page_token
+        response = httpx.get(
+            f"{GMAIL_API_BASE}/messages",
+            params=params,
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+        raise_for_status_with_body(response)
+        body = response.json()
+        messages.extend(body.get("messages", []))
+        page_token = body.get("nextPageToken")
+        if not page_token:
+            return messages
+
+
 def fetch_message(access_token: str, message_id: str) -> dict:
     response = httpx.get(
         f"{GMAIL_API_BASE}/messages/{message_id}",

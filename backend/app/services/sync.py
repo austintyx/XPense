@@ -44,16 +44,25 @@ def _build_query(account: EmailAccount) -> str | None:
     return None  # graph.py's default BANK_SENDER_QUERY; dedup on source_email_id keeps this safe
 
 
-def sync_email_account(db: Session, account: EmailAccount) -> int:
+def sync_email_account(db: Session, account: EmailAccount, since: datetime | None = None) -> int:
     """Fetch bank-sender mail for one linked email account (Google or Microsoft), parse it,
-    and insert new transactions (deduped on source_email_id). Returns the number newly inserted."""
+    and insert new transactions (deduped on source_email_id). Returns the number newly inserted.
+
+    `since`, when given, is a manual historical backfill request -- overrides the normal
+    incremental/default-window query entirely (regardless of last_synced_at) via each provider's
+    paginated list_bank_messages_since, so it isn't silently truncated to one page like the
+    everyday sync path."""
     access_token = get_valid_access_token(db, account)
     mail_service = MAIL_SERVICES[account.provider]
-    query = _build_query(account)
-    kwargs = {"query": query} if query is not None else {}
+    if since is not None:
+        stubs = mail_service.list_bank_messages_since(access_token, since)
+    else:
+        query = _build_query(account)
+        kwargs = {"query": query} if query is not None else {}
+        stubs = mail_service.list_bank_messages(access_token, **kwargs)
 
     inserted = 0
-    for stub in mail_service.list_bank_messages(access_token, **kwargs):
+    for stub in stubs:
         message_id = stub["id"]
         already_exists = db.query(Transaction).filter_by(source_email_id=message_id).first() is not None
 

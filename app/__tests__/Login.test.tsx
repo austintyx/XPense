@@ -66,3 +66,70 @@ test('cancelling the connect flow resets state instead of leaving the screen stu
   // the button must be re-enabled, not stuck showing a spinner forever
   expect(screen.getByText('Continue with Gmail')).toBeTruthy();
 });
+
+test('connecting a brand-new account shows the backfill sheet instead of logging in immediately', async () => {
+  (WebBrowser.openAuthSessionAsync as jest.Mock).mockResolvedValue({
+    type: 'success',
+    url: 'exp://127.0.0.1:8081/--/?linked=true&provider=google&email=someone%40gmail.com&user_id=7&is_new_account=true',
+  });
+
+  renderLogin();
+
+  fireEvent.press(screen.getByTestId('login-connect-google'));
+
+  expect(await screen.findByTestId('sync-backfill-sheet')).toBeTruthy();
+  // not logged in yet -- the sheet decides that once the person picks Sync or Skip
+  expect(await AsyncStorage.getItem('xpense.userId')).toBeNull();
+});
+
+test('skipping the backfill sheet still logs in, with no sync call', async () => {
+  (WebBrowser.openAuthSessionAsync as jest.Mock).mockResolvedValue({
+    type: 'success',
+    url: 'exp://127.0.0.1:8081/--/?linked=true&provider=google&email=someone%40gmail.com&user_id=7&is_new_account=true',
+  });
+  const syncSpy = jest.spyOn(client, 'syncTransactions');
+
+  renderLogin();
+  fireEvent.press(screen.getByTestId('login-connect-google'));
+  fireEvent.press(await screen.findByTestId('sync-backfill-skip'));
+
+  await waitFor(async () => {
+    expect(await AsyncStorage.getItem('xpense.userId')).toBe('7');
+  });
+  expect(syncSpy).not.toHaveBeenCalled();
+});
+
+test('syncing from the backfill sheet calls syncTransactions with the picked date, then logs in', async () => {
+  (WebBrowser.openAuthSessionAsync as jest.Mock).mockResolvedValue({
+    type: 'success',
+    url: 'exp://127.0.0.1:8081/--/?linked=true&provider=google&email=someone%40gmail.com&user_id=7&is_new_account=true',
+  });
+  const syncSpy = jest.spyOn(client, 'syncTransactions').mockResolvedValue({ user_id: 7, inserted: 3, accounts: [] });
+
+  renderLogin();
+  fireEvent.press(screen.getByTestId('login-connect-google'));
+  fireEvent.press(await screen.findByTestId('sync-backfill-date-picker'));
+  fireEvent.press(screen.getByTestId('sync-backfill-sync'));
+
+  await waitFor(() => expect(syncSpy).toHaveBeenCalledWith(7, '2025-01-15'));
+  await waitFor(async () => {
+    expect(await AsyncStorage.getItem('xpense.userId')).toBe('7');
+  });
+});
+
+test('a failed backfill sync still logs the person in instead of stranding them', async () => {
+  (WebBrowser.openAuthSessionAsync as jest.Mock).mockResolvedValue({
+    type: 'success',
+    url: 'exp://127.0.0.1:8081/--/?linked=true&provider=google&email=someone%40gmail.com&user_id=7&is_new_account=true',
+  });
+  jest.spyOn(client, 'syncTransactions').mockRejectedValue(new Error('network error'));
+
+  renderLogin();
+  fireEvent.press(screen.getByTestId('login-connect-google'));
+  fireEvent.press(await screen.findByTestId('sync-backfill-sync'));
+
+  expect(await screen.findByText("Couldn't sync past transactions, but your account is connected")).toBeTruthy();
+  await waitFor(async () => {
+    expect(await AsyncStorage.getItem('xpense.userId')).toBe('7');
+  });
+});

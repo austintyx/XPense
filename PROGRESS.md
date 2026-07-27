@@ -1069,3 +1069,55 @@ persists the id from the redirect; cancelling resets the button instead of leavi
 `Settings.test.tsx` case for sign-out clearing storage. Added an official jest mock for
 `@react-native-async-storage/async-storage` (`app/__mocks__/...`) so this is transparent to every
 other existing test file.
+
+## Historical backfill sync prompt whenever an account is linked
+
+Connecting an account previously only ever got whatever the *default* window picked up (Gmail:
+`newer_than:60d`; Graph: no date bound at all, whatever `$search`'s default page returned). Now,
+whenever a genuinely *new* mailbox gets linked -- first-time signup via `Login.tsx`, or a second/
+third provider linked later from Settings -- the app offers a native date picker to backfill older
+transactions. Re-linking an already-connected provider (Settings' "Change", refreshing an expired
+token) does not reprompt, since that's not "connecting an account" in the sense this feature means.
+
+**Backend**: `_upsert_email_account` (`backend/app/routers/auth.py`) now reports whether it created
+a new `EmailAccount` row vs. updated an existing one; both OAuth callbacks surface this as
+`is_new_account=true/false` on the redirect back to the app (built as an explicit lowercase string
+-- passing a bare Python bool through `urlencode` would silently stringify to `"True"`/`"False"`
+and break the frontend's `=== "true"` check forever). Added `list_bank_messages_since(access_token,
+since)` to both `gmail.py` and `graph.py` (a uniform 5th function on the shared provider interface)
+-- unlike the everyday sync, this **fully paginates** (Gmail's `nextPageToken`, Graph's
+`@odata.nextLink`) since a backfill spanning months could easily exceed one page, and this codebase
+has already been bitten twice by single-page-scan bugs. Graph's version can't use `$search` (Graph
+doesn't allow combining `$filter` and `$search` on `/messages` at all), so it filters by
+`receivedDateTime` server-side and the full bank-sender allowlist client-side instead -- a known
+accepted tradeoff is that this scans the whole mailbox in the date range, not just bank senders,
+which is fine for a synchronous personal-use request but worth revisiting if it ever times out.
+`POST /sync` gained an optional `since` date param, converted to **Singapore midnight** (not UTC
+midnight -- SGT is UTC+8, so a naive UTC bound would start 8 hours late and silently miss real
+transactions) via the same `SGT` constant `categorize.py` already uses.
+
+**Frontend**: new `@react-native-community/datetimepicker` dependency, and a shared
+`SyncBackfillSheet` component (built on the existing `BottomSheet`) reused by both `Login.tsx`
+(after a fresh signup connect) and `Settings.tsx` (after linking an additional provider) --
+`Settings.tsx`'s `connect()` previously ignored the OAuth redirect's query params entirely, now
+parses `is_new_account` the same way `Login.tsx` does. Picked dates are serialized via the `Date`
+object's **local calendar fields** (`getFullYear()`/`getMonth()+1`/`getDate()`), deliberately not
+`toISOString()`, which converts to UTC first and can shift the calendar date back a day for anyone
+whose device timezone is behind UTC. A failed backfill sync never strands the user: `Login.tsx`
+still calls `login()` afterward regardless of outcome (the account itself already connected
+successfully), just with a toast noting the sync didn't come through.
+
+**Tested:** backend `pytest` -> 169 passed (up from 162). New direct `httpx.get`-mocking tests in
+`test_gmail.py`/`test_graph.py` covering the pagination loops themselves (a deliberate, narrow
+exception to this codebase's usual "monkeypatch at the function boundary" convention, since
+multi-page walking is genuinely new logic here); new `test_sync.py` case proving `since=` routes
+through the paginated path instead of the normal one; `test_auth.py`/`test_ms_auth.py` extended
+with `is_new_account` assertions for the new-EmailAccount, second-provider, and re-link-doesn't-
+reprompt cases. Frontend `jest` -> 57 passed (up from 51): new `Login.test.tsx` cases (new-account
+connect shows the sheet instead of transitioning immediately; skip transitions with no sync call;
+sync calls `syncTransactions` with the picked date then transitions; a sync failure still
+transitions via a toast); new `Settings.test.tsx` cases (new provider shows the sheet; re-linking
+doesn't). Added a manual jest mock for `@react-native-community/datetimepicker`
+(`app/__mocks__/...`) -- the package's own jest helper only covers Android-dialog interception, not
+a renderable stand-in, so this mock renders as a pressable test hook that fires `onChange` with a
+fixed, known date for deterministic "the person picked a different date" tests.
