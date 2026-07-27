@@ -19,7 +19,8 @@ import {
   uncategorized,
 } from "../utils/derive";
 
-type HomeLayout = "a" | "b";
+type HomeLayout = "focused" | "command";
+const LAYOUT_LABELS: Record<HomeLayout, string> = { focused: "Focused", command: "Command" };
 const GOAL_RING_CIRCUMFERENCE = 2 * Math.PI * 37;
 const SPARK_DAYS = 14;
 
@@ -30,7 +31,7 @@ function daysInMonth(date: Date): number {
 export default function Home() {
   const navigation = useNavigation<any>();
   const { transactions, budget, goal, loading } = useAppData();
-  const [layout, setLayout] = useState<HomeLayout>("a");
+  const [layout, setLayout] = useState<HomeLayout>("focused");
   const [selected, setSelected] = useState<Transaction | null>(null);
 
   const now = useMemo(() => new Date(), []);
@@ -116,16 +117,22 @@ export default function Home() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} testID="home-screen">
       <View style={styles.toolbar}>
+        <Text style={styles.eyebrow}>LAYOUT</Text>
         <View style={styles.segmented}>
-          {(["a", "b"] as HomeLayout[]).map((l) => (
-            <Pressable key={l} onPress={() => setLayout(l)} style={styles.segmentItem} testID={`home-layout-${l}`}>
-              <Text style={[styles.segmentText, layout === l && styles.segmentTextActive]}>Layout {l.toUpperCase()}</Text>
+          {(["focused", "command"] as HomeLayout[]).map((l) => (
+            <Pressable
+              key={l}
+              onPress={() => setLayout(l)}
+              style={[styles.segmentItem, layout === l && styles.segmentItemActive]}
+              testID={`home-layout-${l}`}
+            >
+              <Text style={[styles.segmentText, layout === l && styles.segmentTextActive]}>{LAYOUT_LABELS[l]}</Text>
             </Pressable>
           ))}
         </View>
       </View>
 
-      {layout === "a" ? (
+      {layout === "focused" ? (
         <View style={{ gap: 16 }}>
           <View style={styles.row}>
             <View style={[styles.card, { flex: 8 }, shadow.card]}>
@@ -224,7 +231,7 @@ export default function Home() {
                   innerRadius={36}
                   outerRadius={58}
                 />
-                <View style={{ flex: 1, gap: 12 }}>
+                <View style={styles.donutList}>
                   {sortedCats.slice(0, 4).map(([cat, total]) => (
                     <View key={cat} style={styles.catLine}>
                       <View style={[styles.dot, { backgroundColor: categoryColor(cat) }]} />
@@ -241,20 +248,28 @@ export default function Home() {
                 <Text style={styles.reviewEyebrow}>NEEDS REVIEW</Text>
                 <Text style={styles.reviewBadge}>{reviewQueue.length}</Text>
               </View>
-              <Text style={styles.reviewCaption}>Not yet given a category.</Text>
-              <View style={{ gap: 9, flex: 1 }}>
-                {reviewQueue.map((t) => (
-                  <Pressable key={t.id} style={styles.reviewRow} onPress={() => setSelected(t)} testID={`home-review-${t.id}`}>
-                    <Text style={styles.reviewMerchant} numberOfLines={1}>
-                      {t.merchant_clean ?? t.merchant_raw ?? "Unknown"}
-                    </Text>
-                    <Text style={styles.reviewAmount}>{formatMoney(t.amount)}</Text>
+              {reviewQueue.length === 0 ? (
+                <View style={styles.reviewEmptyWrap} testID="home-review-empty">
+                  <Text style={styles.reviewEmptyText}>All transactions categorised!</Text>
+                </View>
+              ) : (
+                <>
+                  <Text style={styles.reviewCaption}>Not yet given a category.</Text>
+                  <View style={{ gap: 9, flex: 1 }}>
+                    {reviewQueue.map((t) => (
+                      <Pressable key={t.id} style={styles.reviewRow} onPress={() => setSelected(t)} testID={`home-review-${t.id}`}>
+                        <Text style={styles.reviewMerchant} numberOfLines={1}>
+                          {t.merchant_clean ?? t.merchant_raw ?? "Unknown"}
+                        </Text>
+                        <Text style={styles.reviewAmount}>{formatMoney(t.amount)}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  <Pressable style={styles.outlineButton} onPress={() => navigation.navigate("QuickSort")} testID="home-quick-sort-all">
+                    <Text style={styles.outlineButtonText}>Quick sort all</Text>
                   </Pressable>
-                ))}
-              </View>
-              <Pressable style={styles.outlineButton} onPress={() => navigation.navigate("QuickSort")} testID="home-quick-sort-all">
-                <Text style={styles.outlineButtonText}>Quick sort all</Text>
-              </Pressable>
+                </>
+              )}
             </View>
 
             <View style={{ flex: 3, gap: 16 }}>
@@ -369,16 +384,22 @@ export default function Home() {
                   <Text style={styles.reviewEyebrow}>NEEDS REVIEW</Text>
                   <Text style={styles.reviewBadge}>{reviewQueue.length}</Text>
                 </View>
-                <View style={{ gap: 9 }}>
-                  {reviewQueue.map((t) => (
-                    <Pressable key={t.id} style={styles.reviewRow} onPress={() => setSelected(t)} testID={`home-b-review-${t.id}`}>
-                      <Text style={styles.reviewMerchant} numberOfLines={1}>
-                        {t.merchant_clean ?? t.merchant_raw ?? "Unknown"}
-                      </Text>
-                      <Text style={styles.reviewAmount}>{formatMoney(t.amount)}</Text>
-                    </Pressable>
-                  ))}
-                </View>
+                {reviewQueue.length === 0 ? (
+                  <View style={styles.reviewEmptyWrap} testID="home-b-review-empty">
+                    <Text style={styles.reviewEmptyText}>All transactions categorised!</Text>
+                  </View>
+                ) : (
+                  <View style={{ gap: 9 }}>
+                    {reviewQueue.map((t) => (
+                      <Pressable key={t.id} style={styles.reviewRow} onPress={() => setSelected(t)} testID={`home-b-review-${t.id}`}>
+                        <Text style={styles.reviewMerchant} numberOfLines={1}>
+                          {t.merchant_clean ?? t.merchant_raw ?? "Unknown"}
+                        </Text>
+                        <Text style={styles.reviewAmount}>{formatMoney(t.amount)}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
               </View>
 
               <View style={styles.goalCard}>
@@ -422,11 +443,12 @@ export default function Home() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.canvas },
   content: { paddingHorizontal: 34, paddingBottom: 56, maxWidth: 1360, width: "100%" },
-  toolbar: { flexDirection: "row", justifyContent: "flex-end", marginBottom: 16 },
-  segmented: { flexDirection: "row", backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.ink06, borderRadius: radii.chip, padding: 4 },
+  toolbar: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 10, marginBottom: 16 },
+  segmented: { flexDirection: "row", gap: 4, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.ink06, borderRadius: radii.chip, padding: 4 },
   segmentItem: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: radii.pill },
+  segmentItemActive: { backgroundColor: colors.ink },
   segmentText: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.base, color: colors.ink55 },
-  segmentTextActive: { color: colors.ink, fontFamily: typography.fontFamily.sansMedium },
+  segmentTextActive: { color: colors.onDark, fontFamily: typography.fontFamily.sansMedium },
   row: { flexDirection: "row", gap: 16, alignItems: "stretch" },
   card: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.ink06, borderRadius: radii.hero, padding: 22 },
   eyebrow: { fontFamily: typography.fontFamily.mono, fontSize: typography.size.xs5, letterSpacing: 1.4, textTransform: "uppercase", color: colors.ink45 },
@@ -455,7 +477,8 @@ const styles = StyleSheet.create({
   goalMeta: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.sm5, color: colors.onDark60 },
   cardHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
   linkText: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.sm5, color: colors.ink50 },
-  donutRow: { flexDirection: "row", alignItems: "center", gap: 20 },
+  donutRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 24, flex: 1 },
+  donutList: { width: 220, gap: 12 },
   catLine: { flexDirection: "row", alignItems: "center", gap: 10 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   catName: { flex: 1, fontFamily: typography.fontFamily.sans, fontSize: typography.size.md },
@@ -464,6 +487,8 @@ const styles = StyleSheet.create({
   reviewEyebrow: { fontFamily: typography.fontFamily.mono, fontSize: typography.size.xs5, letterSpacing: 1.4, textTransform: "uppercase", color: colors.warnText },
   reviewBadge: { fontFamily: typography.fontFamily.mono, fontSize: typography.size.xs5, fontWeight: "500", backgroundColor: colors.warnSolid, color: colors.ink, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 7 },
   reviewCaption: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.base, color: colors.ink55, marginBottom: 14 },
+  reviewEmptyWrap: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 24 },
+  reviewEmptyText: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.base5, color: colors.ink48, textAlign: "center" },
   reviewRow: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.ink06, borderRadius: 14, padding: 12, flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 },
   reviewMerchant: { flex: 1, fontFamily: typography.fontFamily.sans, fontSize: typography.size.base5 },
   reviewAmount: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.base5 },

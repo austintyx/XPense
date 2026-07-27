@@ -12,11 +12,14 @@ import {
   categoryTotals,
   categoryTransactions,
   currentMonthTransactions,
+  dailyTotalsForRange,
   dayLabel,
   endOfWeek,
   firstWeekdayOfMonth,
   formatMoney,
+  groupByDay,
   isExpense,
+  isSameLocalDay,
   isSameMonth,
   startOfWeek,
   subcategoryTotals,
@@ -24,11 +27,12 @@ import {
 } from "../utils/derive";
 import type { Transaction } from "../api/client";
 
-type SumPeriod = "week" | "month" | "year";
+type SumPeriod = "day" | "week" | "month" | "year";
 type SumView = "chart" | "calendar";
 
 const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
 const TREND_MONTHS = 6;
+const PERIOD_LABELS: Record<SumPeriod, string> = { day: "Day", week: "Week", month: "Month", year: "Year" };
 
 function monthTotal(transactions: Transaction[], year: number, month: number): number {
   return transactions
@@ -40,6 +44,10 @@ function monthTotal(transactions: Transaction[], year: number, month: number): n
     .reduce((sum, t) => sum + Number(t.amount), 0);
 }
 
+function dayTransactions(transactions: Transaction[], date: Date): Transaction[] {
+  return transactions.filter((t) => isExpense(t) && isSameLocalDay(new Date(t.txn_at), date));
+}
+
 export default function Summary() {
   const { transactions, summary, loading } = useAppData();
   const [sumPeriod, setSumPeriod] = useState<SumPeriod>("month");
@@ -47,34 +55,25 @@ export default function Summary() {
   const [openCat, setOpenCat] = useState<CategoryId | null>(null);
   const now = useMemo(() => new Date(), []);
   const [viewAnchor, setViewAnchor] = useState<Date>(now);
-  const [calendarAnchor, setCalendarAnchor] = useState<Date>(now);
-  const [selectedDay, setSelectedDay] = useState<number>(now.getDate());
 
-  const selectSumPeriod = (p: SumPeriod) => {
-    setSumPeriod(p);
-    setViewAnchor(new Date());
-  };
+  // Pill clicks zoom in/out around wherever `viewAnchor` currently is (from drilling or paging)
+  // rather than resetting to today -- e.g. drilled into a week in March, clicking "Month" shows
+  // March, not the current real-world month.
+  const selectSumPeriod = (p: SumPeriod) => setSumPeriod(p);
 
   const pageViewAnchor = (direction: 1 | -1) => {
     setViewAnchor((prev) => {
       const next = new Date(prev);
-      if (sumPeriod === "week") next.setDate(next.getDate() + direction * 7);
+      if (sumPeriod === "day") next.setDate(next.getDate() + direction);
+      else if (sumPeriod === "week") next.setDate(next.getDate() + direction * 7);
       else if (sumPeriod === "year") next.setFullYear(next.getFullYear() + direction);
       else next.setMonth(next.getMonth() + direction);
       return next;
     });
   };
 
-  const pageCalendarAnchor = (direction: 1 | -1) => {
-    setCalendarAnchor((prev) => {
-      const next = new Date(prev);
-      next.setMonth(next.getMonth() + direction);
-      return next;
-    });
-    setSelectedDay(1);
-  };
-
   const periodTransactions = useMemo(() => {
+    if (sumPeriod === "day") return dayTransactions(transactions, viewAnchor);
     if (sumPeriod === "week") return calendarWeekTransactions(transactions, viewAnchor);
     if (sumPeriod === "year") return yearRangeTransactions(transactions, viewAnchor);
     return currentMonthTransactions(transactions, viewAnchor);
@@ -90,6 +89,7 @@ export default function Summary() {
   );
 
   const periodLabel = useMemo(() => {
+    if (sumPeriod === "day") return viewAnchor.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
     if (sumPeriod === "year") return String(viewAnchor.getFullYear());
     if (sumPeriod === "week") {
       const start = startOfWeek(viewAnchor);
@@ -131,28 +131,38 @@ export default function Summary() {
       .slice(0, 3);
   }, [transactions, now]);
 
-  const calendarMonthName = calendarAnchor.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  // Month grid (unchanged shape from before -- weeks of 7 cells, blanks padded).
   const dailyAmounts = useMemo(
-    () => calendarDailyTotals(transactions, calendarAnchor.getFullYear(), calendarAnchor.getMonth()),
-    [transactions, calendarAnchor],
+    () => calendarDailyTotals(transactions, viewAnchor.getFullYear(), viewAnchor.getMonth()),
+    [transactions, viewAnchor],
   );
   const maxDay = Math.max(1, ...dailyAmounts);
-  const leadingBlanks = firstWeekdayOfMonth(calendarAnchor.getFullYear(), calendarAnchor.getMonth());
+  const leadingBlanks = firstWeekdayOfMonth(viewAnchor.getFullYear(), viewAnchor.getMonth());
   const weeks = useMemo(() => calendarWeeks(leadingBlanks, dailyAmounts), [leadingBlanks, dailyAmounts]);
-  const dayAmt = dailyAmounts[selectedDay - 1] ?? 0;
-  const dayItems = useMemo(
-    () =>
-      transactions.filter((t) => {
-        if (!isExpense(t)) return false;
-        const d = new Date(t.txn_at);
-        return (
-          d.getFullYear() === calendarAnchor.getFullYear() &&
-          d.getMonth() === calendarAnchor.getMonth() &&
-          d.getDate() === selectedDay
-        );
-      }),
-    [transactions, calendarAnchor, selectedDay],
+
+  // Week grid: a single row of 7 days for the week containing viewAnchor.
+  const weekStart = useMemo(() => startOfWeek(viewAnchor), [viewAnchor]);
+  const weekEnd = useMemo(() => endOfWeek(viewAnchor), [viewAnchor]);
+  const weekDailyAmounts = useMemo(
+    () => dailyTotalsForRange(transactions, weekStart, weekEnd),
+    [transactions, weekStart, weekEnd],
   );
+  const maxWeekDay = Math.max(1, ...weekDailyAmounts);
+
+  // Year grid: 12 month tiles for viewAnchor's year.
+  const yearMonths = useMemo(() => {
+    const year = viewAnchor.getFullYear();
+    return Array.from({ length: 12 }, (_, month) => ({
+      month,
+      label: new Date(year, month, 1).toLocaleDateString(undefined, { month: "short" }),
+      total: monthTotal(transactions, year, month),
+    }));
+  }, [transactions, viewAnchor]);
+  const maxYearMonth = Math.max(1, ...yearMonths.map((m) => m.total));
+
+  // Right panel: every transaction in the active period, grouped by day so week/month/year
+  // (which can have many rows) still read cleanly -- day period degenerates to one group.
+  const periodGroups = useMemo(() => groupByDay(periodTransactions, now), [periodTransactions, now]);
 
   if (loading) {
     return <View style={styles.container} testID="summary-screen" />;
@@ -161,16 +171,14 @@ export default function Summary() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content} testID="summary-screen">
       <View style={styles.pillsRow}>
-        {(["week", "month", "year"] as SumPeriod[]).map((p) => (
+        {(["day", "week", "month", "year"] as SumPeriod[]).map((p) => (
           <Pressable
             key={p}
             onPress={() => selectSumPeriod(p)}
             style={[styles.pill, sumPeriod === p ? styles.pillActive : styles.pillInactive]}
             testID={`sum-period-${p}`}
           >
-            <Text style={[styles.pillText, sumPeriod === p && styles.pillTextActive]}>
-              {p[0]!.toUpperCase() + p.slice(1)}
-            </Text>
+            <Text style={[styles.pillText, sumPeriod === p && styles.pillTextActive]}>{PERIOD_LABELS[p]}</Text>
           </Pressable>
         ))}
         <View style={{ flex: 1 }} />
@@ -299,67 +307,156 @@ export default function Summary() {
           <View style={[styles.card, styles.calendarCard, { flex: 7 }, shadow.card]}>
             <View style={styles.calendarHeaderRow}>
               <View style={styles.calNavGroup}>
-                <Pressable onPress={() => pageCalendarAnchor(-1)} style={styles.navChevron} testID="cal-prev">
+                <Pressable onPress={() => pageViewAnchor(-1)} style={styles.navChevron} testID="cal-prev">
                   <Text style={styles.navChevronText}>‹</Text>
                 </Pressable>
-                <Text style={styles.calTitle}>{calendarMonthName}</Text>
-                <Pressable onPress={() => pageCalendarAnchor(1)} style={styles.navChevron} testID="cal-next">
+                <Text style={styles.calTitle}>{periodLabel}</Text>
+                <Pressable onPress={() => pageViewAnchor(1)} style={styles.navChevron} testID="cal-next">
                   <Text style={styles.navChevronText}>›</Text>
                 </Pressable>
               </View>
-              <Text style={styles.calCaption}>darker = more spent</Text>
+              {sumPeriod !== "day" && <Text style={styles.calCaption}>darker = more spent</Text>}
             </View>
-            <View style={styles.weekdayRow}>
-              {WEEKDAY_LABELS.map((w, i) => (
-                <Text key={i} style={styles.weekdayLabel}>
-                  {w}
-                </Text>
-              ))}
-            </View>
-            <View style={styles.calGrid}>
-              {weeks.map((week, weekIdx) => (
-                <View key={weekIdx} style={styles.calWeekRow}>
-                  {week.map((day, dayIdx) => {
-                    if (day === -1) return <View key={dayIdx} style={styles.calCell} />;
-                    const amt = dailyAmounts[day - 1] ?? 0;
-                    const k = amt / maxDay;
-                    const selected = selectedDay === day;
+
+            {sumPeriod === "day" && (
+              <View style={styles.dayOnlyNotice}>
+                <Text style={styles.dayOnlyText}>Showing every transaction from {periodLabel}.</Text>
+              </View>
+            )}
+
+            {sumPeriod === "week" && (
+              <>
+                <View style={styles.weekdayRow}>
+                  {WEEKDAY_LABELS.map((w, i) => (
+                    <Text key={i} style={styles.weekdayLabel}>
+                      {w}
+                    </Text>
+                  ))}
+                </View>
+                <View style={styles.calWeekRow}>
+                  {weekDailyAmounts.map((amt, i) => {
+                    const date = new Date(weekStart);
+                    date.setDate(weekStart.getDate() + i);
+                    const k = amt / maxWeekDay;
                     const bg = amt > 0 ? oklchToHex(0.95 - k * 0.3, 0.02 + k * 0.07, 158) : colors.ink04;
                     const textColor = k > 0.62 ? colors.onDark : colors.ink70;
                     return (
                       <Pressable
-                        key={dayIdx}
-                        onPress={() => setSelectedDay(day)}
-                        style={[styles.calCell, { backgroundColor: bg }, selected && styles.calCellSelected]}
-                        testID={`cal-day-${day}`}
+                        key={i}
+                        onPress={() => {
+                          setSumPeriod("day");
+                          setViewAnchor(date);
+                        }}
+                        style={[styles.calCellTall, { backgroundColor: bg }]}
+                        testID={`cal-week-day-${i}`}
                       >
-                        <Text style={[styles.calCellText, { color: textColor }]}>{day}</Text>
+                        <Text style={[styles.calCellText, { color: textColor }]}>{date.getDate()}</Text>
                       </Pressable>
                     );
                   })}
                 </View>
-              ))}
+              </>
+            )}
+
+            {sumPeriod === "month" && (
+              <>
+                <View style={styles.weekdayRow}>
+                  {WEEKDAY_LABELS.map((w, i) => (
+                    <Text key={i} style={styles.weekdayLabel}>
+                      {w}
+                    </Text>
+                  ))}
+                </View>
+                <View style={styles.calGrid}>
+                  {weeks.map((week, weekIdx) => (
+                    <View key={weekIdx} style={styles.calWeekRow}>
+                      {week.map((day, dayIdx) => {
+                        if (day === -1) return <View key={dayIdx} style={styles.calCell} />;
+                        const amt = dailyAmounts[day - 1] ?? 0;
+                        const k = amt / maxDay;
+                        const date = new Date(viewAnchor.getFullYear(), viewAnchor.getMonth(), day);
+                        const bg = amt > 0 ? oklchToHex(0.95 - k * 0.3, 0.02 + k * 0.07, 158) : colors.ink04;
+                        const textColor = k > 0.62 ? colors.onDark : colors.ink70;
+                        return (
+                          <Pressable
+                            key={dayIdx}
+                            onPress={() => {
+                              // Any day cell drills into the week containing it -- there's no
+                              // separate week-row control, the day cell doubles as one.
+                              setSumPeriod("week");
+                              setViewAnchor(date);
+                            }}
+                            style={[styles.calCell, { backgroundColor: bg }]}
+                            testID={`cal-day-${day}`}
+                          >
+                            <Text style={[styles.calCellText, { color: textColor }]}>{day}</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  ))}
+                </View>
+              </>
+            )}
+
+            {sumPeriod === "year" && (
+              <View style={styles.yearGrid}>
+                {yearMonths.map((m) => {
+                  const k = m.total / maxYearMonth;
+                  const bg = m.total > 0 ? oklchToHex(0.95 - k * 0.3, 0.02 + k * 0.07, 158) : colors.ink04;
+                  const textColor = k > 0.62 ? colors.onDark : colors.ink70;
+                  return (
+                    <Pressable
+                      key={m.month}
+                      onPress={() => {
+                        setSumPeriod("month");
+                        setViewAnchor(new Date(viewAnchor.getFullYear(), m.month, 1));
+                      }}
+                      style={[styles.yearTile, { backgroundColor: bg }]}
+                      testID={`cal-month-${m.month}`}
+                    >
+                      <Text style={[styles.yearTileLabel, { color: textColor }]}>{m.label}</Text>
+                      <Text style={[styles.yearTileAmount, { color: textColor }]}>{formatMoney(m.total, false)}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+
+            <View style={styles.periodTotalRow}>
+              <Text style={styles.periodTotalLabel}>Total for {PERIOD_LABELS[sumPeriod].toLowerCase()}</Text>
+              <Text style={styles.periodTotalAmount} testID="period-total">{formatMoney(grand)}</Text>
             </View>
           </View>
 
-          <View style={[styles.card, { flex: 5 }, shadow.card]}>
+          <View style={[styles.card, styles.txListCard, { flex: 5 }, shadow.card]}>
             <View style={styles.dayDetailHeader}>
-              <Text style={styles.dayTitle}>
-                {dayAmt ? `${selectedDay} ${calendarMonthName}` : `${selectedDay} ${calendarMonthName} — nothing spent`}
-              </Text>
-              <Text style={styles.dayTotal} testID="day-total">{formatMoney(dayAmt)}</Text>
+              <Text style={styles.eyebrow}>TRANSACTIONS</Text>
+              <Text style={styles.dayTotal} testID="period-transactions-total">{formatMoney(grand)}</Text>
             </View>
-            <View style={{ gap: 9 }}>
-              {dayItems.map((t) => (
-                <View key={t.id} style={styles.dayItemRow}>
-                  <View style={[styles.smallDot, { backgroundColor: t.category ? categoryColor(t.category as CategoryId) : colors.ink38 }]} />
-                  <Text style={styles.dayItemName} numberOfLines={1}>
-                    {t.merchant_clean ?? t.merchant_raw ?? "Unknown"}
-                  </Text>
-                  <Text style={styles.dayItemAmount}>{formatMoney(t.amount)}</Text>
-                </View>
-              ))}
-            </View>
+            {periodGroups.length === 0 ? (
+              <Text style={styles.emptyText}>Nothing spent this {sumPeriod}.</Text>
+            ) : (
+              <ScrollView style={styles.txListScroll}>
+                {periodGroups.map((group) => (
+                  <View key={group.label} style={styles.txGroup}>
+                    <View style={styles.txGroupHeaderRow}>
+                      <Text style={styles.txGroupLabel}>{group.label.toUpperCase()}</Text>
+                      <Text style={styles.txGroupTotal}>{formatMoney(group.total, false)}</Text>
+                    </View>
+                    {group.items.map((t) => (
+                      <View key={t.id} style={styles.dayItemRow}>
+                        <View style={[styles.smallDot, { backgroundColor: t.category ? categoryColor(t.category as CategoryId) : colors.ink38 }]} />
+                        <Text style={styles.dayItemName} numberOfLines={1}>
+                          {t.merchant_clean ?? t.merchant_raw ?? "Unknown"}
+                        </Text>
+                        <Text style={styles.dayItemAmount}>{formatMoney(t.amount)}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ))}
+              </ScrollView>
+            )}
           </View>
         </View>
       )}
@@ -426,12 +523,26 @@ const styles = StyleSheet.create({
   calGrid: { gap: 5 },
   calWeekRow: { flexDirection: "row", gap: 5 },
   calCell: { flex: 1, height: 42, alignItems: "center", justifyContent: "center", borderRadius: 11 },
-  calCellSelected: { borderWidth: 2, borderColor: colors.ink },
+  calCellTall: { flex: 1, height: 84, alignItems: "center", justifyContent: "center", borderRadius: 11 },
   calCellText: { fontFamily: typography.fontFamily.mono, fontSize: typography.size.base },
-  dayDetailHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 },
-  dayTitle: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.md, color: colors.ink },
+  dayOnlyNotice: { paddingVertical: 8 },
+  dayOnlyText: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.base, color: colors.ink55 },
+  yearGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  yearTile: { width: "31%", borderRadius: 12, paddingVertical: 16, alignItems: "center", gap: 4 },
+  yearTileLabel: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.sm5 },
+  yearTileAmount: { fontFamily: typography.fontFamily.mono, fontSize: typography.size.xs },
+  periodTotalRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginTop: 18, paddingTop: 16, borderTopWidth: 1, borderTopColor: colors.ink06 },
+  periodTotalLabel: { fontFamily: typography.fontFamily.mono, fontSize: typography.size.xs5, letterSpacing: 1.4, textTransform: "uppercase", color: colors.ink45 },
+  periodTotalAmount: { fontFamily: typography.fontFamily.serif, fontSize: typography.size.displayMd, color: colors.ink },
+  txListCard: { maxHeight: 560 },
+  txListScroll: { flexGrow: 0 },
+  txGroup: { marginBottom: 16 },
+  txGroupHeaderRow: { flexDirection: "row", justifyContent: "space-between", marginBottom: 8 },
+  txGroupLabel: { fontFamily: typography.fontFamily.mono, fontSize: typography.size.xs, letterSpacing: 1, color: colors.ink42 },
+  txGroupTotal: { fontFamily: typography.fontFamily.mono, fontSize: typography.size.xs, color: colors.ink35 },
+  dayDetailHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginBottom: 16 },
   dayTotal: { fontFamily: typography.fontFamily.serif, fontSize: typography.size.displayMd, color: colors.ink },
-  dayItemRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  dayItemRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 6 },
   smallDot: { width: 8, height: 8, borderRadius: 4 },
   dayItemName: { flex: 1, fontFamily: typography.fontFamily.sans, fontSize: typography.size.base5, color: colors.ink70 },
   dayItemAmount: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.base5, color: colors.ink },

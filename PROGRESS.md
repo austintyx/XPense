@@ -1335,3 +1335,150 @@ actually filtering Activity's list; Add-expense/Categorize opening as centered d
 "Manage budgets" link from Settings; and a spot-check on a phone/Expo Go that Home, Summary, and
 the Add/Categorize sheets are pixel-identical to before this feature (everything here is additive
 on web only).
+
+## Five fixes to the web dashboard redesign
+
+Follow-up polish after trying the redesign against the mockup for real. All web-only, no backend
+changes: (1) the header search box now only renders on the Activity tab, since that's the only
+screen it actually filters; (2) Home's layout toggle renamed `"a"/"b"` -> `"focused"/"command"`,
+plus two things that were just missing versus the mockup -- a "LAYOUT" label beside the toggle and
+a highlighted background on the active pill (previously only the text changed); (3) the "where it
+went" donut was pinned to the left edge of a wide card with the category list stretched to fill
+the rest -- fixed by giving the list a fixed width and centering the row as one compact block; (4)
+Settings' two web columns started at different heights (the right column's first label carried a
+top margin meant for mid-stack use, the left column's first item didn't) and Preferences was in
+the wrong column per the mockup -- moved to the left column, with each section defined once and
+composed in a *different order* for native vs. web (not just conditional styling), so native's
+original stacked order stays completely untouched.
+
+(5), the largest: the calendar view's Week/Month/Year pills previously did nothing -- calendar
+always showed a fixed month grid with its own separate state, ignoring the period selector
+entirely. Unified onto one shared `sumPeriod`/`viewAnchor` pair that now drives both Chart and
+Calendar view, added a 4th "Day" option, and made the calendar grid genuinely period-shaped: day
+shows a notice + the day-detail panel directly, week is a single 7-cell row (new use of
+`dailyTotalsForRange` from the derived-stats work), month is the existing grid unchanged, year is
+a new 12-tile month heat-map that drills into that month (switches period to "month") on click.
+Added a period-total line at the bottom of the calendar card, reusing the same period-scoped
+`grand` value the chart view already computed.
+
+**Tested:** `npx tsc --noEmit` clean, frontend `jest` still 84 passed (no count change expected --
+the touched files are either `.web.tsx`, invisible to this repo's Jest config same as every prior
+`.web.tsx` file, or `Settings.tsx`'s native path, which `Settings.test.tsx`'s existing 11 cases
+confirmed still passes unchanged after the section-reordering refactor). Web bundle recompiled
+cleanly (692 modules) after every fix as a runtime sanity check.
+
+**Manual steps for the human:** verify in the browser -- search only on Activity; the Home toggle
+reads "LAYOUT  Focused  Command" with a visible active highlight; the donut reads centered, not
+stretched; Settings' columns start level with Preferences on the left; and the big one, Summary's
+calendar view actually responding to Day/Week/Month/Year with a period total at the bottom and
+Year's tiles drilling into a month on click.
+
+## Calendar view: real drill-down navigation (Year → Month → Week → Day)
+
+Follow-up on the calendar rework above -- the right panel was still wrong: it always showed one
+arbitrarily-selected *single day's* transactions regardless of which grid was showing on the left,
+and clicking a cell just changed which day was highlighted in place rather than navigating.
+
+Right panel now always shows **every transaction in the active period** (day/week/month/year) via
+the same `periodTransactions` already computed for the chart view, grouped by day with
+`groupByDay` (`derive.ts` -- same helper `Activity.tsx` already uses) so week/month/year periods
+with many rows still read cleanly. The whole `selectedDate`/single-day-detail mechanism from the
+previous commit is gone, replaced by this simpler "always show the full period" model.
+
+Clicking now genuinely drills down: a day cell in Month view zooms into that day's **Week**
+(confirmed with the user: any day cell doubles as the "select this week" affordance, no separate
+week-row control); a day cell in Week view zooms into **Day**. Year's month-tile drill (already
+built) is unchanged. Since clicking now navigates away instead of persisting an in-place selection,
+the old `calCellSelected` highlight logic had nothing left to compare against and was removed.
+
+Pills no longer reset `viewAnchor` to today on click -- confirmed with the user this should "zoom
+out from current context" instead, so `selectSumPeriod` now just changes the period, leaving
+`viewAnchor` (wherever drilling/paging left it) to carry over and naturally land on the containing
+week/month/year.
+
+**Tested:** `npx tsc --noEmit` clean, frontend `jest` still 84 passed (no count change expected,
+`.web.tsx` file same as always). Web bundle recompiled cleanly (692 modules).
+
+**Manual steps for the human:** verify the full chain in the browser -- Year's right panel lists
+the whole year grouped by day; click a month tile, its whole month lists; click a day in that
+month's grid, that day's whole week lists; click a day in the week row, Day view shows just that
+day; and confirm clicking "Month"/"Year" pills while drilled into a week/day zooms out to the
+containing month/year rather than jumping to today.
+
+## Three more web fixes: Settings header alignment, Home empty state, Budgets edit-all
+
+**Settings (`Settings.tsx`):** each group label ("WHERE TRANSACTIONS COME FROM", "PREFERENCES",
+"BUDGET & GOALS") was a `<Text>` sibling rendered *above* its card rather than inside it -- the
+root cause of the two web columns' first boxes starting at different heights, since whichever
+section happened to be first in a column carried extra top margin the other column's first box
+(the profile card, already self-contained) didn't have. Moved each label to be the first child
+*inside* its card (new `groupLabelInline` style, card-internal padding instead of external
+margin) so every section is a uniform self-contained box and both columns' tops now align
+automatically -- the `groupLabelFirst`/`isFirstInColumn` special-casing from the previous round is
+no longer needed and was removed.
+
+**Home (`Home.web.tsx`):** the "NEEDS REVIEW" card (both the Focused and Command layouts) rendered
+an empty caption/list/button when nothing needed review, reading as broken rather than done.
+Added a centered "All transactions categorised!" message in both layouts' cards when
+`reviewQueue.length === 0`.
+
+**Budgets (`Budgets.tsx`, web-only screen):** replaced the per-category "Set a limit"/"Edit limit"
+inline links with a single header-level "Edit" button that switches every category (all 8
+built-ins plus any custom ones, not just ones with spend or an existing limit) into edit mode at
+once, with one "Save all"/"Cancel" pair committing (`Promise.all` of per-category `PUT
+/category-budgets/{category}` calls, since there's no batch endpoint) or discarding all drafts
+together. Categories without a saved limit prefill with a real, editable **suggested** limit
+(`monthly_target × share`) for the 8 built-in categories, via a new `SUGGESTED_CATEGORY_SHARE`
+table adapted from WalletHub's budget-percentage guide
+(https://wallethub.com/edu/b/budget-percentages/145359) and rescaled to sum to 100% across just
+this app's 8 tracked spending categories (Groceries 18%, Transport 15%, Bills 15%, Food 12%,
+Shopping 12%, Entertainment 10%, Other 10%, Health 8%) -- documented as a judgment-call adaptation,
+not a verbatim source quote, in a comment above the constant. Custom categories get no suggestion.
+
+**Tested:** `npx tsc --noEmit` clean (no new errors in any touched file). Frontend `jest` still 84
+passed, 14 suites (no count change -- `Budgets.tsx` has no existing test file, `Settings.tsx`'s and
+`Home.tsx`'s native-facing suites pass unchanged since these were `.web.tsx`/shared-file styling
+changes). Web bundle served cleanly via `expo start --web` (200, ~3.7MB, no Metro resolution
+errors).
+
+**Manual steps for the human:** in the browser, confirm Settings' two columns now start flush at
+the top with every label inside its box; clear all uncategorised transactions and confirm Home's
+needs-review card shows the centered message (both dashboard layouts); open Budgets, click Edit,
+confirm every category shows an input (existing limits verbatim, unset built-ins prefilled with a
+sensible suggested number, custom categories empty), and that Save all persists the changes while
+Cancel discards them.
+
+## Bug fix: PayNow / Scan-and-Pay alerts were silently dropped by the bank-sender allowlist
+
+The human reported PayNow and Scan-and-Pay transactions weren't showing up at all. Root cause was
+in the bank-sender allowlist added last round (`bank_senders.py`, "Restrict sync to an exact
+bank-sender allowlist"): it assumed all of a bank's alert types share one sender address
+(`ibanking.alert@dbs.com` for DBS, `unialerts@uobgroup.com` for UOB) and hard-filtered out anything
+else in `sync.py` before the parser ever ran. In reality each bank uses a *different* address per
+alert type -- DBS sends card transactions from `ibanking.alert@dbs.com` but PayNow/NETS Scan & Pay/
+own-account transfers from `alerts@dbs.com.sg`; UOB's card alerts come from `unialerts@uobgroup.com`
+but PayNow from `alerts@uob.com.sg`. The parser itself (`parser.py`) already handled these emails
+correctly -- confirmed by `test_parser.py`'s fixtures, which use exactly these addresses and were
+passing the whole time -- they just never reached it in the live sync path. There was even a test
+(`test_bank_senders.py`) that explicitly asserted `alerts@dbs.com.sg` should be *rejected* as a
+lookalike sender, which was the mistake: it's a real bank address, not a spoof.
+
+**Fix:** `KNOWN_BANK_SENDERS` in `bank_senders.py` now maps each bank to a *list* of addresses
+instead of one (`dbs: [ibanking.alert@dbs.com, alerts@dbs.com.sg]`, `uob: [unialerts@uobgroup.com,
+alerts@uob.com.sg]`), confirmed with the human before changing since this is a security-relevant
+allowlist controlling which senders' email bodies get read. `GMAIL_SENDER_FILTER`/
+`GRAPH_SENDER_QUERY`/`is_allowlisted_sender` all now consider every address across every bank.
+`gmail.py`, `graph.py`, and `sync.py` needed no changes -- they only ever consumed the derived
+filter/query/predicate, not the dict shape directly. Corrected the wrong `test_bank_senders.py`
+assertion and added a positive test that both PayNow addresses are now accepted; the "reject
+lookalikes" test now uses an actual look-alike domain (`alerts@dbs.com.sg.evil.com`) instead of a
+real address.
+
+**Tested:** full backend suite `pytest -q` -- 179 passed (was 178; +1 new allowlist test), no
+regressions across `test_bank_senders.py`, `test_sync.py`, or `test_parser.py`.
+
+**Manual steps for the human:** trigger a manual sync (or wait for the next scheduled one) and
+confirm PayNow and Scan-and-Pay transactions now appear in Activity going forward. This only fixes
+sync *going forward* -- any PayNow/Scan-and-Pay alerts received since the allowlist was added won't
+retroactively appear unless a backfill sync is re-run for the affected date range (Settings →
+account → re-link triggers the backfill-sync prompt covering the last 60 days).
