@@ -121,8 +121,8 @@ export default function Activity() {
                     ) : (
                       <View style={styles.dotDashed} />
                     )}
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.merchant} numberOfLines={1}>
+                    <View style={styles.merchantCol}>
+                      <Text style={styles.merchant} numberOfLines={2}>
                         {txn.merchant_clean ?? txn.merchant_raw ?? "Unknown"}
                       </Text>
                       <Text style={categorized ? styles.subLabel : styles.subLabelWarn}>
@@ -131,7 +131,7 @@ export default function Activity() {
                           : "Tap to categorise"}
                       </Text>
                     </View>
-                    <View style={{ alignItems: "flex-end" }}>
+                    <View style={styles.amountCol}>
                       <Text style={styles.amount}>{formatMoney(txn.amount)}</Text>
                       <Text style={styles.source}>{deriveSource(txn)}</Text>
                     </View>
@@ -202,9 +202,11 @@ const styles = StyleSheet.create({
   rowUncategorized: { backgroundColor: colors.warnRowBg },
   dot: { width: 10, height: 10, borderRadius: 5 },
   dotDashed: { width: 10, height: 10, borderRadius: 5, borderWidth: 1.5, borderColor: colors.warnSolid, borderStyle: "dashed" },
-  merchant: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.md5, color: colors.ink },
+  merchantCol: { flex: 1, flexShrink: 1, minWidth: 0 },
+  merchant: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.md5, color: colors.ink, flexShrink: 1 },
   subLabel: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.sm5, color: colors.ink50, marginTop: 3 },
   subLabelWarn: { fontFamily: typography.fontFamily.sansMedium, fontSize: typography.size.sm5, color: colors.warnText, marginTop: 3 },
+  amountCol: { alignItems: "flex-end", flexShrink: 0, marginLeft: 8 },
   amount: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.md5, color: colors.ink },
   source: { fontFamily: typography.fontFamily.mono, fontSize: typography.size.xs, color: colors.ink35, marginTop: 3 },
 });

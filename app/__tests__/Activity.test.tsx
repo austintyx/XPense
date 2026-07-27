@@ -1,4 +1,5 @@
-import { fireEvent, screen } from '@testing-library/react-native';
+import { fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { Alert } from 'react-native';
 
 import Activity from '../src/screens/Activity';
 import * as client from '../src/api/client';
@@ -103,6 +104,24 @@ test('categorizing a transaction as Transport requires a second subcategory step
   fireEvent.press(screen.getByTestId('sub-chip-Public'));
 
   expect(updateSpy).toHaveBeenCalledWith(1, 'Transport', 'Public');
+});
+
+test('deleting a transaction confirms, then removes it from the list', async () => {
+  mockClientDefaults({
+    transactions: [makeTxn({ id: 1, merchant_raw: 'CHICKEN RICE', category: 'Food', subcategory: 'Lunch' })],
+  });
+  const deleteSpy = jest.spyOn(client, 'deleteTransaction').mockResolvedValue(undefined);
+  jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
+    buttons?.find((b) => b.text === 'Delete')?.onPress?.();
+  });
+
+  renderWithProviders(<Activity />);
+
+  fireEvent.press(await screen.findByTestId('transaction-1'));
+  fireEvent.press(await screen.findByTestId('delete-transaction'));
+
+  await waitFor(() => expect(deleteSpy).toHaveBeenCalledWith(1));
+  await waitFor(() => expect(screen.queryByText('CHICKEN RICE')).toBeNull());
 });
 
 test('add transaction sheet requires amount, merchant and category before Save is enabled', async () => {

@@ -16,6 +16,7 @@ import {
   deleteCategory,
   deleteEmailAccount,
   deleteSubcategory,
+  deleteTransaction,
   getBudget,
   getCategories,
   getGoal,
@@ -46,6 +47,7 @@ interface AppDataActions {
   refetch: () => Promise<void>;
   categorize: (id: number, category: string, subcategory?: string | null) => Promise<void>;
   addTransaction: (draft: TransactionDraft) => Promise<void>;
+  removeTransaction: (id: number) => Promise<void>;
   updateBudget: (monthlyTarget: string) => Promise<void>;
   updateGoal: (goal: { name: string; target_amount: string; saved_amount: string }) => Promise<void>;
   updateName: (name: string) => Promise<void>;
@@ -139,6 +141,13 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     setState((s) => ({ ...s, summary }));
   }, []);
 
+  const removeTransaction = useCallback(async (id: number) => {
+    await deleteTransaction(id);
+    setState((s) => ({ ...s, transactions: s.transactions.filter((t) => t.id !== id) }));
+    const summary = await getSummary();
+    setState((s) => ({ ...s, summary }));
+  }, []);
+
   const updateBudgetAction = useCallback(async (monthlyTarget: string) => {
     const budget = await apiUpdateBudget(monthlyTarget);
     setState((s) => ({ ...s, budget }));
@@ -191,6 +200,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       refetch,
       categorize,
       addTransaction,
+      removeTransaction,
       updateBudget: updateBudgetAction,
       updateGoal: updateGoalAction,
       updateName,
@@ -205,6 +215,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       refetch,
       categorize,
       addTransaction,
+      removeTransaction,
       updateBudgetAction,
       updateGoalAction,
       updateName,

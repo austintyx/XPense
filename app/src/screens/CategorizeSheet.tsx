@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Alert, StyleSheet, Text, View } from "react-native";
 
 import { BottomSheet } from "../components/BottomSheet";
 import { CategoryChip } from "../components/CategoryChip";
@@ -15,7 +15,7 @@ interface CategorizeSheetProps {
 }
 
 export function CategorizeSheet({ transaction, onClose }: CategorizeSheetProps) {
-  const { categorize, customCategories, customSubcategories } = useAppData();
+  const { categorize, removeTransaction, customCategories, customSubcategories } = useAppData();
   const { showToast } = useToast();
   const [pickedCategory, setPickedCategory] = useState<string | null>(null);
 
@@ -55,6 +55,22 @@ export function CategorizeSheet({ transaction, onClose }: CategorizeSheetProps) 
     onClose();
   };
 
+  const confirmDelete = () => {
+    const label = transaction.merchant_clean ?? transaction.merchant_raw ?? "this transaction";
+    Alert.alert("Delete transaction?", `Delete ${label}? This can't be undone.`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          await removeTransaction(transaction.id);
+          showToast("Transaction deleted");
+          onClose();
+        },
+      },
+    ]);
+  };
+
   return (
     <BottomSheet visible={transaction !== null} onClose={onClose} testID="categorize-sheet">
       <View style={styles.headerRow}>
@@ -88,6 +104,9 @@ export function CategorizeSheet({ transaction, onClose }: CategorizeSheetProps) 
           ‹ Back to categories
         </Text>
       )}
+      <Text style={styles.deleteLink} onPress={confirmDelete} testID="delete-transaction">
+        Delete transaction
+      </Text>
     </BottomSheet>
   );
 }
@@ -106,4 +125,11 @@ const styles = StyleSheet.create({
   },
   chipsRow: { flexDirection: "row", flexWrap: "wrap", gap: 9 },
   backLink: { marginTop: 16, fontFamily: typography.fontFamily.sans, fontSize: typography.size.base, color: colors.ink50 },
+  deleteLink: {
+    marginTop: 20,
+    fontFamily: typography.fontFamily.sans,
+    fontSize: typography.size.base,
+    color: colors.warnText,
+    textAlign: "center",
+  },
 });

@@ -223,6 +223,29 @@ def test_categorize_pending_reconciles_a_generic_grab_transport_row_against_a_ma
     assert grab_txn.merchant_clean == "Nasi Lemak Corner"
 
 
+def test_delete_transaction_removes_the_row(client, db_session, user):
+    txn = _make_txn(db_session, user)
+
+    response = client.delete(f"/transactions/{txn.id}", params={"user_id": user.id})
+    assert response.status_code == 204
+
+    listing = client.get("/transactions", params={"user_id": user.id})
+    assert txn.id not in [r["id"] for r in listing.json()]
+
+
+def test_delete_transaction_404s_for_another_users_row(client, db_session, user):
+    from app.models import User
+
+    other_user = User(email="other@xpense.dev", name="Other")
+    db_session.add(other_user)
+    db_session.commit()
+    db_session.refresh(other_user)
+    txn = _make_txn(db_session, other_user)
+
+    response = client.delete(f"/transactions/{txn.id}", params={"user_id": user.id})
+    assert response.status_code == 404
+
+
 def test_summary_sums_categories_and_excludes_transfers(client, db_session, user):
     now = datetime.now(timezone.utc)
     _make_txn(db_session, user, category="Food", amount=Decimal("10.00"), txn_at=now)

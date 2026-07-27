@@ -84,6 +84,15 @@ export async function updateTransactionCategory(
   return response.json();
 }
 
+export async function deleteTransaction(transactionId: number, userId: number = CURRENT_USER_ID): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/transactions/${transactionId}?user_id=${userId}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to delete transaction (${response.status})`);
+  }
+}
+
 export interface TransactionDraft {
   user_id: number;
   amount: string;

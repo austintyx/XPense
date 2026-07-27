@@ -966,3 +966,26 @@ updated to assert `merchant_raw`/`merchant_clean` actually change after reconcil
 since it had already flipped to `Food` in the previous round, so `categorize-pending`'s backfill
 pass -- which only re-scans rows still sitting at `Transport` -- wouldn't touch it again on its
 own.
+
+## Activity row layout fix + delete transaction
+
+1. **Long merchant names no longer push the amount off-screen.** The Activity row's merchant
+   `Text` was `numberOfLines={1}` with no `flexShrink` set anywhere in the row, which let a long
+   merchant string grow past its allotted width and shove the amount column out of frame instead
+   of truncating in place -- a known React Native flexbox gotcha (unlike web CSS, a `flex:1` child
+   doesn't reliably shrink below its content's intrinsic width without an explicit `flexShrink`).
+   Changed `numberOfLines` to `2` (so a long name wraps to a second line instead of truncating with
+   an ellipsis) and added `flexShrink: 1` to both the merchant column and the `Text` itself, plus
+   `flexShrink: 0` on the amount column so it always keeps its natural width and stays visible.
+2. **Delete transaction.** Added `DELETE /transactions/{id}?user_id=` (`backend/app/routers/
+   transactions.py`), scoped to the owning user (404 otherwise) and hard-deleting the row --
+   mirrors the existing `delete_category`/`unlink_email_account` pattern. Wired up
+   `deleteTransaction` (`app/src/api/client.ts`) and a `removeTransaction` action on
+   `TransactionsProvider` that also refreshes the summary. The entry point is a "Delete
+   transaction" link at the bottom of the existing tap-to-categorise `CategorizeSheet`, guarded by
+   a native `Alert.alert` confirmation (same pattern as the Settings "unlink account" flow).
+
+**Tested:** backend `pytest` -> 153 passed (up from 151): new `test_delete_transaction_removes_the_row`
+and `test_delete_transaction_404s_for_another_users_row`. Frontend `jest` -> 45 passed: new Activity
+test drives the full delete flow (open sheet, tap Delete, confirm via mocked `Alert.alert`, assert
+`deleteTransaction` was called and the row disappears).

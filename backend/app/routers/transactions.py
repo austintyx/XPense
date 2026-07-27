@@ -119,6 +119,15 @@ def categorize_pending(user_id: int, db: Session = Depends(get_db)):
     return {"categorized": categorized, "remaining": len(pending) - categorized}
 
 
+@router.delete("/transactions/{transaction_id}", status_code=204)
+def delete_transaction(transaction_id: int, user_id: int, db: Session = Depends(get_db)):
+    txn = db.query(Transaction).filter_by(id=transaction_id, user_id=user_id).one_or_none()
+    if txn is None:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    db.delete(txn)
+    db.commit()
+
+
 @router.post("/transactions", response_model=TransactionOut, status_code=201)
 def create_manual_transaction(body: TransactionCreateIn, db: Session = Depends(get_db)):
     txn = Transaction(
