@@ -57,31 +57,28 @@ _DBS_OWN_TRANSFER_RE = re.compile(
     re.IGNORECASE,
 )
 
-_DBS_PAYNOW_RE = re.compile(
-    rf"Successful PayNow:\s*(?P<amount>{_AMOUNT}) "
-    r"from A/C ending \d+ to (?P<merchant>.+?) "
-    r"\((?P<idtype>UEN ending [\w\d]+|MOBILE ending \d+|NRIC ending [\w\d]+)\), "
-    r"(?P<day>\d{1,2}) (?P<month>[A-Za-z]{3}) (?P<hour>\d{1,2}):(?P<minute>\d{2}) SGT",
+_ID_SUFFIX = r"UEN ending [\w\d]+|MOBILE ending \d+|NRIC ending [\w\d]+"
+
+# DBS's shared alert-email template -- confirmed against real inbox screenshots to be used for
+# card-purchase alerts, NETS Scan & Pay, and PayNow alike (all sent from ibanking.alert@dbs.com).
+# Only the framing sentence before the table differs ("We refer to your card transaction
+# request...", "Your NETS Scan & Pay transaction... was successful.", "We refer to your PAYNOW
+# dated..."); the Date & Time/Amount/From/To table itself is identical, so one regex covers all
+# three instead of guessing three different wordings. "SGT" appears with or without parens
+# depending on alert type, and "unauthorised"/"unauthorized" both appear in the wild.
+_DBS_TABLE_RE = re.compile(
+    r"Date\s*&\s*Time:\s*(?P<day>\d{1,2})\s+(?P<month>[A-Za-z]{3})\s+(?P<hour>\d{1,2}):(?P<minute>\d{2})"
+    r"\s*\(?SGT\)?\s*"
+    rf"Amount:\s*(?P<amount>{_AMOUNT})\s*"
+    r"From:\s*.+?\s*"
+    r"To:\s*(?P<merchant>.+?)\s*(?:If unauthori[sz]ed|To (?:view|review)|Thank you|$)",
     re.IGNORECASE,
 )
 
-_DBS_NETS_RE = re.compile(
-    rf"NETS Scan & Pay transaction of (?P<amount>{_AMOUNT}) "
-    r"from A/C ending \d+ to (?P<merchant>.+?) "
-    r"on (?P<day>\d{1,2}) (?P<month>[A-Za-z]{3}) (?P<hour>\d{1,2}):(?P<minute>\d{2}) SGT",
-    re.IGNORECASE,
-)
-
-# Real DBS card-purchase alert format (sent from ibanking.alert@dbs.com), not in BUILD_PLAN's
-# original fixture set -- found by testing against a real linked inbox.
-_DBS_CARD_TXN_RE = re.compile(
-    r"Card Transaction Alert.*?"
-    r"Date & Time: (?P<day>\d{1,2}) (?P<month>[A-Za-z]{3}) (?P<hour>\d{1,2}):(?P<minute>\d{2}) \(SGT\)\s*"
-    rf"Amount: (?P<amount>{_AMOUNT})\s*"
-    r"From: .*?\s*"
-    r"To: (?P<merchant>.+?)\s*(?:If unauthorized|To review|Thank you|$)",
-    re.IGNORECASE | re.DOTALL,
-)
+# A PayNow "To:" field carries a "(... ending NNNN)" suffix identifying who was paid (a business'
+# UEN vs. a person's mobile/NRIC); a plain card purchase or NETS Scan & Pay merchant name doesn't.
+_DBS_TABLE_PAYNOW_SUFFIX_RE = re.compile(rf"^(?P<name>.+?)\s*\((?P<idtype>{_ID_SUFFIX})\)$", re.IGNORECASE)
+_DBS_TABLE_OWN_ACCOUNT_RE = re.compile(r"^A/C ending \d+$", re.IGNORECASE)
 
 
 def _parse_dbs(text: str) -> ParsedTxn | None:
@@ -97,39 +94,42 @@ def _parse_dbs(text: str) -> ParsedTxn | None:
             raw_parsed=match.groupdict(),
         )
 
-    if match := _DBS_PAYNOW_RE.search(text):
-        return ParsedTxn(
-            amount=_parse_amount(match["amount"]),
-            currency="SGD",
-            merchant_raw=match["merchant"].strip(),
-            direction=DirectionEnum.debit,
-            type=_classify_paynow(match["idtype"]),
-            bank="DBS",
-            txn_at=_sgt_datetime(int(match["day"]), match["month"], int(match["hour"]), int(match["minute"])),
-            raw_parsed=match.groupdict(),
-        )
+    if match := _DBS_TABLE_RE.search(text):
+        merchant_field = match["merchant"].strip()
+        txn_at = _sgt_datetime(int(match["day"]), match["month"], int(match["hour"]), int(match["minute"]))
 
-    if match := _DBS_NETS_RE.search(text):
+        if id_match := _DBS_TABLE_PAYNOW_SUFFIX_RE.match(merchant_field):
+            return ParsedTxn(
+                amount=_parse_amount(match["amount"]),
+                currency="SGD",
+                merchant_raw=id_match["name"].strip(),
+                direction=DirectionEnum.debit,
+                type=_classify_paynow(id_match["idtype"]),
+                bank="DBS",
+                txn_at=txn_at,
+                raw_parsed=match.groupdict(),
+            )
+
+        if _DBS_TABLE_OWN_ACCOUNT_RE.match(merchant_field):
+            return ParsedTxn(
+                amount=_parse_amount(match["amount"]),
+                currency="SGD",
+                merchant_raw=merchant_field,
+                direction=DirectionEnum.debit,
+                type=TransactionTypeEnum.transfer,
+                bank="DBS",
+                txn_at=txn_at,
+                raw_parsed=match.groupdict(),
+            )
+
         return ParsedTxn(
             amount=_parse_amount(match["amount"]),
             currency="SGD",
-            merchant_raw=match["merchant"].strip(),
+            merchant_raw=merchant_field,
             direction=DirectionEnum.debit,
             type=TransactionTypeEnum.expense,
             bank="DBS",
-            txn_at=_sgt_datetime(int(match["day"]), match["month"], int(match["hour"]), int(match["minute"])),
-            raw_parsed=match.groupdict(),
-        )
-
-    if match := _DBS_CARD_TXN_RE.search(text):
-        return ParsedTxn(
-            amount=_parse_amount(match["amount"]),
-            currency="SGD",
-            merchant_raw=match["merchant"].strip(),
-            direction=DirectionEnum.debit,
-            type=TransactionTypeEnum.expense,
-            bank="DBS",
-            txn_at=_sgt_datetime(int(match["day"]), match["month"], int(match["hour"]), int(match["minute"])),
+            txn_at=txn_at,
             raw_parsed=match.groupdict(),
         )
 

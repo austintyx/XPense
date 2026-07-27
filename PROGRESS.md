@@ -1482,3 +1482,43 @@ confirm PayNow and Scan-and-Pay transactions now appear in Activity going forwar
 sync *going forward* -- any PayNow/Scan-and-Pay alerts received since the allowlist was added won't
 retroactively appear unless a backfill sync is re-run for the affected date range (Settings →
 account → re-link triggers the backfill-sync prompt covering the last 60 days).
+
+## Bug fix #2: the allowlist wasn't the (whole) problem -- the DBS parser regexes never matched real emails
+
+The human reported PayNow/Scan-and-Pay were *still* missing after the allowlist fix, and sent
+screenshots of two real DBS alert emails. Those screenshots showed the true root cause: DBS's
+NETS Scan & Pay and PayNow alerts are sent from `ibanking.alert@dbs.com` -- the address already in
+the allowlist all along -- so the allowlist was never actually blocking them. The real bug was in
+`parser.py`: `_DBS_PAYNOW_RE` and `_DBS_NETS_RE` matched a compact single-line SMS-style format
+("Fr DBS: Successful PayNow: S$87.00 from A/C ending 6540 to X (UEN ending Y), 22 Jul 18:01 SGT.")
+that turns out to be fictional -- it was never verified against a real inbox, unlike the card-txn
+regex added in an earlier phase, which was. DBS's real emails all use the same "Date & Time: / Amount:
+/ From: / To:" table template for card purchases, NETS Scan & Pay, *and* PayNow alike (only the
+framing sentence before the table differs), so the old PayNow/NETS regexes never matched anything
+real and `parse_email` silently returned `None` for every one of them.
+
+**Fix:** replaced the three separate (and two fictional) DBS regexes with one `_DBS_TABLE_RE`
+matching the real shared table format, confirmed directly against the exact text from both
+screenshots. Since a PayNow "To:" field carries a distinguishing "(... ending NNNN)" suffix that a
+plain card/NETS merchant name never does, that's now what tells a PayNow-to-a-person transfer
+apart from a merchant purchase (same UEN-vs-mobile/NRIC classification as before) -- and an
+"A/C ending NNNN" merchant field (own-account transfer) is now also recognized inside the same
+table regex as a bonus, in case DBS's real own-transfer alert turns out to use the same template
+too (unverified, no screenshot for that one yet). Corrected fixtures
+(`dbs_nets.txt`/`dbs_paynow_person.txt`/`dbs_paynow_merchant.txt`) to the real wording, updated
+their test sender to the now-confirmed `ibanking.alert@dbs.com`, and fixed `test_sync.py`'s
+`DBS_PAYNOW_TEXT` constant (same fictional format) so its sync-flow tests exercise real-shaped
+text too. Corrected the misleading comment in `bank_senders.py` left over from the first (wrong)
+diagnosis. UOB's PayNow regex is unchanged -- no screenshot to verify it against yet, so if UOB
+PayNow/Scan-and-Pay is also missing, that's the next place to check with a real sample.
+
+**Tested:** full backend suite `pytest -q` -- 179 passed, no regressions. Also ran `parse_email`
+directly against the *exact* text transcribed from both screenshots (not just the fixture files)
+to confirm the real-world match: NETS Scan & Pay → S$6.00 CHICKEN RICE (expense), PayNow →
+S$2.20 LEX KOX SIXX (transfer) -- both correct.
+
+**Manual steps for the human:** trigger a sync and confirm PayNow/Scan-and-Pay transactions now
+appear. As with the previous fix, this only helps going forward -- re-run a backfill sync
+(Settings → account → re-link) to pick up any missed since the original allowlist change. If you
+also use UOB PayNow, forward a sample alert (or a screenshot like the DBS ones) if it's still not
+showing up -- its regex is unverified and likely has the same class of bug.
