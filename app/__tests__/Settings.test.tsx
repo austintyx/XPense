@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert } from 'react-native';
 import { fireEvent, screen } from '@testing-library/react-native';
 
@@ -122,6 +123,20 @@ test('removing a linked account confirms, then unlinks it while keeping the app 
 
   expect(deleteSpy).toHaveBeenCalledWith(7);
   expect(await screen.findByText('+ Connect Gmail')).toBeTruthy();
+});
+
+test('signing out confirms, then clears the stored login', async () => {
+  await AsyncStorage.setItem('xpense.userId', '1');
+  mockClientDefaults();
+  jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
+    buttons?.find((b) => b.text === 'Sign out')?.onPress?.();
+  });
+
+  renderWithProviders(<Settings />);
+
+  fireEvent.press(await screen.findByTestId('sign-out'));
+
+  expect(await AsyncStorage.getItem('xpense.userId')).toBeNull();
 });
 
 test('tapping the manage-categories entry navigates to ManageCategories', async () => {

@@ -7,9 +7,32 @@ import { View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { RootNavigator } from "./src/navigation/RootNavigator";
+import Login from "./src/screens/Login";
 import { ToastProvider } from "./src/components/Toast";
+import { AuthProvider, useAuth } from "./src/store/AuthProvider";
 import { TransactionsProvider } from "./src/store/TransactionsProvider";
 import { colors } from "./src/theme/tokens";
+
+function AppContent() {
+  const { ready, userId } = useAuth();
+
+  if (!ready) {
+    return <View style={{ flex: 1, backgroundColor: colors.canvas }} testID="auth-loading" />;
+  }
+
+  if (userId === null) {
+    return <Login />;
+  }
+
+  return (
+    <TransactionsProvider>
+      <NavigationContainer>
+        <RootNavigator />
+        <StatusBar style="dark" />
+      </NavigationContainer>
+    </TransactionsProvider>
+  );
+}
 
 export default function App() {
   const [dmSansLoaded] = useDMSansFonts({ DMSans_400Regular, DMSans_500Medium });
@@ -23,12 +46,9 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <ToastProvider>
-        <TransactionsProvider>
-          <NavigationContainer>
-            <RootNavigator />
-            <StatusBar style="dark" />
-          </NavigationContainer>
-        </TransactionsProvider>
+        <AuthProvider>
+          <AppContent />
+        </AuthProvider>
       </ToastProvider>
     </SafeAreaProvider>
   );

@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { render, screen } from '@testing-library/react-native';
 
 import App from '../App';
@@ -25,7 +26,13 @@ jest.mock('@expo-google-fonts/jetbrains-mono', () => ({
   useFonts: () => [true],
 }));
 
-beforeEach(() => {
+beforeEach(async () => {
+  // The mock's backing store is a module-level object that survives between tests -- clear it
+  // first so each test starts from a known state instead of leaking the previous test's login.
+  await AsyncStorage.clear();
+  // Simulate a device that's already logged in, matching this file's existing assumption that
+  // the app goes straight to the tab bar. The logged-out/stale-id paths get their own tests below.
+  await AsyncStorage.setItem('xpense.userId', '1');
   jest.spyOn(client, 'getTransactions').mockResolvedValue([]);
   jest.spyOn(client, 'getSummary').mockResolvedValue({
     user_id: 1,
@@ -65,4 +72,26 @@ test('renders without crashing, defaulting to the Home tab', async () => {
   expect(screen.getByTestId('tab-Summary')).toBeTruthy();
   expect(screen.getByTestId('tab-Activity')).toBeTruthy();
   expect(screen.getByTestId('tab-Settings')).toBeTruthy();
+});
+
+test('shows the Login screen instead of the tab bar when no user is stored', async () => {
+  await AsyncStorage.clear();
+
+  render(<App />);
+
+  expect(await screen.findByTestId('login-screen')).toBeTruthy();
+  expect(screen.queryByTestId('tab-Home')).toBeNull();
+});
+
+test('a stored user id that the backend no longer recognizes falls back to the Login screen', async () => {
+  // Simulates the exact bug this feature fixes: a device logged in against a database that
+  // was since wiped/redeployed (e.g. a fresh Render/Supabase instance) still has an old id
+  // sitting in storage.
+  await AsyncStorage.setItem('xpense.userId', '999');
+  jest.spyOn(client, 'getUser').mockRejectedValue(new Error('404'));
+
+  render(<App />);
+
+  expect(await screen.findByTestId('login-screen')).toBeTruthy();
+  expect(await AsyncStorage.getItem('xpense.userId')).toBeNull();
 });
