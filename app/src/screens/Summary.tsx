@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { Donut } from "../components/Donut";
+import { ResponsiveColumns } from "../components/ResponsiveColumns";
 import { useAppData } from "../store/TransactionsProvider";
 import { categoryColor, categoryColorBar, colors, radii, shadow, spacing, typography, type CategoryId } from "../theme/tokens";
 import { oklchToHex } from "../theme/oklch";
@@ -165,155 +166,165 @@ export default function Summary() {
               <Text style={styles.navChevronText}>›</Text>
             </Pressable>
           </View>
-          <View style={[styles.card, styles.donutCard, shadow.card]}>
-            <View style={styles.donutWrap}>
-              <Donut
-                segments={sortedCats.map(([cat, total]) => ({ id: cat, value: total, color: categoryColor(cat) }))}
-                selectedId={openCat}
-                onSelect={(id) => setOpenCat(openCat === id ? null : (id as CategoryId))}
-              />
-              <View style={styles.donutCenter} pointerEvents="none">
-                <Text style={styles.donutEyebrow}>{periodLabel.toUpperCase()}</Text>
-                <Text style={styles.donutAmount}>{formatMoney(grand, false)}</Text>
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.catRows}>
-            {sortedCats.map(([cat, total]) => {
-              const expanded = openCat === cat;
-              const subs =
-                cat === "Food" || cat === "Transport" ? subcategoryTotals(periodTransactions, cat) : [];
-              const maxSub = Math.max(1, ...subs.map(([, v]) => v));
-              const catTxns = expanded ? categoryTransactions(periodTransactions, cat) : [];
-              return (
-                <View key={cat} style={[styles.catRowCard, shadow.card]}>
-                  <Pressable
-                    style={styles.catRowHeader}
-                    onPress={() => setOpenCat(expanded ? null : cat)}
-                    testID={`cat-row-${cat}`}
-                  >
-                    <View style={[styles.dot, { backgroundColor: categoryColor(cat) }]} />
-                    <Text style={styles.catName}>{cat}</Text>
-                    <Text style={styles.catPct}>{Math.round((total / grand) * 100)}%</Text>
-                    <Text style={styles.catAmount}>{formatMoney(total)}</Text>
-                    <Text style={styles.chevron}>{expanded ? "⌃" : "⌄"}</Text>
-                  </Pressable>
-                  {expanded && subs.length > 0 && (
-                    <View style={styles.subList}>
-                      {subs.map(([name, value]) => (
-                        <View key={name} style={styles.subRow}>
-                          <Text style={styles.subName}>{name}</Text>
-                          <View style={styles.subBarTrack}>
-                            <View
-                              style={[
-                                styles.subBar,
-                                { width: `${(value / maxSub) * 100}%`, backgroundColor: categoryColorBar(cat) },
-                              ]}
-                            />
-                          </View>
-                          <Text style={styles.subAmount}>{formatMoney(value)}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                  {expanded && (
-                    <View style={styles.catTxList} testID={`cat-tx-list-${cat}`}>
-                      {catTxns.map((t) => (
-                        <View key={t.id} style={styles.catTxRow}>
-                          <View style={[styles.catTxDot, { backgroundColor: categoryColor(cat) }]} />
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.catTxName} numberOfLines={1}>
-                              {t.merchant_clean ?? t.merchant_raw ?? "Unknown"}
-                            </Text>
-                            <Text style={styles.catTxMeta}>{dayLabel(t.txn_at, now)}</Text>
-                          </View>
-                          <Text style={styles.catTxAmount}>{formatMoney(t.amount)}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
+          <ResponsiveColumns
+            left={
+              <View style={[styles.card, styles.donutCard, shadow.card]}>
+                <View style={styles.donutWrap}>
+                  <Donut
+                    segments={sortedCats.map(([cat, total]) => ({ id: cat, value: total, color: categoryColor(cat) }))}
+                    selectedId={openCat}
+                    onSelect={(id) => setOpenCat(openCat === id ? null : (id as CategoryId))}
+                  />
+                  <View style={styles.donutCenter} pointerEvents="none">
+                    <Text style={styles.donutEyebrow}>{periodLabel.toUpperCase()}</Text>
+                    <Text style={styles.donutAmount}>{formatMoney(grand, false)}</Text>
+                  </View>
                 </View>
-              );
-            })}
-          </View>
+              </View>
+            }
+            right={
+              <View style={styles.catRows}>
+                {sortedCats.map(([cat, total]) => {
+                  const expanded = openCat === cat;
+                  const subs =
+                    cat === "Food" || cat === "Transport" ? subcategoryTotals(periodTransactions, cat) : [];
+                  const maxSub = Math.max(1, ...subs.map(([, v]) => v));
+                  const catTxns = expanded ? categoryTransactions(periodTransactions, cat) : [];
+                  return (
+                    <View key={cat} style={[styles.catRowCard, shadow.card]}>
+                      <Pressable
+                        style={styles.catRowHeader}
+                        onPress={() => setOpenCat(expanded ? null : cat)}
+                        testID={`cat-row-${cat}`}
+                      >
+                        <View style={[styles.dot, { backgroundColor: categoryColor(cat) }]} />
+                        <Text style={styles.catName}>{cat}</Text>
+                        <Text style={styles.catPct}>{Math.round((total / grand) * 100)}%</Text>
+                        <Text style={styles.catAmount}>{formatMoney(total)}</Text>
+                        <Text style={styles.chevron}>{expanded ? "⌃" : "⌄"}</Text>
+                      </Pressable>
+                      {expanded && subs.length > 0 && (
+                        <View style={styles.subList}>
+                          {subs.map(([name, value]) => (
+                            <View key={name} style={styles.subRow}>
+                              <Text style={styles.subName}>{name}</Text>
+                              <View style={styles.subBarTrack}>
+                                <View
+                                  style={[
+                                    styles.subBar,
+                                    { width: `${(value / maxSub) * 100}%`, backgroundColor: categoryColorBar(cat) },
+                                  ]}
+                                />
+                              </View>
+                              <Text style={styles.subAmount}>{formatMoney(value)}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                      {expanded && (
+                        <View style={styles.catTxList} testID={`cat-tx-list-${cat}`}>
+                          {catTxns.map((t) => (
+                            <View key={t.id} style={styles.catTxRow}>
+                              <View style={[styles.catTxDot, { backgroundColor: categoryColor(cat) }]} />
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.catTxName} numberOfLines={1}>
+                                  {t.merchant_clean ?? t.merchant_raw ?? "Unknown"}
+                                </Text>
+                                <Text style={styles.catTxMeta}>{dayLabel(t.txn_at, now)}</Text>
+                              </View>
+                              <Text style={styles.catTxAmount}>{formatMoney(t.amount)}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            }
+          />
         </>
       ) : (
         <>
-          <View style={[styles.card, styles.calendarCard, shadow.card]}>
-            <View style={styles.calendarHeaderRow}>
-              <View style={styles.calNavGroup}>
-                <Pressable onPress={() => pageCalendarAnchor(-1)} style={styles.navChevron} testID="cal-prev">
-                  <Text style={styles.navChevronText}>‹</Text>
-                </Pressable>
-                <Text style={styles.calTitle}>{calendarMonthName}</Text>
-                <Pressable onPress={() => pageCalendarAnchor(1)} style={styles.navChevron} testID="cal-next">
-                  <Text style={styles.navChevronText}>›</Text>
-                </Pressable>
+          <ResponsiveColumns
+            left={
+              <View style={[styles.card, styles.calendarCard, shadow.card]}>
+                <View style={styles.calendarHeaderRow}>
+                  <View style={styles.calNavGroup}>
+                    <Pressable onPress={() => pageCalendarAnchor(-1)} style={styles.navChevron} testID="cal-prev">
+                      <Text style={styles.navChevronText}>‹</Text>
+                    </Pressable>
+                    <Text style={styles.calTitle}>{calendarMonthName}</Text>
+                    <Pressable onPress={() => pageCalendarAnchor(1)} style={styles.navChevron} testID="cal-next">
+                      <Text style={styles.navChevronText}>›</Text>
+                    </Pressable>
+                  </View>
+                  <Text style={styles.calCaption}>darker = more spent</Text>
+                </View>
+                <View style={styles.weekdayRow}>
+                  {WEEKDAY_LABELS.map((w, i) => (
+                    <Text key={i} style={styles.weekdayLabel}>
+                      {w}
+                    </Text>
+                  ))}
+                </View>
+                <View style={styles.calGrid}>
+                  {weeks.map((week, weekIdx) => (
+                    <View key={weekIdx} style={styles.calWeekRow}>
+                      {week.map((day, dayIdx) => {
+                        if (day === -1) {
+                          return <View key={dayIdx} style={styles.calCell} />;
+                        }
+                        const amt = dailyAmounts[day - 1] ?? 0;
+                        const k = amt / maxDay;
+                        const selected = selectedDay === day;
+                        const bg = amt > 0 ? oklchToHex(0.95 - k * 0.3, 0.02 + k * 0.07, 158) : colors.ink04;
+                        const textColor = k > 0.62 ? colors.onDark : colors.ink70;
+                        return (
+                          <Pressable
+                            key={dayIdx}
+                            onPress={() => setSelectedDay(day)}
+                            style={[styles.calCell, { backgroundColor: bg }, selected && styles.calCellSelected]}
+                            testID={`cal-day-${day}`}
+                          >
+                            <Text style={[styles.calCellText, { color: textColor }]}>{day}</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  ))}
+                </View>
               </View>
-              <Text style={styles.calCaption}>darker = more spent</Text>
-            </View>
-            <View style={styles.weekdayRow}>
-              {WEEKDAY_LABELS.map((w, i) => (
-                <Text key={i} style={styles.weekdayLabel}>
-                  {w}
-                </Text>
-              ))}
-            </View>
-            <View style={styles.calGrid}>
-              {weeks.map((week, weekIdx) => (
-                <View key={weekIdx} style={styles.calWeekRow}>
-                  {week.map((day, dayIdx) => {
-                    if (day === -1) {
-                      return <View key={dayIdx} style={styles.calCell} />;
-                    }
-                    const amt = dailyAmounts[day - 1] ?? 0;
-                    const k = amt / maxDay;
-                    const selected = selectedDay === day;
-                    const bg = amt > 0 ? oklchToHex(0.95 - k * 0.3, 0.02 + k * 0.07, 158) : colors.ink04;
-                    const textColor = k > 0.62 ? colors.onDark : colors.ink70;
-                    return (
-                      <Pressable
-                        key={dayIdx}
-                        onPress={() => setSelectedDay(day)}
-                        style={[styles.calCell, { backgroundColor: bg }, selected && styles.calCellSelected]}
-                        testID={`cal-day-${day}`}
-                      >
-                        <Text style={[styles.calCellText, { color: textColor }]}>{day}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              ))}
-            </View>
-          </View>
-
-          <View style={[styles.card, styles.dayDetailCard, shadow.card]}>
-            <View style={styles.dayDetailHeader}>
-              <Text style={styles.dayTitle}>
-                {dayAmt
-                  ? `${selectedDay} ${calendarMonthName}`
-                  : `${selectedDay} ${calendarMonthName} — nothing spent`}
-              </Text>
-              <Text style={styles.dayTotal} testID="day-total">{formatMoney(dayAmt)}</Text>
-            </View>
-            <View style={{ gap: 9 }}>
-              {dayItems.map((t) => (
-                <View key={t.id} style={styles.dayItemRow}>
-                  <View
-                    style={[
-                      styles.smallDot,
-                      { backgroundColor: t.category ? categoryColor(t.category as CategoryId) : colors.ink38 },
-                    ]}
-                  />
-                  <Text style={styles.dayItemName} numberOfLines={1}>
-                    {t.merchant_clean ?? t.merchant_raw ?? "Unknown"}
+            }
+            right={
+              <View style={[styles.card, styles.dayDetailCard, shadow.card]}>
+                <View style={styles.dayDetailHeader}>
+                  <Text style={styles.dayTitle}>
+                    {dayAmt
+                      ? `${selectedDay} ${calendarMonthName}`
+                      : `${selectedDay} ${calendarMonthName} — nothing spent`}
                   </Text>
-                  <Text style={styles.dayItemAmount}>{formatMoney(t.amount)}</Text>
+                  <Text style={styles.dayTotal} testID="day-total">{formatMoney(dayAmt)}</Text>
                 </View>
-              ))}
-            </View>
-          </View>
+                <View style={{ gap: 9 }}>
+                  {dayItems.map((t) => (
+                    <View key={t.id} style={styles.dayItemRow}>
+                      <View
+                        style={[
+                          styles.smallDot,
+                          { backgroundColor: t.category ? categoryColor(t.category as CategoryId) : colors.ink38 },
+                        ]}
+                      />
+                      <Text style={styles.dayItemName} numberOfLines={1}>
+                        {t.merchant_clean ?? t.merchant_raw ?? "Unknown"}
+                      </Text>
+                      <Text style={styles.dayItemAmount}>{formatMoney(t.amount)}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            }
+          />
         </>
       )}
     </ScrollView>
@@ -322,7 +333,12 @@ export default function Summary() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.canvas },
-  content: { paddingHorizontal: spacing.screenH, paddingTop: spacing.screenTop, paddingBottom: spacing.screenBottom },
+  content: {
+    paddingHorizontal: spacing.screenH,
+    paddingTop: spacing.screenTop,
+    paddingBottom: spacing.screenBottom,
+    ...(Platform.OS === "web" ? { maxWidth: 1100, width: "100%" as const, alignSelf: "center" as const } : null),
+  },
   title: { fontFamily: typography.fontFamily.serif, fontSize: typography.size.heading, marginBottom: 18, color: colors.ink },
   pillsRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 16 },
   pill: { paddingVertical: 7, paddingHorizontal: 14, borderRadius: radii.pill },

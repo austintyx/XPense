@@ -1215,3 +1215,57 @@ the sync call fires with the current user id before data loads, and that a rejec
 already-stored data render. `mockClientDefaults()` (`app/src/testUtils.tsx`) now mocks
 `syncTransactions` by default, since every screen-level test mounts `TransactionsProvider`.
 Backend unchanged, still 172 passed.
+
+## Web-only dashboard layout: sidebar nav + multi-column screens
+
+The web build reused the mobile layout verbatim -- one stacked column with a bottom tab bar,
+just stretched into a browser window. This reworks the *layout* for web specifically (same
+colors/type/components, no design-system changes): a left sidebar instead of the bottom tab bar,
+and Home/Summary/Settings reflowed into two-column panels on wide windows. Native is untouched.
+
+**Sidebar** (`app/src/navigation/Sidebar.tsx`, new): `createBottomTabNavigator`'s custom `tabBar`
+prop can't produce a left column on its own (its internal container is a fixed content-then-bar
+column, which is why the mobile `TabBar.tsx` position-absolutes itself at the bottom rather than
+relying on the outer direction) -- so the sidebar lives in a new `app/src/navigation/MainTabs.web.tsx`,
+picked up automatically by Metro's platform-extension resolution in place of `MainTabs.tsx` on web
+(same mechanism as the existing `DateField`/`DateField.web.tsx` split), with zero changes to
+`RootNavigator.tsx` or `App.tsx`. It renders a `flexDirection:"row"` wrapper -- `Sidebar` next to a
+`flex:1` tab navigator with `tabBar={() => null}` -- tracking the active route via the navigator's
+own `screenListeners.state` into local state, and navigating via the documented nested-navigate
+form (`navigation.navigate("MainTabs", { screen: routeName })`). The route-to-icon map that used to
+live inline in `TabBar.tsx` moved to a shared `ROUTE_ICONS` export in `icons.tsx` so both it and
+`Sidebar.tsx` use the same mapping. `TabBar.tsx`/`MainTabs.tsx` (native) are otherwise untouched.
+
+**Multi-column screens** (`app/src/components/ResponsiveColumns.tsx`, new -- first use of
+`useWindowDimensions` in this codebase): renders `left`/`right` side by side above a ~900px width
+threshold on web, otherwise stacks them in a plain `View`, identical to what was already there --
+so native (`Platform.OS` is never `"web"`) always hits the stacked branch. Applied by regrouping
+**existing** JSX sections, not rewriting them: `Home.tsx` (left = greeting/hero/needs-category/
+goal cards, right = "where it went" categories), `Summary.tsx` (chart view: donut left, category
+list right; calendar view: calendar left, day detail right), `Settings.tsx` (left = profile +
+linked accounts, right = budget/goals/preferences/manage-categories/circle/sign-out). `Activity.tsx`
+keeps its single list -- a chronological list doesn't benefit from a column split. All five main
+screens (plus `Login.tsx`, narrower) got a one-line web-only `maxWidth`+centered style added to
+their existing content container, so a wide monitor doesn't stretch everything edge to edge.
+
+**`BottomSheet.tsx`**: web-only override drops the full-bleed `left:0, right:0` for a capped,
+centered width (`maxWidth: 480, alignSelf:"center"`) so the categorize/add-transaction/sync-backfill
+sheets don't span an entire ultrawide browser window. Slide-up/`Modal` mechanics unchanged.
+
+**Tested:** frontend `jest` -> 72 passed (up from 66): new `ResponsiveColumns.test.tsx` (stacks on
+native regardless of width; stacks on web below the threshold; row layout on web above it -- window
+width mocked via `react-native/Libraries/Utilities/useWindowDimensions`, the narrowest submodule
+that could be mocked without pulling in native-only pieces of the `react-native` barrel export) and
+`Sidebar.test.tsx` (all 4 routes render, `onNavigate` fires the right route name, active row is
+visually distinct). All pre-existing Home/Summary/Settings/Activity/Login tests pass unchanged --
+confirms the native rendering path is byte-for-byte the same as before this feature. Backend
+untouched, still 172 passed. `MainTabs.web.tsx` itself is invisible to this repo's Jest config
+(same `.web.tsx`-resolution gap noted for `DateField.web.tsx`) -- its sidebar-swap composition
+needs a manual browser check like `DateField.web.tsx` did.
+
+**Manual steps for the human:** log into the web app and visually confirm the sidebar renders and
+switches/highlights tabs correctly, Home/Summary/Settings show two columns on a wide window and
+collapse to one column when narrowed below ~900px, Activity/Login are width-capped rather than
+edge-to-edge, and the three bottom-sheet flows are centered/capped rather than full-bleed --
+this environment could confirm the web bundle compiles cleanly (703 modules, no errors) but has no
+way to click through the OAuth login flow to see the actual rendered dashboard.

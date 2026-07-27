@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Animated, Easing, Modal, Pressable, StyleSheet, View } from "react-native";
+import { Animated, Easing, Modal, Platform, Pressable, StyleSheet, View } from "react-native";
 
 import { colors, radii, spacing } from "../theme/tokens";
 
@@ -51,8 +51,6 @@ const styles = StyleSheet.create({
   },
   sheet: {
     position: "absolute",
-    left: 0,
-    right: 0,
     bottom: 0,
     maxHeight: "82%",
     backgroundColor: colors.surfaceSheet,
@@ -61,6 +59,11 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingHorizontal: spacing.xxl,
     paddingBottom: 34,
+    // On a wide browser window a full-bleed sheet spans the entire viewport -- cap and center it
+    // instead. Native keeps the plain edge-to-edge left:0/right:0 sheet.
+    ...(Platform.OS === "web"
+      ? { left: undefined, right: undefined, maxWidth: 480, width: "100%" as const, alignSelf: "center" as const }
+      : { left: 0, right: 0 }),
   },
   grabber: {
     width: 38,

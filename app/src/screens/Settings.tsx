@@ -2,9 +2,10 @@ import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
 import { useNavigation } from "@react-navigation/native";
 import { useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 
 import { CURRENT_USER_ID, buildAuthUrl, syncTransactions, type Provider } from "../api/client";
+import { ResponsiveColumns } from "../components/ResponsiveColumns";
 import { SyncBackfillSheet } from "../components/SyncBackfillSheet";
 import { useToast } from "../components/Toast";
 import { useAuth } from "../store/AuthProvider";
@@ -150,215 +151,224 @@ export default function Settings() {
       <ScrollView style={styles.container} contentContainerStyle={styles.content} testID="settings-screen">
         <Text style={styles.title}>Settings</Text>
 
-        <View style={[styles.card, styles.profileCard, shadow.card]}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initialsOf(user?.name ?? null)}</Text>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.fullName}>{user?.name ?? user?.email ?? ""}</Text>
-            <Text style={styles.metaText}>
-              Member since {user?.created_at ? new Date(user.created_at).getFullYear() : ""} · SGD
-            </Text>
-          </View>
-          <Pressable
-            style={styles.outlineButton}
-            onPress={() => {
-              setNameDraft(user?.name ?? "");
-              setEditingName(!editingName);
-            }}
-            testID="edit-name-toggle"
-          >
-            <Text style={styles.outlineButtonText}>{editingName ? "Close" : "Edit"}</Text>
-          </Pressable>
-        </View>
-
-        {editingName && (
-          <View style={[styles.card, styles.editPanel, shadow.card]}>
-            <Text style={styles.label}>Display name</Text>
-            <TextInput value={nameDraft} onChangeText={setNameDraft} style={styles.input} testID="name-input" />
-            <Pressable style={styles.saveButton} onPress={saveName} testID="save-name">
-              <Text style={styles.saveButtonText}>Save</Text>
-            </Pressable>
-          </View>
-        )}
-
-        <Text style={styles.groupLabel}>WHERE TRANSACTIONS COME FROM</Text>
-        <View style={[styles.card, styles.group, shadow.card]}>
-          {accounts.map((account) => {
-            const count = monthTransactions.filter((t) => t.provider === account.provider).length;
-            return (
-              <View key={account.id} style={styles.sourceRow}>
-                <View style={styles.statusDotActive} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.sourceLabel} numberOfLines={1}>
-                    {account.provider_email}
-                  </Text>
-                  <Text style={styles.sourceMeta}>Receipt emails · {count} found this month</Text>
+        <ResponsiveColumns
+          left={
+            <>
+              <View style={[styles.card, styles.profileCard, shadow.card]}>
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>{initialsOf(user?.name ?? null)}</Text>
                 </View>
-                <Text
-                  style={styles.linkText}
-                  onPress={() => connect(account.provider)}
-                  testID={`change-${account.provider}`}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.fullName}>{user?.name ?? user?.email ?? ""}</Text>
+                  <Text style={styles.metaText}>
+                    Member since {user?.created_at ? new Date(user.created_at).getFullYear() : ""} · SGD
+                  </Text>
+                </View>
+                <Pressable
+                  style={styles.outlineButton}
+                  onPress={() => {
+                    setNameDraft(user?.name ?? "");
+                    setEditingName(!editingName);
+                  }}
+                  testID="edit-name-toggle"
                 >
-                  Change
-                </Text>
-                <Text
-                  style={styles.removeLinkText}
-                  onPress={() => confirmRemoveAccount(account.id, account.provider_email)}
-                  testID={`remove-${account.id}`}
-                >
-                  Remove
-                </Text>
+                  <Text style={styles.outlineButtonText}>{editingName ? "Close" : "Edit"}</Text>
+                </Pressable>
               </View>
-            );
-          })}
-          {unlinkedProviders.map((provider) => (
-            <Text
-              key={provider}
-              style={styles.addSourceRow}
-              onPress={() => connect(provider)}
-              testID={`connect-${provider}`}
-            >
-              + {connecting === provider ? "Connecting…" : PROVIDER_LABELS[provider]}
-            </Text>
-          ))}
-        </View>
 
-        <Text style={styles.groupLabel}>BUDGET & GOALS</Text>
-        <View style={[styles.card, styles.group, shadow.card]}>
-          <View style={styles.sourceRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.sourceLabel}>Monthly budget</Text>
-              <Text style={styles.sourceMeta}>{formatMoney(budget.monthly_target, false)} / month</Text>
-            </View>
-            <Text
-              style={styles.linkText}
-              onPress={() => {
-                setBudgetDraft(budget.monthly_target);
-                setEditingBudget(!editingBudget);
-              }}
-              testID="edit-budget-toggle"
-            >
-              {editingBudget ? "Close" : "Edit"}
-            </Text>
-          </View>
-          <View style={[styles.sourceRow, styles.sourceRowLast]}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.sourceLabel}>Savings goal</Text>
-              <Text style={styles.sourceMeta}>
-                {goal.name} · {formatMoney(goal.saved_amount, false)} of {formatMoney(goal.target_amount, false)}
+              {editingName && (
+                <View style={[styles.card, styles.editPanel, shadow.card]}>
+                  <Text style={styles.label}>Display name</Text>
+                  <TextInput value={nameDraft} onChangeText={setNameDraft} style={styles.input} testID="name-input" />
+                  <Pressable style={styles.saveButton} onPress={saveName} testID="save-name">
+                    <Text style={styles.saveButtonText}>Save</Text>
+                  </Pressable>
+                </View>
+              )}
+
+              <Text style={styles.groupLabel}>WHERE TRANSACTIONS COME FROM</Text>
+              <View style={[styles.card, styles.group, shadow.card]}>
+                {accounts.map((account) => {
+                  const count = monthTransactions.filter((t) => t.provider === account.provider).length;
+                  return (
+                    <View key={account.id} style={styles.sourceRow}>
+                      <View style={styles.statusDotActive} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.sourceLabel} numberOfLines={1}>
+                          {account.provider_email}
+                        </Text>
+                        <Text style={styles.sourceMeta}>Receipt emails · {count} found this month</Text>
+                      </View>
+                      <Text
+                        style={styles.linkText}
+                        onPress={() => connect(account.provider)}
+                        testID={`change-${account.provider}`}
+                      >
+                        Change
+                      </Text>
+                      <Text
+                        style={styles.removeLinkText}
+                        onPress={() => confirmRemoveAccount(account.id, account.provider_email)}
+                        testID={`remove-${account.id}`}
+                      >
+                        Remove
+                      </Text>
+                    </View>
+                  );
+                })}
+                {unlinkedProviders.map((provider) => (
+                  <Text
+                    key={provider}
+                    style={styles.addSourceRow}
+                    onPress={() => connect(provider)}
+                    testID={`connect-${provider}`}
+                  >
+                    + {connecting === provider ? "Connecting…" : PROVIDER_LABELS[provider]}
+                  </Text>
+                ))}
+              </View>
+            </>
+          }
+          right={
+            <>
+              <Text style={styles.groupLabel}>BUDGET & GOALS</Text>
+              <View style={[styles.card, styles.group, shadow.card]}>
+                <View style={styles.sourceRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.sourceLabel}>Monthly budget</Text>
+                    <Text style={styles.sourceMeta}>{formatMoney(budget.monthly_target, false)} / month</Text>
+                  </View>
+                  <Text
+                    style={styles.linkText}
+                    onPress={() => {
+                      setBudgetDraft(budget.monthly_target);
+                      setEditingBudget(!editingBudget);
+                    }}
+                    testID="edit-budget-toggle"
+                  >
+                    {editingBudget ? "Close" : "Edit"}
+                  </Text>
+                </View>
+                <View style={[styles.sourceRow, styles.sourceRowLast]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.sourceLabel}>Savings goal</Text>
+                    <Text style={styles.sourceMeta}>
+                      {goal.name} · {formatMoney(goal.saved_amount, false)} of {formatMoney(goal.target_amount, false)}
+                    </Text>
+                  </View>
+                  <Text
+                    style={styles.linkText}
+                    onPress={() => {
+                      setGoalNameDraft(goal.name);
+                      setGoalTargetDraft(goal.target_amount);
+                      setGoalSavedDraft(goal.saved_amount);
+                      setEditingGoal(!editingGoal);
+                    }}
+                    testID="edit-goal-toggle"
+                  >
+                    {editingGoal ? "Close" : "Edit"}
+                  </Text>
+                </View>
+              </View>
+
+              {editingBudget && (
+                <View style={[styles.card, styles.editPanel, shadow.card]}>
+                  <Text style={styles.label}>Monthly budget</Text>
+                  <TextInput
+                    value={budgetDraft}
+                    onChangeText={setBudgetDraft}
+                    keyboardType="decimal-pad"
+                    style={styles.input}
+                    testID="budget-input"
+                  />
+                  <Pressable style={styles.saveButton} onPress={saveBudget} testID="save-budget">
+                    <Text style={styles.saveButtonText}>Save</Text>
+                  </Pressable>
+                </View>
+              )}
+
+              {editingGoal && (
+                <View style={[styles.card, styles.editPanel, shadow.card]}>
+                  <Text style={styles.label}>Goal name</Text>
+                  <TextInput value={goalNameDraft} onChangeText={setGoalNameDraft} style={styles.input} testID="goal-name-input" />
+                  <Text style={styles.label}>Target amount</Text>
+                  <TextInput
+                    value={goalTargetDraft}
+                    onChangeText={setGoalTargetDraft}
+                    keyboardType="decimal-pad"
+                    style={styles.input}
+                    testID="goal-target-input"
+                  />
+                  <Text style={styles.label}>Saved so far</Text>
+                  <TextInput
+                    value={goalSavedDraft}
+                    onChangeText={setGoalSavedDraft}
+                    keyboardType="decimal-pad"
+                    style={styles.input}
+                    testID="goal-saved-input"
+                  />
+                  <Pressable style={styles.saveButton} onPress={saveGoal} testID="save-goal">
+                    <Text style={styles.saveButtonText}>Save</Text>
+                  </Pressable>
+                </View>
+              )}
+
+              <Text style={styles.groupLabel}>PREFERENCES</Text>
+              <View style={[styles.card, styles.group, shadow.card]}>
+                {(
+                  [
+                    { key: "auto", label: "Categorise automatically", meta: "Silently. You can always correct it." },
+                    { key: "digest", label: "Sunday digest", meta: "One summary, no daily nagging" },
+                    { key: "roundup", label: "Round up to savings", meta: `Spare change into the ${goal.name} fund` },
+                    { key: "alerts", label: "Alert at 80% of budget", meta: "A heads-up, not an alarm" },
+                  ] as const
+                ).map((p, i, arr) => (
+                  <View key={p.key} style={[styles.sourceRow, i === arr.length - 1 && styles.sourceRowLast]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.sourceLabel}>{p.label}</Text>
+                      <Text style={styles.sourceMeta}>{p.meta}</Text>
+                    </View>
+                    <Switch
+                      value={prefs[p.key]}
+                      onValueChange={(v) => setPrefs((cur) => ({ ...cur, [p.key]: v }))}
+                      testID={`pref-${p.key}`}
+                    />
+                  </View>
+                ))}
+              </View>
+
+              <Pressable
+                style={styles.manageCategoriesCard}
+                onPress={() => navigation.navigate("ManageCategories")}
+                testID="manage-categories-entry"
+              >
+                <View style={styles.manageCategoriesDot} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.circleTitle}>Manage categories</Text>
+                  <Text style={styles.circleSub}>Add or edit spending categories</Text>
+                </View>
+                <Text style={styles.chevron}>›</Text>
+              </Pressable>
+
+              <Pressable style={styles.circleCard} onPress={() => navigation.navigate("Circle")} testID="circle-entry">
+                <View style={styles.circleAvatars}>
+                  <View style={[styles.circleAvatar, { backgroundColor: colors.successAvatarBg }]} />
+                  <View style={[styles.circleAvatar, styles.circleAvatarOverlap, { backgroundColor: colors.warnBg }]} />
+                  <View style={[styles.circleAvatar, styles.circleAvatarOverlap, { backgroundColor: colors.successTintCard }]} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.circleTitle}>Spend with friends</Text>
+                  <Text style={styles.circleSub}>Share goals, keep each other honest</Text>
+                </View>
+                <Text style={styles.chevron}>›</Text>
+              </Pressable>
+
+              <Text style={styles.signOut} onPress={confirmSignOut} testID="sign-out">
+                Sign out
               </Text>
-            </View>
-            <Text
-              style={styles.linkText}
-              onPress={() => {
-                setGoalNameDraft(goal.name);
-                setGoalTargetDraft(goal.target_amount);
-                setGoalSavedDraft(goal.saved_amount);
-                setEditingGoal(!editingGoal);
-              }}
-              testID="edit-goal-toggle"
-            >
-              {editingGoal ? "Close" : "Edit"}
-            </Text>
-          </View>
-        </View>
-
-        {editingBudget && (
-          <View style={[styles.card, styles.editPanel, shadow.card]}>
-            <Text style={styles.label}>Monthly budget</Text>
-            <TextInput
-              value={budgetDraft}
-              onChangeText={setBudgetDraft}
-              keyboardType="decimal-pad"
-              style={styles.input}
-              testID="budget-input"
-            />
-            <Pressable style={styles.saveButton} onPress={saveBudget} testID="save-budget">
-              <Text style={styles.saveButtonText}>Save</Text>
-            </Pressable>
-          </View>
-        )}
-
-        {editingGoal && (
-          <View style={[styles.card, styles.editPanel, shadow.card]}>
-            <Text style={styles.label}>Goal name</Text>
-            <TextInput value={goalNameDraft} onChangeText={setGoalNameDraft} style={styles.input} testID="goal-name-input" />
-            <Text style={styles.label}>Target amount</Text>
-            <TextInput
-              value={goalTargetDraft}
-              onChangeText={setGoalTargetDraft}
-              keyboardType="decimal-pad"
-              style={styles.input}
-              testID="goal-target-input"
-            />
-            <Text style={styles.label}>Saved so far</Text>
-            <TextInput
-              value={goalSavedDraft}
-              onChangeText={setGoalSavedDraft}
-              keyboardType="decimal-pad"
-              style={styles.input}
-              testID="goal-saved-input"
-            />
-            <Pressable style={styles.saveButton} onPress={saveGoal} testID="save-goal">
-              <Text style={styles.saveButtonText}>Save</Text>
-            </Pressable>
-          </View>
-        )}
-
-        <Text style={styles.groupLabel}>PREFERENCES</Text>
-        <View style={[styles.card, styles.group, shadow.card]}>
-          {(
-            [
-              { key: "auto", label: "Categorise automatically", meta: "Silently. You can always correct it." },
-              { key: "digest", label: "Sunday digest", meta: "One summary, no daily nagging" },
-              { key: "roundup", label: "Round up to savings", meta: `Spare change into the ${goal.name} fund` },
-              { key: "alerts", label: "Alert at 80% of budget", meta: "A heads-up, not an alarm" },
-            ] as const
-          ).map((p, i, arr) => (
-            <View key={p.key} style={[styles.sourceRow, i === arr.length - 1 && styles.sourceRowLast]}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.sourceLabel}>{p.label}</Text>
-                <Text style={styles.sourceMeta}>{p.meta}</Text>
-              </View>
-              <Switch
-                value={prefs[p.key]}
-                onValueChange={(v) => setPrefs((cur) => ({ ...cur, [p.key]: v }))}
-                testID={`pref-${p.key}`}
-              />
-            </View>
-          ))}
-        </View>
-
-        <Pressable
-          style={styles.manageCategoriesCard}
-          onPress={() => navigation.navigate("ManageCategories")}
-          testID="manage-categories-entry"
-        >
-          <View style={styles.manageCategoriesDot} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.circleTitle}>Manage categories</Text>
-            <Text style={styles.circleSub}>Add or edit spending categories</Text>
-          </View>
-          <Text style={styles.chevron}>›</Text>
-        </Pressable>
-
-        <Pressable style={styles.circleCard} onPress={() => navigation.navigate("Circle")} testID="circle-entry">
-          <View style={styles.circleAvatars}>
-            <View style={[styles.circleAvatar, { backgroundColor: colors.successAvatarBg }]} />
-            <View style={[styles.circleAvatar, styles.circleAvatarOverlap, { backgroundColor: colors.warnBg }]} />
-            <View style={[styles.circleAvatar, styles.circleAvatarOverlap, { backgroundColor: colors.successTintCard }]} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.circleTitle}>Spend with friends</Text>
-            <Text style={styles.circleSub}>Share goals, keep each other honest</Text>
-          </View>
-          <Text style={styles.chevron}>›</Text>
-        </Pressable>
-
-        <Text style={styles.signOut} onPress={confirmSignOut} testID="sign-out">
-          Sign out
-        </Text>
+            </>
+          }
+        />
       </ScrollView>
       <SyncBackfillSheet
         visible={backfillProvider !== null}
@@ -372,7 +382,12 @@ export default function Settings() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.canvas },
-  content: { paddingHorizontal: spacing.screenH, paddingTop: spacing.screenTop, paddingBottom: spacing.screenBottom },
+  content: {
+    paddingHorizontal: spacing.screenH,
+    paddingTop: spacing.screenTop,
+    paddingBottom: spacing.screenBottom,
+    ...(Platform.OS === "web" ? { maxWidth: 1100, width: "100%" as const, alignSelf: "center" as const } : null),
+  },
   title: { fontFamily: typography.fontFamily.serif, fontSize: typography.size.heading, marginBottom: 20, color: colors.ink },
   card: { backgroundColor: colors.surface, borderRadius: radii.hero },
   profileCard: { padding: 20, flexDirection: "row", alignItems: "center", gap: 16 },
