@@ -84,6 +84,23 @@ export async function updateTransactionCategory(
   return response.json();
 }
 
+export async function updateTransactionDetails(
+  transactionId: number,
+  merchant: string,
+  amount: string,
+  userId: number = CURRENT_USER_ID,
+): Promise<Transaction> {
+  const response = await fetch(`${API_BASE_URL}/transactions/${transactionId}/details?user_id=${userId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ merchant, amount }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update transaction (${response.status})`);
+  }
+  return response.json();
+}
+
 export async function deleteTransaction(transactionId: number, userId: number = CURRENT_USER_ID): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/transactions/${transactionId}?user_id=${userId}`, {
     method: "DELETE",

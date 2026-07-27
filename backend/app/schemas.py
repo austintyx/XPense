@@ -85,6 +85,11 @@ class TransactionCreateIn(BaseModel):
     bank: str | None = None
 
 
+class TransactionDetailsUpdateIn(BaseModel):
+    merchant: str
+    amount: Decimal
+
+
 class CategorySummary(BaseModel):
     category: str | None
     total: Decimal

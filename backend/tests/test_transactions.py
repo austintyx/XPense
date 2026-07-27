@@ -86,6 +86,60 @@ def test_category_update_without_subcategory_clears_it(client, db_session, user)
     assert body["subcategory"] is None
 
 
+def test_update_transaction_details_persists_merchant_and_amount(client, db_session, user):
+    txn = _make_txn(db_session, user, merchant_raw="RAW NAME", merchant_clean="Raw Name", amount=Decimal("10.00"))
+
+    response = client.patch(
+        f"/transactions/{txn.id}/details",
+        params={"user_id": user.id},
+        json={"merchant": "Corrected Merchant", "amount": "12.50"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["merchant_raw"] == "Corrected Merchant"
+    assert body["merchant_clean"] == "Corrected Merchant"
+    assert Decimal(str(body["amount"])) == Decimal("12.50")
+
+    db_session.refresh(txn)
+    assert txn.merchant_raw == "Corrected Merchant"
+    assert txn.amount == Decimal("12.50")
+
+
+def test_update_transaction_details_rejects_blank_merchant_or_non_positive_amount(client, db_session, user):
+    txn = _make_txn(db_session, user)
+
+    blank = client.patch(
+        f"/transactions/{txn.id}/details",
+        params={"user_id": user.id},
+        json={"merchant": "   ", "amount": "5.00"},
+    )
+    assert blank.status_code == 400
+
+    zero = client.patch(
+        f"/transactions/{txn.id}/details",
+        params={"user_id": user.id},
+        json={"merchant": "Fine", "amount": "0.00"},
+    )
+    assert zero.status_code == 400
+
+
+def test_update_transaction_details_404s_for_another_users_row(client, db_session, user):
+    from app.models import User
+
+    other_user = User(email="other-edit@xpense.dev", name="Other")
+    db_session.add(other_user)
+    db_session.commit()
+    db_session.refresh(other_user)
+    txn = _make_txn(db_session, other_user)
+
+    response = client.patch(
+        f"/transactions/{txn.id}/details",
+        params={"user_id": user.id},
+        json={"merchant": "Hacked", "amount": "1.00"},
+    )
+    assert response.status_code == 404
+
+
 def test_manual_add_creates_row(client, user):
     payload = {
         "user_id": user.id,

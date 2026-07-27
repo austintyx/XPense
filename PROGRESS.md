@@ -1003,3 +1003,25 @@ to `flex-start` since the merchant can now be two lines tall.
 
 **Tested:** frontend `jest` -> still 45 passed (no behavior asserted by tests changed, this was a
 pure layout fix -- verified against the screenshot's exact merchant string manually).
+
+## Edit transaction details (merchant name + amount)
+
+Added `PATCH /transactions/{id}/details` (`backend/app/routers/transactions.py`, new
+`TransactionDetailsUpdateIn` schema in `schemas.py`) -- user-scoped like the delete endpoint
+(404 for another user's row), rejects a blank merchant or non-positive amount (400), and writes
+the edited name to both `merchant_raw` and `merchant_clean` (same convention `categorize-pending`'s
+Grab backfill already uses when it overwrites a merchant name).
+
+Frontend: `updateTransactionDetails` (`app/src/api/client.ts`) and an `editTransaction` action on
+`TransactionsProvider` that patches the transaction into local state and refreshes the summary
+(amount changes affect category totals). UI lives in `CategorizeSheet.tsx`: a small "Edit" link
+next to the timestamp/source line swaps the merchant/amount header for a form (merchant text
+input, amount input reusing the same S$-prefixed box style as `AddTransactionSheet`) with
+Cancel/Save buttons; Save is disabled until both fields are non-empty.
+
+**Tested:** backend `pytest` -> 156 passed (up from 153): new
+`test_update_transaction_details_persists_merchant_and_amount`,
+`test_update_transaction_details_rejects_blank_merchant_or_non_positive_amount`, and
+`test_update_transaction_details_404s_for_another_users_row`. Frontend `jest` -> 46 passed: new
+Activity test opens the sheet, taps Edit, changes both fields, saves, and asserts the updated
+merchant name renders in the list.

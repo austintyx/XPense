@@ -27,6 +27,7 @@ import {
   updateBudget as apiUpdateBudget,
   updateGoal as apiUpdateGoal,
   updateTransactionCategory,
+  updateTransactionDetails,
   updateUserName as apiUpdateUserName,
 } from "../api/client";
 
@@ -47,6 +48,7 @@ interface AppDataActions {
   refetch: () => Promise<void>;
   categorize: (id: number, category: string, subcategory?: string | null) => Promise<void>;
   addTransaction: (draft: TransactionDraft) => Promise<void>;
+  editTransaction: (id: number, merchant: string, amount: string) => Promise<void>;
   removeTransaction: (id: number) => Promise<void>;
   updateBudget: (monthlyTarget: string) => Promise<void>;
   updateGoal: (goal: { name: string; target_amount: string; saved_amount: string }) => Promise<void>;
@@ -141,6 +143,16 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     setState((s) => ({ ...s, summary }));
   }, []);
 
+  const editTransaction = useCallback(async (id: number, merchant: string, amount: string) => {
+    const updated = await updateTransactionDetails(id, merchant, amount);
+    setState((s) => ({
+      ...s,
+      transactions: s.transactions.map((t) => (t.id === updated.id ? updated : t)),
+    }));
+    const summary = await getSummary();
+    setState((s) => ({ ...s, summary }));
+  }, []);
+
   const removeTransaction = useCallback(async (id: number) => {
     await deleteTransaction(id);
     setState((s) => ({ ...s, transactions: s.transactions.filter((t) => t.id !== id) }));
@@ -200,6 +212,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       refetch,
       categorize,
       addTransaction,
+      editTransaction,
       removeTransaction,
       updateBudget: updateBudgetAction,
       updateGoal: updateGoalAction,
@@ -215,6 +228,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       refetch,
       categorize,
       addTransaction,
+      editTransaction,
       removeTransaction,
       updateBudgetAction,
       updateGoalAction,

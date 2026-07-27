@@ -13,6 +13,7 @@ from app.schemas import (
     CategoryUpdateIn,
     SummaryOut,
     TransactionCreateIn,
+    TransactionDetailsUpdateIn,
     TransactionOut,
 )
 from app.services.categorize import categorize_transaction, food_subcategory, transport_subcategory
@@ -117,6 +118,28 @@ def categorize_pending(user_id: int, db: Session = Depends(get_db)):
 
     db.commit()
     return {"categorized": categorized, "remaining": len(pending) - categorized}
+
+
+@router.patch("/transactions/{transaction_id}/details", response_model=TransactionOut)
+def update_transaction_details(
+    transaction_id: int, user_id: int, body: TransactionDetailsUpdateIn, db: Session = Depends(get_db)
+):
+    txn = db.query(Transaction).filter_by(id=transaction_id, user_id=user_id).one_or_none()
+    if txn is None:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    merchant = body.merchant.strip()
+    if not merchant:
+        raise HTTPException(status_code=400, detail="Merchant name cannot be blank")
+    if body.amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be greater than zero")
+
+    txn.merchant_raw = merchant
+    txn.merchant_clean = merchant
+    txn.amount = body.amount
+    db.commit()
+    db.refresh(txn)
+    return txn
 
 
 @router.delete("/transactions/{transaction_id}", status_code=204)

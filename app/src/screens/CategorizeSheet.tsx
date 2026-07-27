@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { BottomSheet } from "../components/BottomSheet";
 import { CategoryChip } from "../components/CategoryChip";
@@ -15,15 +15,19 @@ interface CategorizeSheetProps {
 }
 
 export function CategorizeSheet({ transaction, onClose }: CategorizeSheetProps) {
-  const { categorize, removeTransaction, customCategories, customSubcategories } = useAppData();
+  const { categorize, editTransaction, removeTransaction, customCategories, customSubcategories } = useAppData();
   const { showToast } = useToast();
   const [pickedCategory, setPickedCategory] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editMerchant, setEditMerchant] = useState("");
+  const [editAmount, setEditAmount] = useState("");
 
   const categories = useMemo(() => allCategories(customCategories), [customCategories]);
 
   useEffect(() => {
     if (transaction) {
       setPickedCategory(transaction.category ?? null);
+      setEditing(false);
     }
   }, [transaction]);
 
@@ -55,6 +59,21 @@ export function CategorizeSheet({ transaction, onClose }: CategorizeSheetProps) 
     onClose();
   };
 
+  const startEdit = () => {
+    setEditMerchant(transaction.merchant_clean ?? transaction.merchant_raw ?? "");
+    setEditAmount(String(transaction.amount));
+    setEditing(true);
+  };
+
+  const canSaveEdit = editMerchant.trim().length > 0 && editAmount.trim().length > 0;
+
+  const saveEdit = async () => {
+    if (!canSaveEdit) return;
+    await editTransaction(transaction.id, editMerchant.trim(), editAmount.trim());
+    showToast("Transaction updated");
+    setEditing(false);
+  };
+
   const confirmDelete = () => {
     const label = transaction.merchant_clean ?? transaction.merchant_raw ?? "this transaction";
     Alert.alert("Delete transaction?", `Delete ${label}? This can't be undone.`, [
@@ -73,15 +92,65 @@ export function CategorizeSheet({ transaction, onClose }: CategorizeSheetProps) 
 
   return (
     <BottomSheet visible={transaction !== null} onClose={onClose} testID="categorize-sheet">
-      <View style={styles.headerRow}>
-        <Text style={[styles.headerText, styles.merchantText]} numberOfLines={2}>
-          {transaction.merchant_clean ?? transaction.merchant_raw ?? "Unknown"}
+      {editing ? (
+        <View style={styles.editForm}>
+          <Text style={styles.label}>Merchant</Text>
+          <TextInput
+            value={editMerchant}
+            onChangeText={setEditMerchant}
+            style={styles.textInput}
+            testID="edit-merchant"
+          />
+          <Text style={styles.label}>Amount</Text>
+          <View style={styles.amountBox}>
+            <Text style={styles.currencyPrefix}>S$</Text>
+            <TextInput
+              value={editAmount}
+              onChangeText={setEditAmount}
+              keyboardType="decimal-pad"
+              style={styles.amountInput}
+              testID="edit-amount"
+            />
+          </View>
+          <View style={styles.editActionsRow}>
+            <Pressable onPress={() => setEditing(false)} style={styles.editCancelButton} testID="edit-cancel">
+              <Text style={styles.editCancelText}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              onPress={saveEdit}
+              disabled={!canSaveEdit}
+              style={[styles.editSaveButton, canSaveEdit ? styles.editSaveButtonEnabled : styles.editSaveButtonDisabled]}
+              testID="edit-save"
+            >
+              <Text
+                style={[
+                  styles.editSaveText,
+                  canSaveEdit ? styles.editSaveTextEnabled : styles.editSaveTextDisabled,
+                ]}
+              >
+                Save
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : (
+        <View style={styles.headerRow}>
+          <Text style={[styles.headerText, styles.merchantText]} numberOfLines={2}>
+            {transaction.merchant_clean ?? transaction.merchant_raw ?? "Unknown"}
+          </Text>
+          <Text style={[styles.headerText, styles.amountText]}>{formatMoney(transaction.amount)}</Text>
+        </View>
+      )}
+      <View style={styles.metaRow}>
+        <Text style={styles.meta}>
+          {new Date(transaction.txn_at).toLocaleDateString()} · read from {deriveSource(transaction)}
         </Text>
-        <Text style={[styles.headerText, styles.amountText]}>{formatMoney(transaction.amount)}</Text>
+        {!editing && (
+          <Text style={styles.editLink} onPress={startEdit} testID="edit-transaction">
+            Edit
+          </Text>
+        )}
       </View>
-      <Text style={styles.meta}>
-        {new Date(transaction.txn_at).toLocaleDateString()} · read from {deriveSource(transaction)}
-      </Text>
       <Text style={styles.stepLabel}>
         {isSubcategoryStep ? `Which kind of ${pickedCategory!.toLowerCase()}?` : "Pick a category"}
       </Text>
@@ -118,7 +187,64 @@ const styles = StyleSheet.create({
   headerText: { fontFamily: typography.fontFamily.serif, fontSize: typography.size.displayXl, color: colors.ink },
   merchantText: { flex: 1, flexShrink: 1, minWidth: 0 },
   amountText: { flexShrink: 0, marginLeft: 10 },
-  meta: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.sm, color: colors.ink50, marginBottom: 18 },
+  metaRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 18 },
+  meta: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.sm, color: colors.ink50 },
+  editLink: { fontFamily: typography.fontFamily.sansMedium, fontSize: typography.size.sm, color: colors.ink },
+  editForm: { marginBottom: 4 },
+  label: {
+    fontFamily: typography.fontFamily.mono,
+    fontSize: typography.size.xs5,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: colors.ink42,
+    marginBottom: 8,
+  },
+  textInput: {
+    borderWidth: 1,
+    borderColor: colors.ink14,
+    borderRadius: 12,
+    padding: 12,
+    fontFamily: typography.fontFamily.sans,
+    fontSize: typography.size.lg,
+    color: colors.ink,
+    backgroundColor: colors.surface,
+    marginBottom: 14,
+  },
+  amountBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.ink14,
+    borderRadius: 12,
+    paddingHorizontal: 13,
+    backgroundColor: colors.surface,
+    marginBottom: 14,
+  },
+  currencyPrefix: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.lg, color: colors.ink45 },
+  amountInput: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    fontFamily: typography.fontFamily.sans,
+    fontSize: typography.size.xl,
+    color: colors.ink,
+  },
+  editActionsRow: { flexDirection: "row", gap: 10 },
+  editCancelButton: {
+    flex: 1,
+    borderRadius: 14,
+    paddingVertical: 15,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.ink14,
+  },
+  editCancelText: { fontFamily: typography.fontFamily.sansMedium, fontSize: typography.size.lg, color: colors.ink },
+  editSaveButton: { flex: 1, borderRadius: 14, paddingVertical: 15, alignItems: "center" },
+  editSaveButtonEnabled: { backgroundColor: colors.ink },
+  editSaveButtonDisabled: { backgroundColor: colors.ink16 },
+  editSaveText: { fontFamily: typography.fontFamily.sansMedium, fontSize: typography.size.lg },
+  editSaveTextEnabled: { color: colors.onDark },
+  editSaveTextDisabled: { color: colors.ink35 },
   stepLabel: {
     fontFamily: typography.fontFamily.mono,
     fontSize: typography.size.xs5,

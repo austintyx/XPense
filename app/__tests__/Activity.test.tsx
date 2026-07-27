@@ -124,6 +124,27 @@ test('deleting a transaction confirms, then removes it from the list', async () 
   await waitFor(() => expect(screen.queryByText('CHICKEN RICE')).toBeNull());
 });
 
+test('editing a transaction updates the merchant name and amount', async () => {
+  mockClientDefaults({
+    transactions: [makeTxn({ id: 1, merchant_raw: 'CHICKEN RICE', category: 'Food', subcategory: 'Lunch' })],
+  });
+  const editSpy = jest.spyOn(client, 'updateTransactionDetails').mockResolvedValue(
+    makeTxn({ id: 1, merchant_raw: 'Corrected Stall', merchant_clean: 'Corrected Stall', amount: '12.50', category: 'Food', subcategory: 'Lunch' }),
+  );
+
+  renderWithProviders(<Activity />);
+
+  fireEvent.press(await screen.findByTestId('transaction-1'));
+  fireEvent.press(await screen.findByTestId('edit-transaction'));
+
+  fireEvent.changeText(screen.getByTestId('edit-merchant'), 'Corrected Stall');
+  fireEvent.changeText(screen.getByTestId('edit-amount'), '12.50');
+  fireEvent.press(screen.getByTestId('edit-save'));
+
+  await waitFor(() => expect(editSpy).toHaveBeenCalledWith(1, 'Corrected Stall', '12.50'));
+  expect(await screen.findByText('Corrected Stall')).toBeTruthy();
+});
+
 test('add transaction sheet requires amount, merchant and category before Save is enabled', async () => {
   mockClientDefaults({ transactions: [] });
   const createSpy = jest.spyOn(client, 'createTransaction').mockResolvedValue(
