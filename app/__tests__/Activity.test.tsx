@@ -32,6 +32,19 @@ test('renders transactions grouped by day, with categorized and uncategorized ro
   expect(screen.getByText('Tap to categorise')).toBeTruthy();
 });
 
+test('the All filter also shows transfer transactions, excluded from the Needs a category count', async () => {
+  mockClientDefaults({
+    transactions: [makeTxn({ id: 1, merchant_raw: 'CHICKEN RICE', category: 'Food' })],
+    transfers: [makeTxn({ id: 2, merchant_raw: 'A/C ending 9249', type: 'transfer', category: null })],
+  });
+
+  renderWithProviders(<Activity />);
+
+  expect(await screen.findByText('CHICKEN RICE')).toBeTruthy();
+  expect(await screen.findByText('A/C ending 9249')).toBeTruthy();
+  expect(screen.getByTestId('needs-count-badge')).toHaveTextContent('0');
+});
+
 test('the Needs a category filter shows only uncategorized rows and the count badge', async () => {
   mockClientDefaults({
     transactions: [

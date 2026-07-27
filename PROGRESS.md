@@ -1556,3 +1556,37 @@ branch directly). Updated `dbs_paynow_person`/`uob_paynow` fixture-test expectat
 they'll now show as expenses. If you get an actual "payment received" alert email, forward it (or
 a screenshot) so the receive-detection path can be verified against real wording instead of the
 synthetic test text.
+
+## Transfer-type transactions were saved but invisible in the app
+
+The human asked whether `transfer`-type transactions were still being saved to the database at
+all. They are -- `save_parsed_transaction`/`sync.py` never filter by `type` before inserting. The
+actual gap was on the *read* side: `GET /transactions` defaults to `type=expense`
+(`routers/transactions.py`), and the only frontend call site (`TransactionsProvider.tsx`, feeding
+every screen) calls `getTransactions()` with no argument, which itself defaults to `"expense"`
+too. So the app has never fetched or shown transfer-type rows anywhere -- not a regression from
+the receive/received change above, a pre-existing gap.
+
+**Fix, scoped to Activity only (confirmed with the human):** rather than widening the global
+`TransactionsProvider` fetch (which feeds Home/Summary/Budgets' spend totals too, several of which
+turned out to have inconsistent `isExpense` filtering that would have let transfers leak into
+places like Summary's month-view calendar panel), `Activity.tsx` now makes its own separate
+`getTransactions("transfer")` call and merges the result into the "All" filter view only (sorted
+back into `txn_at`-descending order, since `groupByDay` expects pre-sorted input and the two
+fetches arrive sorted independently). The "Needs a category" and per-category filters are
+untouched, still sourced from the expense-only `transactions` -- and spend totals/budgets
+everywhere else are unaffected, since they never see the merged list.
+
+`testUtils.tsx`'s `mockClientDefaults` previously mocked `getTransactions` with one fixed return
+value regardless of the `type` argument, which would have made this second call resolve to the
+same array as the first (duplicating rows in tests) -- changed to a `mockImplementation` keyed on
+`type`, with a new optional `overrides.transfers` (defaults to `[]`, preserving every existing
+test's behavior unchanged).
+
+**Tested:** frontend suite -- 85 passed (was 84; +1 new test asserting a transfer row appears in
+"All" but doesn't count toward the "Needs a category" badge). `npx tsc --noEmit` clean. Web bundle
+still compiles (200, ~3.7MB).
+
+**Manual steps for the human:** open Activity's "All" filter and confirm any Own Funds Transfer
+(or other transfer-type) transactions now show up in the feed, still excluded from Summary/Budgets
+spend totals as before.
