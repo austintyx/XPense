@@ -57,6 +57,20 @@ CASES = [
         id="dbs_nets",
     ),
     pytest.param(
+        "dbs_paynow_received.txt",
+        "ibanking.alert@dbs.com",
+        dict(
+            amount=Decimal("17.40"),
+            currency="SGD",
+            merchant_raw="LOU SIM TENG",
+            direction=DirectionEnum.credit,
+            type=TransactionTypeEnum.transfer,
+            bank="DBS",
+        ),
+        dict(day=23, month=7, hour=22, minute=31, year=2026),
+        id="dbs_paynow_received",
+    ),
+    pytest.param(
         "dbs_own_transfer.txt",
         "alerts@dbs.com.sg",
         dict(

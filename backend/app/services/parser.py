@@ -65,6 +65,18 @@ _DBS_OWN_TRANSFER_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Incoming PayNow ("digibank Alert - You've received a transfer") is a completely different
+# template from the outgoing Date & Time/Amount/From/To table below -- confirmed against a real
+# screenshot -- so it needs its own regex rather than falling through to _DBS_TABLE_RE (which
+# requires "Date & Time:"/"Amount:" labels this format doesn't have). Includes an explicit 4-digit
+# year, unlike the outgoing formats.
+_DBS_PAYNOW_RECEIVED_RE = re.compile(
+    rf"You have received (?P<amount>{_AMOUNT}) via PayNow on "
+    r"(?P<day>\d{1,2}) (?P<month>[A-Za-z]{3}) (?P<year>\d{4}) (?P<hour>\d{1,2}):(?P<minute>\d{2}) SGT\.\s*"
+    r"From:\s*(?P<sender>.+?)\s*To:",
+    re.IGNORECASE,
+)
+
 _ID_SUFFIX = r"UEN ending [\w\d]+|MOBILE ending \d+|NRIC ending [\w\d]+"
 
 # DBS's shared alert-email template -- confirmed against real inbox screenshots to be used for
@@ -99,6 +111,20 @@ def _parse_dbs(text: str) -> ParsedTxn | None:
             type=TransactionTypeEnum.transfer,
             bank="DBS",
             txn_at=_sgt_datetime(int(match["day"]), match["month"], int(match["hour"]), int(match["minute"])),
+            raw_parsed=match.groupdict(),
+        )
+
+    if match := _DBS_PAYNOW_RECEIVED_RE.search(text):
+        return ParsedTxn(
+            amount=_parse_amount(match["amount"]),
+            currency="SGD",
+            merchant_raw=match["sender"].strip(),
+            direction=DirectionEnum.credit,
+            type=_classify_paynow(text),
+            bank="DBS",
+            txn_at=_sgt_datetime(
+                int(match["day"]), match["month"], int(match["hour"]), int(match["minute"]), year=int(match["year"])
+            ),
             raw_parsed=match.groupdict(),
         )
 
