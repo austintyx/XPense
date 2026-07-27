@@ -1,8 +1,8 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import httpx
 
-from app.services.bank_senders import GRAPH_SENDER_QUERY
+from app.services.bank_senders import GRAPH_SENDER_QUERY, is_allowlisted_sender
 from app.services.gmail import strip_html
 from app.services.oauth_http import raise_for_status_with_body
 
@@ -53,6 +53,45 @@ def list_messages_from_sender(
         for m in messages
         if sender_email in m.get("from", {}).get("emailAddress", {}).get("address", "").lower()
     ]
+
+
+def list_bank_messages_since(access_token: str, since: datetime) -> list[dict]:
+    """A manual historical backfill can easily span months, so unlike list_bank_messages (a
+    single unpaginated page) this follows @odata.nextLink until exhausted. Confirmed via Graph's
+    docs that $filter and $search cannot be combined on /messages at all, so -- same as
+    list_messages_from_sender above -- this drops $search entirely and filters by the full bank
+    sender allowlist client-side, bounded by the one thing that *does* support $filter+$orderby
+    together: the native, indexed receivedDateTime property. Known tradeoff: without $search this
+    scans the whole mailbox in the date range, not just bank senders -- acceptable for a
+    synchronous request in practice, since the per-message body fetch stays cheap and gated by
+    the allowlist regardless."""
+    start = since.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    end = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    headers = {"Authorization": f"Bearer {access_token}", "ConsistencyLevel": "eventual"}
+
+    messages: list[dict] = []
+    url = f"{GRAPH_API_BASE}/messages"
+    params: dict | None = {
+        "$filter": f"receivedDateTime ge {start} and receivedDateTime le {end}",
+        "$orderby": "receivedDateTime desc",
+        "$select": "id,from",
+        "$top": 100,
+    }
+    while url is not None:
+        response = httpx.get(url, params=params, headers=headers)
+        raise_for_status_with_body(response)
+        body = response.json()
+        messages.extend(
+            {"id": m["id"]}
+            for m in body.get("value", [])
+            if is_allowlisted_sender(m.get("from", {}).get("emailAddress", {}).get("address", ""))
+        )
+        # @odata.nextLink is a complete, opaque URL (carries its own $skiptoken) -- follow it
+        # directly rather than re-deriving params, but params was only needed for the first
+        # request since the link already encodes the filter/orderby/select/top.
+        url = body.get("@odata.nextLink")
+        params = None
+    return messages
 
 
 def fetch_message(access_token: str, message_id: str) -> dict:

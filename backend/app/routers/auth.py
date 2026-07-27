@@ -70,12 +70,13 @@ def _resolve_user(db: Session, user_id: int | None, provider_email: str) -> User
 
 def _upsert_email_account(
     db: Session, user_id: int, provider: ProviderEnum, provider_email: str, token_data: dict, expires_at
-) -> EmailAccount:
+) -> tuple[EmailAccount, bool]:
     account = (
         db.query(EmailAccount)
         .filter_by(user_id=user_id, provider=provider, provider_email=provider_email)
         .first()
     )
+    created = account is None
     if account is None:
         account = EmailAccount(user_id=user_id, provider=provider, provider_email=provider_email)
         db.add(account)
@@ -87,7 +88,7 @@ def _upsert_email_account(
 
     db.commit()
     db.refresh(account)
-    return account
+    return account, created
 
 
 def _maybe_set_user_name(db: Session, user: User, name: str | None) -> None:
@@ -123,11 +124,18 @@ def google_auth_callback(code: str, state: str, db: Session = Depends(get_db)):
     expires_at = google_oauth.compute_expiry(token_data.get("expires_in", 3600))
 
     user = _resolve_user(db, user_id, provider_email)
-    _upsert_email_account(db, user.id, ProviderEnum.google, provider_email, token_data, expires_at)
+    _, is_new_account = _upsert_email_account(db, user.id, ProviderEnum.google, provider_email, token_data, expires_at)
     _maybe_set_user_name(db, user, userinfo.get("name"))
 
     return RedirectResponse(
-        _append_query(return_to, linked="true", provider="google", email=provider_email, user_id=str(user.id))
+        _append_query(
+            return_to,
+            linked="true",
+            provider="google",
+            email=provider_email,
+            user_id=str(user.id),
+            is_new_account="true" if is_new_account else "false",
+        )
     )
 
 
@@ -149,9 +157,18 @@ def microsoft_auth_callback(code: str, state: str, db: Session = Depends(get_db)
     expires_at = ms_oauth.compute_expiry(token_data.get("expires_in", 3600))
 
     user = _resolve_user(db, user_id, provider_email)
-    _upsert_email_account(db, user.id, ProviderEnum.microsoft, provider_email, token_data, expires_at)
+    _, is_new_account = _upsert_email_account(
+        db, user.id, ProviderEnum.microsoft, provider_email, token_data, expires_at
+    )
     _maybe_set_user_name(db, user, userinfo.get("displayName"))
 
     return RedirectResponse(
-        _append_query(return_to, linked="true", provider="microsoft", email=provider_email, user_id=str(user.id))
+        _append_query(
+            return_to,
+            linked="true",
+            provider="microsoft",
+            email=provider_email,
+            user_id=str(user.id),
+            is_new_account="true" if is_new_account else "false",
+        )
     )

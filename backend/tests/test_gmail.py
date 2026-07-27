@@ -1,6 +1,9 @@
 import base64
+from datetime import datetime, timezone
 
-from app.services.gmail import extract_plain_text, get_sender, strip_html
+import httpx
+
+from app.services.gmail import extract_plain_text, get_sender, list_bank_messages_since, strip_html
 
 
 def test_strip_html_removes_tags_and_collapses_whitespace():
@@ -45,3 +48,37 @@ def test_get_sender_reads_from_header():
         }
     }
     assert get_sender(message) == "DBS Bank <alerts@dbs.com.sg>"
+
+
+def test_list_bank_messages_since_follows_next_page_token_until_exhausted(monkeypatch):
+    pages = {
+        None: {"messages": [{"id": "m1"}, {"id": "m2"}], "nextPageToken": "page2"},
+        "page2": {"messages": [{"id": "m3"}]},
+    }
+    seen_tokens = []
+
+    def fake_get(url, params=None, headers=None):
+        token = params.get("pageToken")
+        seen_tokens.append(token)
+        return httpx.Response(200, json=pages[token], request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", fake_get)
+
+    result = list_bank_messages_since("fake-token", datetime(2026, 1, 1, tzinfo=timezone.utc))
+
+    assert [m["id"] for m in result] == ["m1", "m2", "m3"]
+    assert seen_tokens == [None, "page2"]
+
+
+def test_list_bank_messages_since_stops_after_a_single_page_with_no_token(monkeypatch):
+    monkeypatch.setattr(
+        httpx,
+        "get",
+        lambda url, params=None, headers=None: httpx.Response(
+            200, json={"messages": [{"id": "m1"}]}, request=httpx.Request("GET", url)
+        ),
+    )
+
+    result = list_bank_messages_since("fake-token", datetime(2026, 1, 1, tzinfo=timezone.utc))
+
+    assert [m["id"] for m in result] == ["m1"]

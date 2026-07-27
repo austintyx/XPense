@@ -59,6 +59,7 @@ def test_microsoft_callback_stores_encrypted_tokens_and_redirects_to_app(client,
     assert query["provider"] == ["microsoft"]
     assert query["email"] == ["someone@outlook.com"]
     assert query["user_id"] == [str(user.id)]
+    assert query["is_new_account"] == ["true"]
 
     account = (
         db_session.query(EmailAccount)
@@ -101,6 +102,34 @@ def test_microsoft_callback_without_user_id_creates_a_new_user(client, db_sessio
 
     new_user = db_session.query(User).filter_by(email="brandnew@outlook.com").one()
     assert query["user_id"] == [str(new_user.id)]
+    assert query["is_new_account"] == ["true"]
+
+
+def test_microsoft_callback_relinking_an_already_connected_account_reports_is_new_account_false(
+    client, db_session, user, monkeypatch
+):
+    monkeypatch.setattr(
+        ms_oauth,
+        "exchange_code_for_tokens",
+        lambda code: {"access_token": "fake-ms-access-token", "refresh_token": "fake-ms-refresh-token", "expires_in": 3600},
+    )
+    monkeypatch.setattr(
+        ms_oauth,
+        "fetch_userinfo",
+        lambda access_token: {"mail": "someone@outlook.com", "userPrincipalName": "someone@outlook.com"},
+    )
+
+    state = encode_state(user.id, RETURN_TO)
+    first = client.get(
+        "/auth/microsoft/callback", params={"code": "fake-code", "state": state}, follow_redirects=False
+    )
+    assert parse_qs(urlparse(first.headers["location"]).query)["is_new_account"] == ["true"]
+
+    second = client.get(
+        "/auth/microsoft/callback", params={"code": "fake-code-2", "state": state}, follow_redirects=False
+    )
+    assert parse_qs(urlparse(second.headers["location"]).query)["is_new_account"] == ["false"]
+    assert db_session.query(EmailAccount).filter_by(user_id=user.id, provider=ProviderEnum.microsoft).count() == 1
 
 
 def test_microsoft_callback_without_user_id_reuses_an_existing_user_by_email(client, db_session, user, monkeypatch):

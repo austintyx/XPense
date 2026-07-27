@@ -72,6 +72,9 @@ def test_google_callback_stores_encrypted_tokens_and_redirects_to_app(client, db
     assert query["email"] == ["someone@gmail.com"]
     # regression: an existing user_id round-trips unchanged through the redirect
     assert query["user_id"] == [str(user.id)]
+    # this user has no google account yet -- linking one (even with an existing user_id) is a
+    # new EmailAccount row, so the backfill prompt should be offered
+    assert query["is_new_account"] == ["true"]
 
     account = (
         db_session.query(EmailAccount)
@@ -108,10 +111,37 @@ def test_google_callback_without_user_id_creates_a_new_user(client, db_session, 
 
     new_user = db_session.query(User).filter_by(email="brandnew@gmail.com").one()
     assert query["user_id"] == [str(new_user.id)]
+    assert query["is_new_account"] == ["true"]
     assert new_user.name == "Brand New"
 
     account = db_session.query(EmailAccount).filter_by(user_id=new_user.id, provider=ProviderEnum.google).one()
     assert account.provider_email == "brandnew@gmail.com"
+
+
+def test_google_callback_relinking_an_already_connected_account_reports_is_new_account_false(
+    client, db_session, user, monkeypatch
+):
+    # Settings' "Change" link re-runs the same callback for an account that's already connected
+    # (e.g. to refresh an expired token) -- that's not "linking an account" in the sense this
+    # feature means, so the backfill prompt must not be offered a second time.
+    monkeypatch.setattr(
+        google_oauth,
+        "exchange_code_for_tokens",
+        lambda code: {"access_token": "fake-access-token", "refresh_token": "fake-refresh-token", "expires_in": 3600},
+    )
+    monkeypatch.setattr(
+        google_oauth,
+        "fetch_userinfo",
+        lambda access_token: {"email": "someone@gmail.com"},
+    )
+
+    state = encode_state(user.id, RETURN_TO)
+    first = client.get("/auth/google/callback", params={"code": "fake-code", "state": state}, follow_redirects=False)
+    assert parse_qs(urlparse(first.headers["location"]).query)["is_new_account"] == ["true"]
+
+    second = client.get("/auth/google/callback", params={"code": "fake-code-2", "state": state}, follow_redirects=False)
+    assert parse_qs(urlparse(second.headers["location"]).query)["is_new_account"] == ["false"]
+    assert db_session.query(EmailAccount).filter_by(user_id=user.id, provider=ProviderEnum.google).count() == 1
 
 
 def test_google_callback_without_user_id_reuses_an_existing_user_by_email(client, db_session, user, monkeypatch):

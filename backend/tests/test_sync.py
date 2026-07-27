@@ -233,3 +233,25 @@ def test_sync_falls_back_to_transport_when_no_matching_grab_receipt_is_found(
     txn = db_session.query(Transaction).filter_by(user_id=user.id, merchant_raw="GRAB").one()
     assert txn.category == "Transport"
     assert txn.subcategory == "Private"
+
+
+def test_sync_with_since_uses_the_paginated_backfill_path_instead_of_the_normal_query(
+    client, db_session, user, email_account, monkeypatch
+):
+    """A manual historical backfill (since= given) must route through list_bank_messages_since,
+    not the everyday incremental query -- the latter would silently truncate to one page."""
+    message = _fake_message("msg-old", DBS_PAYNOW_TEXT, DBS_SENDER)
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("list_bank_messages should not be called when since= is given")
+
+    monkeypatch.setattr(gmail, "list_bank_messages", fail_if_called)
+    monkeypatch.setattr(gmail, "list_bank_messages_since", lambda access_token, since: [{"id": "msg-old"}])
+    monkeypatch.setattr(gmail, "fetch_message", lambda access_token, message_id: message)
+
+    response = client.post("/sync", params={"user_id": user.id, "since": "2026-01-01"})
+    assert response.status_code == 200
+    assert response.json()["inserted"] == 1
+
+    db_session.refresh(email_account)
+    assert email_account.last_synced_at is not None
