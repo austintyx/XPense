@@ -1,10 +1,11 @@
-import DateTimePicker from "@react-native-community/datetimepicker";
 import { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { BottomSheet } from "./BottomSheet";
+import { DateField } from "./DateField";
 import type { Provider } from "../api/client";
 import { colors, radii, spacing, typography } from "../theme/tokens";
+import { toDateString } from "../utils/dateSerialization";
 
 const PROVIDER_LABELS: Record<Provider, string> = {
   google: "Gmail",
@@ -17,16 +18,6 @@ function defaultSinceDate(): Date {
   const date = new Date();
   date.setDate(date.getDate() - DEFAULT_DAYS_BACK);
   return date;
-}
-
-function toDateString(date: Date): string {
-  // Local calendar fields, not toISOString() -- toISOString() converts to UTC first and can
-  // shift the date back a day for anyone whose device timezone is behind UTC, before the value
-  // even reaches the backend's (correct) Singapore-midnight handling.
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
 }
 
 interface SyncBackfillSheetProps {
@@ -56,15 +47,7 @@ export function SyncBackfillSheet({ visible, provider, onSync, onSkip }: SyncBac
         Pull in older bank alerts from {PROVIDER_LABELS[provider]}, going back to a date you choose.
       </Text>
       <View style={styles.pickerWrap}>
-        <DateTimePicker
-          testID="sync-backfill-date-picker"
-          value={date}
-          mode="date"
-          maximumDate={new Date()}
-          onChange={(_event, selected) => {
-            if (selected) setDate(selected);
-          }}
-        />
+        <DateField testID="sync-backfill-date-picker" value={date} maximumDate={new Date()} onChange={setDate} />
       </View>
       <View style={styles.actionsRow}>
         <Pressable onPress={onSkip} disabled={syncing} style={styles.skipButton} testID="sync-backfill-skip">

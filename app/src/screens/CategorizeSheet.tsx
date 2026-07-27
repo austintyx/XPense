@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { BottomSheet } from "../components/BottomSheet";
 import { CategoryChip } from "../components/CategoryChip";
 import { useToast } from "../components/Toast";
 import { useAppData } from "../store/TransactionsProvider";
 import { categoryColorChip, colors, typography } from "../theme/tokens";
+import { confirmDestructive } from "../utils/confirm";
 import { allCategories, deriveSource, formatMoney, mergedSubcategories } from "../utils/derive";
 import type { Transaction } from "../api/client";
 
@@ -76,18 +77,16 @@ export function CategorizeSheet({ transaction, onClose }: CategorizeSheetProps) 
 
   const confirmDelete = () => {
     const label = transaction.merchant_clean ?? transaction.merchant_raw ?? "this transaction";
-    Alert.alert("Delete transaction?", `Delete ${label}? This can't be undone.`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          await removeTransaction(transaction.id);
-          showToast("Transaction deleted");
-          onClose();
-        },
+    confirmDestructive({
+      title: "Delete transaction?",
+      message: `Delete ${label}? This can't be undone.`,
+      confirmLabel: "Delete",
+      onConfirm: async () => {
+        await removeTransaction(transaction.id);
+        showToast("Transaction deleted");
+        onClose();
       },
-    ]);
+    });
   };
 
   return (
