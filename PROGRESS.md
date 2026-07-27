@@ -1590,3 +1590,35 @@ still compiles (200, ~3.7MB).
 **Manual steps for the human:** open Activity's "All" filter and confirm any Own Funds Transfer
 (or other transfer-type) transactions now show up in the feed, still excluded from Summary/Budgets
 spend totals as before.
+
+## Bug fix #4: incoming PayNow ("you've received a transfer") had no parsing support at all
+
+Following up on the "no transfers, all expenses" report, the human confirmed a real incoming
+transfer was completely missing (not just mistyped) and sent a screenshot: subject "digibank Alert
+- You've received a transfer", from `ibanking.alert@dbs.com`. This is a *third* distinct DBS email
+template, structurally nothing like the outgoing Date & Time/Amount/From/To table (`_DBS_TABLE_RE`)
+-- no "Amount:"/"Date & Time:" labels at all, just "You have received SGD 17.40 via PayNow on 23
+Jul 2026 22:31 SGT. From: LOU SIM TENG To: Your DBS/POSB account ending 6540." So it matched
+nothing and `parse_email` silently dropped it, same root cause as the NETS/PayNow bug (bug fix #2)
+but a format that hadn't been seen yet.
+
+**Fix:** added `_DBS_PAYNOW_RECEIVED_RE`, a dedicated regex for this template, tried right after
+the existing Own Funds Transfer check. Verified directly against the exact screenshot text before
+writing the fixture (`dbs_paynow_received.txt`): SGD 17.40, sender "LOU SIM TENG", 23 Jul 2026
+22:31 SGT. Unlike every other DBS branch so far, this one is a genuine incoming transaction, so
+`direction=DirectionEnum.credit` (not the `debit` every other branch hardcodes) -- and `type` runs
+through the same `_classify_paynow(text)` used elsewhere, which correctly returns `transfer` since
+the text contains "received". This format also includes an explicit 4-digit year (unlike the
+others, which infer the current year), so `_sgt_datetime` is called with `year=` explicitly here.
+
+Note: this confirms incoming PayNow specifically, not DBS's "Own Funds Transfer" (moving money
+between your own accounts) -- that regex (`_DBS_OWN_TRANSFER_RE`) is still unverified against a
+real email; if a genuine self-to-self transfer ever goes missing, that's the next one to check
+with a screenshot.
+
+**Tested:** full backend suite -- 181 passed (was 180; +1 new fixture-based test case). Direct
+`parse_email` call against the untouched screenshot text confirmed the exact match before the
+fixture was even written.
+
+**Manual steps for the human:** trigger a sync and confirm this and any future "you've received a
+transfer" emails now appear in Activity's "All" filter as transfer-type, credit-direction rows.
