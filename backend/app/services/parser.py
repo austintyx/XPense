@@ -43,11 +43,19 @@ def _sgt_datetime(day: int, month_abbr: str, hour: int, minute: int, year: int |
     return datetime(year, month, day, hour, minute, tzinfo=SGT)
 
 
-def _classify_paynow(id_type: str) -> TransactionTypeEnum:
-    # UEN = business/merchant -> expense. Mobile/NRIC = person -> transfer.
-    if "uen" in id_type.lower():
-        return TransactionTypeEnum.expense
-    return TransactionTypeEnum.transfer
+_RECEIVE_RE = re.compile(r"\b(?:receive|received)\b", re.IGNORECASE)
+
+
+def _classify_paynow(text: str) -> TransactionTypeEnum:
+    # Whether the payee is a business (UEN) or a person (mobile/NRIC) doesn't reliably say
+    # whether this was really spending -- e.g. plenty of hawker stalls take PayNow on a personal
+    # mobile number, not a UEN, and would be wrongly excluded from spend totals. What the email
+    # actually says is more reliable: money coming into the account ("you have received...")
+    # isn't spending -> transfer; everything else (paying a shop or a person) is money going out
+    # -> expense.
+    if _RECEIVE_RE.search(text):
+        return TransactionTypeEnum.transfer
+    return TransactionTypeEnum.expense
 
 
 _DBS_OWN_TRANSFER_RE = re.compile(
@@ -104,7 +112,7 @@ def _parse_dbs(text: str) -> ParsedTxn | None:
                 currency="SGD",
                 merchant_raw=id_match["name"].strip(),
                 direction=DirectionEnum.debit,
-                type=_classify_paynow(id_match["idtype"]),
+                type=_classify_paynow(text),
                 bank="DBS",
                 txn_at=txn_at,
                 raw_parsed=match.groupdict(),
@@ -157,7 +165,7 @@ def _parse_uob(text: str) -> ParsedTxn | None:
             currency="SGD",
             merchant_raw=match["merchant"].strip(),
             direction=DirectionEnum.debit,
-            type=_classify_paynow(match["idtype"]),
+            type=_classify_paynow(text),
             bank="UOB",
             txn_at=_sgt_datetime(
                 int(match["day"]), match["month"], hour, int(match["minute"]), year=2000 + int(match["year"])
