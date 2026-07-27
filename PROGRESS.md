@@ -1025,3 +1025,47 @@ Cancel/Save buttons; Save is disabled until both fields are non-empty.
 `test_update_transaction_details_404s_for_another_users_row`. Frontend `jest` -> 46 passed: new
 Activity test opens the sheet, taps Edit, changes both fields, saves, and asserts the updated
 merchant name renders in the list.
+
+## Login-via-connect-account onboarding flow
+
+Replaced the hardcoded `CURRENT_USER_ID = 1` single-user shortcut with a real (if minimal)
+login flow, so a fresh database self-bootstraps instead of needing a manual seed script. This
+was the structural fix for the Render/Supabase deploy bug where Home/Settings rendered blank
+forever and "Add transaction" silently failed -- both were foreign-key violations against an
+empty `users` table, since nothing ever created that first row.
+
+**Backend** (`backend/app/routers/auth.py`, `backend/app/services/oauth_state.py`): `/auth/google`
+and `/auth/microsoft` no longer require an existing `user_id`. When it's omitted, the callback
+resolves-or-creates a `User` by the OAuth account's own email (`_resolve_user`) instead of
+assuming one already exists -- connecting an account *is* how you get an account now. Wrapped the
+create branch in a `try/except IntegrityError` (rollback + refetch) as cheap insurance against a
+double-tapped connect button racing two new-user callbacks for the same email. Both callbacks now
+always include `user_id=<resolved id>` in the redirect back to the app (previously only
+`linked`/`provider`/`email`), so the frontend reads it the same way regardless of whether this was
+a login or an existing user linking a second mailbox.
+
+**Frontend**: added `@react-native-async-storage/async-storage` (first persistent storage in the
+app). New `AuthProvider`/`useAuth()` (`app/src/store/AuthProvider.tsx`) reads a stored user id on
+launch and **validates it with a live `getUser` call** before trusting it -- this closes a real
+edge case a Plan-agent design review flagged: a device that logged in against an old database
+still has that id in storage after the backend gets redeployed/wiped, which would otherwise
+reproduce the exact blank-screen bug this feature fixes, just relocated to "stale AsyncStorage"
+instead of "hardcoded 1". `App.tsx` now gates on this: blank while resolving, a new `Login` screen
+(`app/src/screens/Login.tsx`) when logged out, today's tab-bar tree when logged in --
+`TransactionsProvider` is never mounted until a real user id exists, so its immediate `refetch()`
+can't fire against nothing. `CURRENT_USER_ID` in `client.ts` changed from `const` to `let` with a
+`setCurrentUserId` setter (kept its default of `1` so every existing screen-level test, which
+renders a screen directly and bypasses the new auth gate entirely, needed zero changes).
+`Settings.tsx`'s existing "Connect Gmail/Outlook" buttons (link-an-additional-account, unrelated to
+login) now pass `CURRENT_USER_ID` explicitly, since `buildAuthUrl`'s userId param is no longer
+defaulted -- the previously-inert "Sign out" text is now wired to `logout()`.
+
+**Tested:** backend `pytest` -> 162 passed (up from 156): new cases in `test_auth.py`/
+`test_ms_auth.py` for the no-`user_id` login path (creates a new user; reuses an existing one by
+email, no duplicate) plus a regression case proving the existing-`user_id` linking path is
+unchanged. Frontend `jest` -> 51 passed (up from 46): new `Login.test.tsx` (successful connect
+persists the id from the redirect; cancelling resets the button instead of leaving it stuck); new
+`App.test.tsx` cases for the logged-out path and the stale-stored-id-falls-back-to-Login path; new
+`Settings.test.tsx` case for sign-out clearing storage. Added an official jest mock for
+`@react-native-async-storage/async-storage` (`app/__mocks__/...`) so this is transparent to every
+other existing test file.

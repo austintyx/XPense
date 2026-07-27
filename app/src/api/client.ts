@@ -1,7 +1,13 @@
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
-// Single-user MVP: there's no login screen yet, so every call is scoped to this fixed user.
-export const CURRENT_USER_ID = 1;
+// One device is logged into one user at a time. Starts at 1 so every screen-level test (which
+// renders a screen directly, bypassing AuthProvider entirely) keeps working unchanged; the real
+// app overwrites this via setCurrentUserId once AuthProvider resolves who's actually logged in.
+export let CURRENT_USER_ID = 1;
+
+export function setCurrentUserId(id: number): void {
+  CURRENT_USER_ID = id;
+}
 
 export type Provider = "google" | "microsoft";
 
@@ -21,8 +27,13 @@ export async function getLinkedAccounts(userId: number = CURRENT_USER_ID): Promi
   return response.json();
 }
 
-export function buildAuthUrl(provider: Provider, redirectUri: string, userId: number = CURRENT_USER_ID): string {
-  const params = new URLSearchParams({ user_id: String(userId), return_to: redirectUri });
+export function buildAuthUrl(provider: Provider, redirectUri: string, userId?: number): string {
+  // No userId -> the login/signup flow: connecting the account is what resolves/creates the
+  // user, so there's deliberately nothing to identify one by yet.
+  const params = new URLSearchParams({ return_to: redirectUri });
+  if (userId !== undefined) {
+    params.set("user_id", String(userId));
+  }
   return `${API_BASE_URL}/auth/${provider}?${params.toString()}`;
 }
 

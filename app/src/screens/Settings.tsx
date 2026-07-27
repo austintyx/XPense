@@ -4,8 +4,9 @@ import { useNavigation } from "@react-navigation/native";
 import { useMemo, useState } from "react";
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 
-import { buildAuthUrl, type Provider } from "../api/client";
+import { CURRENT_USER_ID, buildAuthUrl, type Provider } from "../api/client";
 import { useToast } from "../components/Toast";
+import { useAuth } from "../store/AuthProvider";
 import { useAppData } from "../store/TransactionsProvider";
 import { colors, radii, shadow, spacing, typography } from "../theme/tokens";
 import { currentMonthTransactions, formatMoney } from "../utils/derive";
@@ -39,6 +40,7 @@ export default function Settings() {
     loading,
   } = useAppData();
   const { showToast } = useToast();
+  const { logout } = useAuth();
 
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
@@ -60,7 +62,10 @@ export default function Settings() {
     setConnecting(provider);
     try {
       const redirectUri = AuthSession.makeRedirectUri();
-      const authUrl = buildAuthUrl(provider, redirectUri);
+      // Linking an additional mailbox to the already-logged-in user -- unlike Login.tsx's
+      // connect flow, this must pass the current user_id explicitly (buildAuthUrl no longer
+      // defaults it), otherwise the backend would treat this as a fresh login/signup instead.
+      const authUrl = buildAuthUrl(provider, redirectUri, CURRENT_USER_ID);
       const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUri);
       if (result.type === "success") {
         await refetch();
@@ -68,6 +73,13 @@ export default function Settings() {
     } finally {
       setConnecting(null);
     }
+  };
+
+  const confirmSignOut = () => {
+    Alert.alert("Sign out?", "You'll need to reconnect an account to use the app again.", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Sign out", style: "destructive", onPress: () => logout() },
+    ]);
   };
 
   const confirmRemoveAccount = (accountId: number, email: string) => {
@@ -322,7 +334,9 @@ export default function Settings() {
         <Text style={styles.chevron}>›</Text>
       </Pressable>
 
-      <Text style={styles.signOut}>Sign out</Text>
+      <Text style={styles.signOut} onPress={confirmSignOut} testID="sign-out">
+        Sign out
+      </Text>
     </ScrollView>
   );
 }

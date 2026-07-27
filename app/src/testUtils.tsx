@@ -3,6 +3,7 @@ import type { ReactElement } from 'react';
 
 import * as client from './api/client';
 import { ToastProvider } from './components/Toast';
+import { AuthProvider } from './store/AuthProvider';
 import { TransactionsProvider } from './store/TransactionsProvider';
 
 export function mockClientDefaults(overrides: {
@@ -56,7 +57,9 @@ export function makeTxn(overrides: Partial<client.Transaction> = {}): client.Tra
 export function renderWithProviders(ui: ReactElement) {
   return render(
     <ToastProvider>
-      <TransactionsProvider>{ui}</TransactionsProvider>
+      <AuthProvider>
+        <TransactionsProvider>{ui}</TransactionsProvider>
+      </AuthProvider>
     </ToastProvider>,
   );
 }

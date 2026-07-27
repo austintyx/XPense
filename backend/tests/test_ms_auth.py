@@ -3,7 +3,7 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 
 from app.config import settings
-from app.models import EmailAccount, ProviderEnum
+from app.models import EmailAccount, ProviderEnum, User
 from app.services import ms_oauth
 from app.services.oauth_state import decode_state, encode_state
 
@@ -58,6 +58,7 @@ def test_microsoft_callback_stores_encrypted_tokens_and_redirects_to_app(client,
     assert query["linked"] == ["true"]
     assert query["provider"] == ["microsoft"]
     assert query["email"] == ["someone@outlook.com"]
+    assert query["user_id"] == [str(user.id)]
 
     account = (
         db_session.query(EmailAccount)
@@ -67,6 +68,62 @@ def test_microsoft_callback_stores_encrypted_tokens_and_redirects_to_app(client,
     assert account.provider_email == "someone@outlook.com"
     assert account.access_token_enc != "fake-ms-access-token"
     assert account.refresh_token_enc != "fake-ms-refresh-token"
+
+
+def test_microsoft_auth_start_without_user_id_encodes_a_null_user_id(client):
+    response = client.get("/auth/microsoft", params={"return_to": RETURN_TO}, follow_redirects=False)
+    assert response.status_code in (302, 307)
+
+    state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
+    decoded_user_id, decoded_return_to = decode_state(state)
+    assert decoded_user_id is None
+    assert decoded_return_to == RETURN_TO
+
+
+def test_microsoft_callback_without_user_id_creates_a_new_user(client, db_session, monkeypatch):
+    monkeypatch.setattr(
+        ms_oauth,
+        "exchange_code_for_tokens",
+        lambda code: {"access_token": "fake-ms-access-token", "refresh_token": "fake-ms-refresh-token", "expires_in": 3600},
+    )
+    monkeypatch.setattr(
+        ms_oauth,
+        "fetch_userinfo",
+        lambda access_token: {"mail": "brandnew@outlook.com", "userPrincipalName": "brandnew@outlook.com"},
+    )
+
+    state = encode_state(None, RETURN_TO)
+    response = client.get(
+        "/auth/microsoft/callback", params={"code": "fake-code", "state": state}, follow_redirects=False
+    )
+    query = parse_qs(urlparse(response.headers["location"]).query)
+    assert query["email"] == ["brandnew@outlook.com"]
+
+    new_user = db_session.query(User).filter_by(email="brandnew@outlook.com").one()
+    assert query["user_id"] == [str(new_user.id)]
+
+
+def test_microsoft_callback_without_user_id_reuses_an_existing_user_by_email(client, db_session, user, monkeypatch):
+    user.email = "already@outlook.com"
+    db_session.commit()
+    monkeypatch.setattr(
+        ms_oauth,
+        "exchange_code_for_tokens",
+        lambda code: {"access_token": "fake-ms-access-token", "refresh_token": "fake-ms-refresh-token", "expires_in": 3600},
+    )
+    monkeypatch.setattr(
+        ms_oauth,
+        "fetch_userinfo",
+        lambda access_token: {"mail": "already@outlook.com", "userPrincipalName": "already@outlook.com"},
+    )
+
+    state = encode_state(None, RETURN_TO)
+    response = client.get(
+        "/auth/microsoft/callback", params={"code": "fake-code", "state": state}, follow_redirects=False
+    )
+    query = parse_qs(urlparse(response.headers["location"]).query)
+    assert query["user_id"] == [str(user.id)]
+    assert db_session.query(User).filter_by(email="already@outlook.com").count() == 1
 
 
 def test_microsoft_callback_falls_back_to_user_principal_name(client, db_session, user, monkeypatch):

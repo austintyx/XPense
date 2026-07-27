@@ -1,6 +1,7 @@
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.responses import RedirectResponse
 
@@ -36,6 +37,37 @@ def _require_ms_config() -> None:
         )
 
 
+def _resolve_user(db: Session, user_id: int | None, provider_email: str) -> User:
+    """`user_id` given -> linking an additional mailbox to an already-known user (existing
+    behavior). `user_id` is None -> the login/signup flow: the OAuth account being connected
+    *is* how the user gets identified, so look them up (or create them) by that email."""
+    if user_id is not None:
+        user = db.get(User, user_id)
+        if user is None:
+            raise HTTPException(status_code=404, detail="User not found")
+        return user
+
+    user = db.query(User).filter_by(email=provider_email).first()
+    if user is not None:
+        return user
+
+    user = User(email=provider_email)
+    db.add(user)
+    try:
+        db.commit()
+    except IntegrityError:
+        # Two concurrent logins for the same brand-new email (e.g. a double-tapped connect
+        # button) -- the unique constraint on users.email caught it, so just fetch the row
+        # the other request created instead of erroring.
+        db.rollback()
+        user = db.query(User).filter_by(email=provider_email).first()
+        if user is None:
+            raise
+    else:
+        db.refresh(user)
+    return user
+
+
 def _upsert_email_account(
     db: Session, user_id: int, provider: ProviderEnum, provider_email: str, token_data: dict, expires_at
 ) -> EmailAccount:
@@ -58,16 +90,14 @@ def _upsert_email_account(
     return account
 
 
-def _maybe_set_user_name(db: Session, user_id: int, name: str | None) -> None:
+def _maybe_set_user_name(db: Session, user: User, name: str | None) -> None:
     """Opportunistically fill in a display name from the OAuth profile the first time a user
     links an account -- never overwrites a name the user already has (e.g. set manually in
     Settings)."""
-    if not name:
+    if not name or user.name is not None:
         return
-    user = db.get(User, user_id)
-    if user is not None and user.name is None:
-        user.name = name
-        db.commit()
+    user.name = name
+    db.commit()
 
 
 def _append_query(url: str, **params: str) -> str:
@@ -76,7 +106,7 @@ def _append_query(url: str, **params: str) -> str:
 
 
 @router.get("/auth/google")
-def google_auth_start(user_id: int, return_to: str):
+def google_auth_start(return_to: str, user_id: int | None = None):
     _require_google_config()
     state = encode_state(user_id, return_to)
     return RedirectResponse(google_oauth.build_authorization_url(state=state))
@@ -92,14 +122,17 @@ def google_auth_callback(code: str, state: str, db: Session = Depends(get_db)):
     provider_email = userinfo["email"]
     expires_at = google_oauth.compute_expiry(token_data.get("expires_in", 3600))
 
-    _upsert_email_account(db, user_id, ProviderEnum.google, provider_email, token_data, expires_at)
-    _maybe_set_user_name(db, user_id, userinfo.get("name"))
+    user = _resolve_user(db, user_id, provider_email)
+    _upsert_email_account(db, user.id, ProviderEnum.google, provider_email, token_data, expires_at)
+    _maybe_set_user_name(db, user, userinfo.get("name"))
 
-    return RedirectResponse(_append_query(return_to, linked="true", provider="google", email=provider_email))
+    return RedirectResponse(
+        _append_query(return_to, linked="true", provider="google", email=provider_email, user_id=str(user.id))
+    )
 
 
 @router.get("/auth/microsoft")
-def microsoft_auth_start(user_id: int, return_to: str):
+def microsoft_auth_start(return_to: str, user_id: int | None = None):
     _require_ms_config()
     state = encode_state(user_id, return_to)
     return RedirectResponse(ms_oauth.build_authorization_url(state=state))
@@ -115,7 +148,10 @@ def microsoft_auth_callback(code: str, state: str, db: Session = Depends(get_db)
     provider_email = userinfo.get("mail") or userinfo["userPrincipalName"]
     expires_at = ms_oauth.compute_expiry(token_data.get("expires_in", 3600))
 
-    _upsert_email_account(db, user_id, ProviderEnum.microsoft, provider_email, token_data, expires_at)
-    _maybe_set_user_name(db, user_id, userinfo.get("displayName"))
+    user = _resolve_user(db, user_id, provider_email)
+    _upsert_email_account(db, user.id, ProviderEnum.microsoft, provider_email, token_data, expires_at)
+    _maybe_set_user_name(db, user, userinfo.get("displayName"))
 
-    return RedirectResponse(_append_query(return_to, linked="true", provider="microsoft", email=provider_email))
+    return RedirectResponse(
+        _append_query(return_to, linked="true", provider="microsoft", email=provider_email, user_id=str(user.id))
+    )
