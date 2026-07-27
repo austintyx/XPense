@@ -3,16 +3,24 @@ import { useNavigation } from "@react-navigation/native";
 import { useState } from "react";
 import { View } from "react-native";
 
+import { AddTransactionSheet } from "../screens/AddTransactionSheet";
 import Activity from "../screens/Activity";
+import Budgets from "../screens/Budgets";
 import Home from "../screens/Home";
 import Settings from "../screens/Settings";
 import Summary from "../screens/Summary";
+import { SearchProvider } from "../store/SearchProvider";
+import { useAppData } from "../store/TransactionsProvider";
+import { colors } from "../theme/tokens";
+import { uncategorized } from "../utils/derive";
+import { PageHeader } from "./PageHeader";
 import { Sidebar } from "./Sidebar";
 
 export type MainTabParamList = {
   Home: undefined;
   Summary: undefined;
   Activity: undefined;
+  Budgets: undefined;
   Settings: undefined;
 };
 
@@ -24,31 +32,43 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 // navigator entirely in a flexDirection:"row" wrapper, and the built-in tab bar is just hidden.
 export function MainTabs() {
   const navigation = useNavigation<any>();
+  const { transactions, accounts } = useAppData();
   const [activeRoute, setActiveRoute] = useState<keyof MainTabParamList>("Home");
+  const [addOpen, setAddOpen] = useState(false);
+
+  const reviewCount = uncategorized(transactions).length;
 
   return (
-    <View style={{ flex: 1, flexDirection: "row" }}>
-      <Sidebar
-        activeRoute={activeRoute}
-        onNavigate={(routeName) => navigation.navigate("MainTabs", { screen: routeName })}
-      />
-      <View style={{ flex: 1 }}>
-        <Tab.Navigator
-          screenOptions={{ headerShown: false }}
-          tabBar={() => null}
-          screenListeners={{
-            state: (e: any) => {
-              const state = e.data.state;
-              setActiveRoute(state.routes[state.index].name);
-            },
-          }}
-        >
-          <Tab.Screen name="Home" component={Home} />
-          <Tab.Screen name="Summary" component={Summary} />
-          <Tab.Screen name="Activity" component={Activity} />
-          <Tab.Screen name="Settings" component={Settings} />
-        </Tab.Navigator>
+    <SearchProvider>
+      <View style={{ flex: 1, flexDirection: "row", backgroundColor: colors.canvas }}>
+        <Sidebar
+          activeRoute={activeRoute}
+          onNavigate={(routeName) => navigation.navigate("MainTabs", { screen: routeName })}
+          reviewCount={reviewCount}
+          accounts={accounts}
+          onAddExpense={() => setAddOpen(true)}
+        />
+        <View style={{ flex: 1 }}>
+          <PageHeader activeRoute={activeRoute} />
+          <Tab.Navigator
+            screenOptions={{ headerShown: false }}
+            tabBar={() => null}
+            screenListeners={{
+              state: (e: any) => {
+                const state = e.data.state;
+                setActiveRoute(state.routes[state.index].name);
+              },
+            }}
+          >
+            <Tab.Screen name="Home" component={Home} />
+            <Tab.Screen name="Summary" component={Summary} />
+            <Tab.Screen name="Activity" component={Activity} />
+            <Tab.Screen name="Budgets" component={Budgets} />
+            <Tab.Screen name="Settings" component={Settings} />
+          </Tab.Navigator>
+        </View>
       </View>
-    </View>
+      <AddTransactionSheet visible={addOpen} onClose={() => setAddOpen(false)} />
+    </SearchProvider>
   );
 }

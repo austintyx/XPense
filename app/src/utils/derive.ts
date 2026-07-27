@@ -171,6 +171,92 @@ export function currentMonthTransactions(transactions: Transaction[], now: Date 
   });
 }
 
+/** Sibling to currentMonthTransactions -- the calendar month immediately before `now`'s. */
+export function previousMonthTransactions(transactions: Transaction[], now: Date = new Date()): Transaction[] {
+  const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  return transactions.filter((t) => {
+    const date = new Date(t.txn_at);
+    return date.getFullYear() === prev.getFullYear() && date.getMonth() === prev.getMonth();
+  });
+}
+
+/** Daily expense totals for each day in [start, end] inclusive, ordered oldest to newest --
+ * generalizes calendarDailyTotals to a window that can span a month boundary (e.g. a trailing
+ * 14-day sparkline), since that one is locked to a single calendar month. */
+export function dailyTotalsForRange(transactions: Transaction[], start: Date, end: Date): number[] {
+  const startDay = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const endDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  const dayCount = Math.round((endDay.getTime() - startDay.getTime()) / 86400000) + 1;
+  const totals = new Array(dayCount).fill(0) as number[];
+  for (const txn of transactions) {
+    if (!isExpense(txn)) continue;
+    const date = new Date(txn.txn_at);
+    const day = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const idx = Math.round((day.getTime() - startDay.getTime()) / 86400000);
+    if (idx >= 0 && idx < dayCount) totals[idx] += Number(txn.amount);
+  }
+  return totals;
+}
+
+export interface RecurringCharge {
+  merchant: string;
+  amount: number;
+  nextDue: Date;
+}
+
+/** Heuristic, not real subscription/billing data: flags a merchant as recurring when it appears
+ * in 2+ distinct months with amounts within ~10% of each other, and estimates the next charge as
+ * roughly 30 days after the most recent occurrence. */
+export function deriveRecurring(transactions: Transaction[]): RecurringCharge[] {
+  const groups = new Map<string, { display: string; date: Date; amount: number }[]>();
+  for (const t of transactions) {
+    if (!isExpense(t)) continue;
+    const display = t.merchant_clean ?? t.merchant_raw;
+    if (!display) continue;
+    const key = display.trim().toLowerCase();
+    const list = groups.get(key) ?? [];
+    list.push({ display, date: new Date(t.txn_at), amount: Number(t.amount) });
+    groups.set(key, list);
+  }
+
+  const recurring: RecurringCharge[] = [];
+  for (const occurrences of groups.values()) {
+    const months = new Set(occurrences.map((o) => `${o.date.getFullYear()}-${o.date.getMonth()}`));
+    if (months.size < 2) continue;
+
+    const amounts = occurrences.map((o) => o.amount).sort((a, b) => a - b);
+    const median = amounts[Math.floor(amounts.length / 2)]!;
+    const consistent = amounts.every((a) => Math.abs(a - median) <= median * 0.1);
+    if (!consistent) continue;
+
+    const latest = occurrences.reduce((a, b) => (b.date > a.date ? b : a));
+    const nextDue = new Date(latest.date);
+    nextDue.setDate(nextDue.getDate() + 30);
+    recurring.push({ merchant: latest.display, amount: median, nextDue });
+  }
+
+  return recurring.sort((a, b) => a.nextDue.getTime() - b.nextDue.getTime());
+}
+
+/** "2h ago" / "3d ago" style relative-time label for the sidebar's linked-account list. */
+export function relativeTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+/** Up to 2 uppercase initials from a display name, "?" when there isn't one. */
+export function initialsOf(name: string | null): string {
+  if (!name) return "?";
+  const parts = name.split(" ").filter(Boolean).slice(0, 2);
+  return parts.map((p) => p[0]!.toUpperCase()).join("");
+}
+
 export function isSameMonth(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
 }

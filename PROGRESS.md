@@ -1269,3 +1269,69 @@ collapse to one column when narrowed below ~900px, Activity/Login are width-capp
 edge-to-edge, and the three bottom-sheet flows are centered/capped rather than full-bleed --
 this environment could confirm the web bundle compiles cleanly (703 modules, no errors) but has no
 way to click through the OAuth login flow to see the actual rendered dashboard.
+
+## Web dashboard redesign matching a provided mockup
+
+The user shared a claude.ai artifact URL as the target design -- a considerably richer web
+dashboard than the sidebar+2-column pass above. It's a "bundled" artifact format (self-decoding
+HTML+JS, not plain markup), so it was decoded manually: extracted the manifest's compressed JS
+assets and the inline `<x-dc>` template HTML/CSS via a small Python/gzip script, rather than read
+directly. Confirmed via the decoded `<style>` block that it was built directly from this app's own
+design tokens (`#F6F4EF`, `oklch(.6 .09 158)`, DM Sans/Instrument Serif/JetBrains Mono all matched
+`app/src/theme/tokens.ts` exactly) -- so this was a layout/IA change, not a new visual identity.
+
+**New backend feature**: per-category monthly budget limits (`CategoryBudget` model/router/tests).
+Key finding that shaped the design: built-in categories (Food, Transport, ...) have no row in the
+existing `categories` table at all (that table only holds *custom* categories a user added), so a
+limit keyed by `Category.id` would silently exclude most categories -- `CategoryBudget` is instead
+keyed by a free-text `category` string per user, mirroring `Subcategory`'s existing convention.
+
+**New shared web pieces**: `Sidebar.tsx` rewrite (236px, 5 nav items including a new Budgets page,
+a "Feeds" card listing linked accounts with relative sync times, a pinned Add-expense button);
+`PageHeader.tsx` (date, page title, live merchant search, avatar); `SearchProvider.tsx` (defaults
+to an always-empty no-op search with no provider mounted, so it's harmless on native);
+`BottomSheet.web.tsx` (centered dialog with fade/rise-in, replacing the previous session's
+inline width-cap tweak -- native keeps the slide-up sheet unchanged); four new `derive.ts` helpers
+(`previousMonthTransactions`, `dailyTotalsForRange`, `deriveRecurring` -- a same-merchant/
+consistent-amount heuristic over already-loaded transactions, not real subscription data --
+and `relativeTime`).
+
+**New/rewritten screens**: `Home.web.tsx` (full platform split, not a column reflow -- two full
+layouts, "A" and "B", toggleable, with a 14-day sparkline, vs-last-month delta, safe-to-spend-today,
+needs-review queue, 3 data-derived insight cards, and recurring charges, all computed from real
+data); `Summary.web.tsx` (adds a 6-month trend chart and biggest-movers panel on top of the
+existing donut/category-list and calendar views); `Budgets.tsx` (new page: per-category spend,
+with a progress bar only for categories where a real limit was explicitly set -- unset ones show a
+plain amount, never a fabricated bar; the existing single savings goal; recurring charges).
+`Home.tsx`/`Summary.tsx` (native) revert to their pre-dashboard-redesign form now that the web
+layouts live in dedicated files -- `ResponsiveColumns` (last session's reflow component) is deleted
+as unused. `Activity.tsx`/`Settings.tsx`/`QuickSort.tsx` were restyled in place rather than split:
+Activity gets per-category filter pills and live search; Settings gets a 7/5 web column split with
+a new "Manage budgets" link while keeping its existing budget/goal editors fully working on both
+platforms; QuickSort gets a narrow web max-width cap matching Login's.
+
+**Scope decisions, confirmed with the user up front**: both Home layouts (not just the mockup's
+default) were built, since the user asked for the full A/B toggle; per-category budgets are a real
+feature (new backend table+API), not fabricated numbers; the single-goal data model was kept as-is
+(no multi-goal backend change); recurring/subscription detection is a client-side heuristic, not a
+new backend integration. The mockup's own "mobile preview frame" and platform-preview toggle button
+are demo-only tooling for the artifact itself and were not built as real product features.
+
+**Tested:** backend `pytest` -> 178 passed (up from 172): new `test_category_budgets.py` covering
+upsert, delete, built-in-category coverage (the free-text-key design point above), and cross-user
+scoping. Frontend `jest` -> 84 passed (up from 82, net after adding `derive.test.ts`'s 10 cases and
+deleting `ResponsiveColumns.test.tsx`'s 3): `Sidebar.test.tsx` updated for 5 routes/Feeds/Add-button.
+`.web.tsx` files (`Home.web.tsx`, `Summary.web.tsx`, `BottomSheet.web.tsx`, `MainTabs.web.tsx`) are
+invisible to this repo's Jest config, same as previous `.web.tsx` files -- verified instead by
+confirming the web bundle compiles cleanly (708 modules, no errors) and via `npx tsc --noEmit`
+across the whole change. Every pre-existing native screen test passed unchanged throughout every
+commit in this feature, confirming native rendering stayed untouched.
+
+**Manual steps for the human:** load the web app and click through it for real -- this environment
+can't authenticate through OAuth to see live data. Specifically worth checking: both Home layouts
+with real numbers (sparkline, safe-to-spend, insights, recurring charges); setting a category
+budget limit on the new Budgets page and confirming the progress bar appears; the header search
+actually filtering Activity's list; Add-expense/Categorize opening as centered dialogs; the
+"Manage budgets" link from Settings; and a spot-check on a phone/Expo Go that Home, Summary, and
+the Add/Categorize sheets are pixel-identical to before this feature (everything here is additive
+on web only).

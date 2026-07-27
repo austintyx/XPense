@@ -4,16 +4,18 @@ import { FlatList, Platform, Pressable, RefreshControl, StyleSheet, Text, View }
 
 import { AddTransactionSheet } from "./AddTransactionSheet";
 import { CategorizeSheet } from "./CategorizeSheet";
+import { useSearch } from "../store/SearchProvider";
 import { useAppData } from "../store/TransactionsProvider";
 import { categoryColor, colors, radii, shadow, spacing, typography, type CategoryId } from "../theme/tokens";
-import { deriveSource, formatMoney, groupByDay, uncategorized } from "../utils/derive";
+import { allCategories, deriveSource, formatMoney, groupByDay, uncategorized } from "../utils/derive";
 import type { Transaction } from "../api/client";
 
-type Filter = "all" | "needs";
+type Filter = "all" | "needs" | string;
 
 export default function Activity() {
   const navigation = useNavigation<any>();
-  const { transactions, loading, refetch } = useAppData();
+  const { transactions, customCategories, loading, refetch } = useAppData();
+  const { search } = useSearch();
   const [filter, setFilter] = useState<Filter>("all");
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<Transaction | null>(null);
@@ -26,7 +28,19 @@ export default function Activity() {
   };
 
   const uncat = useMemo(() => uncategorized(transactions), [transactions]);
-  const visible = filter === "needs" ? uncat : transactions;
+  const categoriesPresent = useMemo(() => {
+    const present = new Set(transactions.map((t) => t.category).filter(Boolean) as string[]);
+    return allCategories(customCategories).filter((c) => present.has(c));
+  }, [transactions, customCategories]);
+
+  const filtered =
+    filter === "needs" ? uncat : filter === "all" ? transactions : transactions.filter((t) => t.category === filter);
+  // useSearch() defaults to an always-empty, no-op search when no SearchProvider is mounted (the
+  // case on native), so this filter is a harmless pass-through there -- only the web shell wires
+  // up a real header search input.
+  const visible = search.trim()
+    ? filtered.filter((t) => (t.merchant_clean ?? t.merchant_raw ?? "").toLowerCase().includes(search.trim().toLowerCase()))
+    : filtered;
   const groups = useMemo(() => groupByDay(visible), [visible]);
 
   if (loading) {
@@ -66,6 +80,16 @@ export default function Activity() {
                   <Text style={styles.pillBadgeText}>{uncat.length}</Text>
                 </View>
               </Pressable>
+              {categoriesPresent.map((cat) => (
+                <Pressable
+                  key={cat}
+                  onPress={() => setFilter(cat)}
+                  style={[styles.pill, filter === cat ? styles.pillActive : styles.pillInactive]}
+                  testID={`filter-${cat}`}
+                >
+                  <Text style={[styles.pillText, filter === cat && styles.pillTextActive]}>{cat}</Text>
+                </Pressable>
+              ))}
             </View>
 
             {filter === "needs" && uncat.length > 0 && (
@@ -161,7 +185,7 @@ const styles = StyleSheet.create({
   title: { fontFamily: typography.fontFamily.serif, fontSize: typography.size.heading, color: colors.ink },
   addButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.ink, alignItems: "center", justifyContent: "center" },
   addButtonText: { color: colors.onDark, fontSize: 22, fontWeight: "300", marginTop: -2 },
-  filterRow: { flexDirection: "row", gap: 8, marginBottom: spacing.xl },
+  filterRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: spacing.xl },
   pill: {
     flexDirection: "row",
     alignItems: "center",

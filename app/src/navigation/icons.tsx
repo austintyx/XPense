@@ -40,9 +40,18 @@ export function SettingsIcon({ color, size = 22 }: IconProps) {
   );
 }
 
+export function BudgetsIcon({ color, size = 22 }: IconProps) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 22 22" fill="none">
+      <Path d="M4.5 17V11M11 17V5M17.5 17V13" stroke={color} strokeWidth={1.6} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
 export const ROUTE_ICONS: Record<string, typeof HomeIcon> = {
   Home: HomeIcon,
   Summary: SummaryIcon,
   Activity: ActivityIcon,
+  Budgets: BudgetsIcon,
   Settings: SettingsIcon,
 };
