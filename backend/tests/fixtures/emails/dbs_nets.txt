@@ -1,1 +1,1 @@
-Your NETS Scan & Pay transaction of S$6.00 from A/C ending 6540 to CHICKEN RICE on 21 Jul 14:25 SGT was successful.
+Transaction Ref: 620810585763903 Dear Customer, Your NETS Scan & Pay transaction on 21 Jul 14:25 SGT was successful. Date & Time: 21 Jul 14:25 SGT Amount: S$6.00 From: DBS/POSB Account ending 6540 To: CHICKEN RICE If unauthorised, call DBS hotline. To view transaction, please login to Digibank. Thank you for banking with us.

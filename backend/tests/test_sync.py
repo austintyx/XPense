@@ -10,8 +10,11 @@ from app.services import gmail, graph
 from app.services.grab_reconcile import GRAB_RECEIPT_SENDER
 
 DBS_PAYNOW_TEXT = (
-    "Fr DBS: Successful PayNow: S$87.00 from A/C ending 6540 to 24HRS CITY FLORIST "
-    "(UEN ending 378B), 22 Jul 18:01 SGT."
+    "Dear Customer, We refer to your PAYNOW dated 22 Jul. We are pleased to confirm that the "
+    "transaction was completed. Date & Time: 22 Jul 18:01 (SGT) Amount: S$87.00 From: POSB "
+    "eEveryday Savings Account A/C ending 6540 To: 24HRS CITY FLORIST (UEN ending 378B) If "
+    "unauthorised, please call our DBS hotline. To view transaction details, please login to "
+    "Digibank."
 )
 UOB_PAYNOW_TEXT = (
     "You made a PayNow transfer of SGD 200.00 to AUSXXX TEX YUXX XUXX "

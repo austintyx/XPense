@@ -16,7 +16,7 @@ def _load(name: str) -> str:
 CASES = [
     pytest.param(
         "dbs_paynow_merchant.txt",
-        "alerts@dbs.com.sg",
+        "ibanking.alert@dbs.com",
         dict(
             amount=Decimal("87.00"),
             currency="SGD",
@@ -30,7 +30,7 @@ CASES = [
     ),
     pytest.param(
         "dbs_paynow_person.txt",
-        "alerts@dbs.com.sg",
+        "ibanking.alert@dbs.com",
         dict(
             amount=Decimal("2.20"),
             currency="SGD",
@@ -44,7 +44,7 @@ CASES = [
     ),
     pytest.param(
         "dbs_nets.txt",
-        "alerts@dbs.com.sg",
+        "ibanking.alert@dbs.com",
         dict(
             amount=Decimal("6.00"),
             currency="SGD",
