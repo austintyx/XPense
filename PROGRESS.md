@@ -1372,3 +1372,35 @@ reads "LAYOUT  Focused  Command" with a visible active highlight; the donut read
 stretched; Settings' columns start level with Preferences on the left; and the big one, Summary's
 calendar view actually responding to Day/Week/Month/Year with a period total at the bottom and
 Year's tiles drilling into a month on click.
+
+## Calendar view: real drill-down navigation (Year → Month → Week → Day)
+
+Follow-up on the calendar rework above -- the right panel was still wrong: it always showed one
+arbitrarily-selected *single day's* transactions regardless of which grid was showing on the left,
+and clicking a cell just changed which day was highlighted in place rather than navigating.
+
+Right panel now always shows **every transaction in the active period** (day/week/month/year) via
+the same `periodTransactions` already computed for the chart view, grouped by day with
+`groupByDay` (`derive.ts` -- same helper `Activity.tsx` already uses) so week/month/year periods
+with many rows still read cleanly. The whole `selectedDate`/single-day-detail mechanism from the
+previous commit is gone, replaced by this simpler "always show the full period" model.
+
+Clicking now genuinely drills down: a day cell in Month view zooms into that day's **Week**
+(confirmed with the user: any day cell doubles as the "select this week" affordance, no separate
+week-row control); a day cell in Week view zooms into **Day**. Year's month-tile drill (already
+built) is unchanged. Since clicking now navigates away instead of persisting an in-place selection,
+the old `calCellSelected` highlight logic had nothing left to compare against and was removed.
+
+Pills no longer reset `viewAnchor` to today on click -- confirmed with the user this should "zoom
+out from current context" instead, so `selectSumPeriod` now just changes the period, leaving
+`viewAnchor` (wherever drilling/paging left it) to carry over and naturally land on the containing
+week/month/year.
+
+**Tested:** `npx tsc --noEmit` clean, frontend `jest` still 84 passed (no count change expected,
+`.web.tsx` file same as always). Web bundle recompiled cleanly (692 modules).
+
+**Manual steps for the human:** verify the full chain in the browser -- Year's right panel lists
+the whole year grouped by day; click a month tile, its whole month lists; click a day in that
+month's grid, that day's whole week lists; click a day in the week row, Day view shows just that
+day; and confirm clicking "Month"/"Year" pills while drilled into a week/day zooms out to the
+containing month/year rather than jumping to today.
