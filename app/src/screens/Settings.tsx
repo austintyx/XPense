@@ -2,7 +2,7 @@ import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
 import { useNavigation } from "@react-navigation/native";
 import { useMemo, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 
 import { CURRENT_USER_ID, buildAuthUrl, syncTransactions, type Provider } from "../api/client";
 import { SyncBackfillSheet } from "../components/SyncBackfillSheet";
@@ -10,6 +10,7 @@ import { useToast } from "../components/Toast";
 import { useAuth } from "../store/AuthProvider";
 import { useAppData } from "../store/TransactionsProvider";
 import { colors, radii, shadow, spacing, typography } from "../theme/tokens";
+import { confirmDestructive } from "../utils/confirm";
 import { currentMonthTransactions, formatMoney } from "../utils/derive";
 
 WebBrowser.maybeCompleteAuthSession();
@@ -96,24 +97,24 @@ export default function Settings() {
   };
 
   const confirmSignOut = () => {
-    Alert.alert("Sign out?", "You'll need to reconnect an account to use the app again.", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Sign out", style: "destructive", onPress: () => logout() },
-    ]);
+    confirmDestructive({
+      title: "Sign out?",
+      message: "You'll need to reconnect an account to use the app again.",
+      confirmLabel: "Sign out",
+      onConfirm: () => logout(),
+    });
   };
 
   const confirmRemoveAccount = (accountId: number, email: string) => {
-    Alert.alert("Unlink account?", `Unlink ${email}? Your past transactions from this account will stay.`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Unlink",
-        style: "destructive",
-        onPress: async () => {
-          await removeAccount(accountId);
-          showToast(`Unlinked ${email}`);
-        },
+    confirmDestructive({
+      title: "Unlink account?",
+      message: `Unlink ${email}? Your past transactions from this account will stay.`,
+      confirmLabel: "Unlink",
+      onConfirm: async () => {
+        await removeAccount(accountId);
+        showToast(`Unlinked ${email}`);
       },
-    ]);
+    });
   };
 
   const saveName = async () => {
