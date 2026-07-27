@@ -248,20 +248,28 @@ export default function Home() {
                 <Text style={styles.reviewEyebrow}>NEEDS REVIEW</Text>
                 <Text style={styles.reviewBadge}>{reviewQueue.length}</Text>
               </View>
-              <Text style={styles.reviewCaption}>Not yet given a category.</Text>
-              <View style={{ gap: 9, flex: 1 }}>
-                {reviewQueue.map((t) => (
-                  <Pressable key={t.id} style={styles.reviewRow} onPress={() => setSelected(t)} testID={`home-review-${t.id}`}>
-                    <Text style={styles.reviewMerchant} numberOfLines={1}>
-                      {t.merchant_clean ?? t.merchant_raw ?? "Unknown"}
-                    </Text>
-                    <Text style={styles.reviewAmount}>{formatMoney(t.amount)}</Text>
+              {reviewQueue.length === 0 ? (
+                <View style={styles.reviewEmptyWrap} testID="home-review-empty">
+                  <Text style={styles.reviewEmptyText}>All transactions categorised!</Text>
+                </View>
+              ) : (
+                <>
+                  <Text style={styles.reviewCaption}>Not yet given a category.</Text>
+                  <View style={{ gap: 9, flex: 1 }}>
+                    {reviewQueue.map((t) => (
+                      <Pressable key={t.id} style={styles.reviewRow} onPress={() => setSelected(t)} testID={`home-review-${t.id}`}>
+                        <Text style={styles.reviewMerchant} numberOfLines={1}>
+                          {t.merchant_clean ?? t.merchant_raw ?? "Unknown"}
+                        </Text>
+                        <Text style={styles.reviewAmount}>{formatMoney(t.amount)}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  <Pressable style={styles.outlineButton} onPress={() => navigation.navigate("QuickSort")} testID="home-quick-sort-all">
+                    <Text style={styles.outlineButtonText}>Quick sort all</Text>
                   </Pressable>
-                ))}
-              </View>
-              <Pressable style={styles.outlineButton} onPress={() => navigation.navigate("QuickSort")} testID="home-quick-sort-all">
-                <Text style={styles.outlineButtonText}>Quick sort all</Text>
-              </Pressable>
+                </>
+              )}
             </View>
 
             <View style={{ flex: 3, gap: 16 }}>
@@ -376,16 +384,22 @@ export default function Home() {
                   <Text style={styles.reviewEyebrow}>NEEDS REVIEW</Text>
                   <Text style={styles.reviewBadge}>{reviewQueue.length}</Text>
                 </View>
-                <View style={{ gap: 9 }}>
-                  {reviewQueue.map((t) => (
-                    <Pressable key={t.id} style={styles.reviewRow} onPress={() => setSelected(t)} testID={`home-b-review-${t.id}`}>
-                      <Text style={styles.reviewMerchant} numberOfLines={1}>
-                        {t.merchant_clean ?? t.merchant_raw ?? "Unknown"}
-                      </Text>
-                      <Text style={styles.reviewAmount}>{formatMoney(t.amount)}</Text>
-                    </Pressable>
-                  ))}
-                </View>
+                {reviewQueue.length === 0 ? (
+                  <View style={styles.reviewEmptyWrap} testID="home-b-review-empty">
+                    <Text style={styles.reviewEmptyText}>All transactions categorised!</Text>
+                  </View>
+                ) : (
+                  <View style={{ gap: 9 }}>
+                    {reviewQueue.map((t) => (
+                      <Pressable key={t.id} style={styles.reviewRow} onPress={() => setSelected(t)} testID={`home-b-review-${t.id}`}>
+                        <Text style={styles.reviewMerchant} numberOfLines={1}>
+                          {t.merchant_clean ?? t.merchant_raw ?? "Unknown"}
+                        </Text>
+                        <Text style={styles.reviewAmount}>{formatMoney(t.amount)}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
               </View>
 
               <View style={styles.goalCard}>
@@ -473,6 +487,8 @@ const styles = StyleSheet.create({
   reviewEyebrow: { fontFamily: typography.fontFamily.mono, fontSize: typography.size.xs5, letterSpacing: 1.4, textTransform: "uppercase", color: colors.warnText },
   reviewBadge: { fontFamily: typography.fontFamily.mono, fontSize: typography.size.xs5, fontWeight: "500", backgroundColor: colors.warnSolid, color: colors.ink, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 7 },
   reviewCaption: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.base, color: colors.ink55, marginBottom: 14 },
+  reviewEmptyWrap: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 24 },
+  reviewEmptyText: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.base5, color: colors.ink48, textAlign: "center" },
   reviewRow: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.ink06, borderRadius: 14, padding: 12, flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10 },
   reviewMerchant: { flex: 1, fontFamily: typography.fontFamily.sans, fontSize: typography.size.base5 },
   reviewAmount: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.base5 },

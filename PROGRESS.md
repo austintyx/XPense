@@ -1404,3 +1404,46 @@ the whole year grouped by day; click a month tile, its whole month lists; click 
 month's grid, that day's whole week lists; click a day in the week row, Day view shows just that
 day; and confirm clicking "Month"/"Year" pills while drilled into a week/day zooms out to the
 containing month/year rather than jumping to today.
+
+## Three more web fixes: Settings header alignment, Home empty state, Budgets edit-all
+
+**Settings (`Settings.tsx`):** each group label ("WHERE TRANSACTIONS COME FROM", "PREFERENCES",
+"BUDGET & GOALS") was a `<Text>` sibling rendered *above* its card rather than inside it -- the
+root cause of the two web columns' first boxes starting at different heights, since whichever
+section happened to be first in a column carried extra top margin the other column's first box
+(the profile card, already self-contained) didn't have. Moved each label to be the first child
+*inside* its card (new `groupLabelInline` style, card-internal padding instead of external
+margin) so every section is a uniform self-contained box and both columns' tops now align
+automatically -- the `groupLabelFirst`/`isFirstInColumn` special-casing from the previous round is
+no longer needed and was removed.
+
+**Home (`Home.web.tsx`):** the "NEEDS REVIEW" card (both the Focused and Command layouts) rendered
+an empty caption/list/button when nothing needed review, reading as broken rather than done.
+Added a centered "All transactions categorised!" message in both layouts' cards when
+`reviewQueue.length === 0`.
+
+**Budgets (`Budgets.tsx`, web-only screen):** replaced the per-category "Set a limit"/"Edit limit"
+inline links with a single header-level "Edit" button that switches every category (all 8
+built-ins plus any custom ones, not just ones with spend or an existing limit) into edit mode at
+once, with one "Save all"/"Cancel" pair committing (`Promise.all` of per-category `PUT
+/category-budgets/{category}` calls, since there's no batch endpoint) or discarding all drafts
+together. Categories without a saved limit prefill with a real, editable **suggested** limit
+(`monthly_target × share`) for the 8 built-in categories, via a new `SUGGESTED_CATEGORY_SHARE`
+table adapted from WalletHub's budget-percentage guide
+(https://wallethub.com/edu/b/budget-percentages/145359) and rescaled to sum to 100% across just
+this app's 8 tracked spending categories (Groceries 18%, Transport 15%, Bills 15%, Food 12%,
+Shopping 12%, Entertainment 10%, Other 10%, Health 8%) -- documented as a judgment-call adaptation,
+not a verbatim source quote, in a comment above the constant. Custom categories get no suggestion.
+
+**Tested:** `npx tsc --noEmit` clean (no new errors in any touched file). Frontend `jest` still 84
+passed, 14 suites (no count change -- `Budgets.tsx` has no existing test file, `Settings.tsx`'s and
+`Home.tsx`'s native-facing suites pass unchanged since these were `.web.tsx`/shared-file styling
+changes). Web bundle served cleanly via `expo start --web` (200, ~3.7MB, no Metro resolution
+errors).
+
+**Manual steps for the human:** in the browser, confirm Settings' two columns now start flush at
+the top with every label inside its box; clear all uncategorised transactions and confirm Home's
+needs-review card shows the centered message (both dashboard layouts); open Budgets, click Edit,
+confirm every category shows an input (existing limits verbatim, unset built-ins prefilled with a
+sensible suggested number, custom categories empty), and that Save all persists the changes while
+Cancel discards them.

@@ -180,8 +180,8 @@ export default function Settings() {
 
   const accountsSection = (
     <>
-      <Text style={styles.groupLabel}>WHERE TRANSACTIONS COME FROM</Text>
       <View style={[styles.card, styles.group, shadow.card]}>
+        <Text style={styles.groupLabelInline}>WHERE TRANSACTIONS COME FROM</Text>
         {accounts.map((account) => {
           const count = monthTransactions.filter((t) => t.provider === account.provider).length;
           return (
@@ -215,10 +215,10 @@ export default function Settings() {
     </>
   );
 
-  const preferencesSection = (isFirstInColumn: boolean) => (
+  const preferencesSection = (
     <>
-      <Text style={[styles.groupLabel, isFirstInColumn && styles.groupLabelFirst]}>PREFERENCES</Text>
       <View style={[styles.card, styles.group, shadow.card]}>
+        <Text style={styles.groupLabelInline}>PREFERENCES</Text>
         {(
           [
             { key: "auto", label: "Categorise automatically", meta: "Silently. You can always correct it." },
@@ -243,10 +243,10 @@ export default function Settings() {
     </>
   );
 
-  const budgetGoalsSection = (isFirstInColumn: boolean) => (
+  const budgetGoalsSection = (
     <>
-      <Text style={[styles.groupLabel, isFirstInColumn && styles.groupLabelFirst]}>BUDGET & GOALS</Text>
       <View style={[styles.card, styles.group, shadow.card]}>
+        <Text style={styles.groupLabelInline}>BUDGET & GOALS</Text>
         <View style={styles.sourceRow}>
           <View style={{ flex: 1 }}>
             <Text style={styles.sourceLabel}>Monthly budget</Text>
@@ -377,10 +377,10 @@ export default function Settings() {
             <View style={styles.column}>
               {profileSection}
               {accountsSection}
-              {preferencesSection(false)}
+              {preferencesSection}
             </View>
             <View style={styles.column}>
-              {budgetGoalsSection(true)}
+              {budgetGoalsSection}
               {manageCategoriesSection}
               {circleSection}
               {signOutSection}
@@ -390,8 +390,8 @@ export default function Settings() {
           <>
             {profileSection}
             {accountsSection}
-            {budgetGoalsSection(false)}
-            {preferencesSection(false)}
+            {budgetGoalsSection}
+            {preferencesSection}
             {manageCategoriesSection}
             {circleSection}
             {signOutSection}
@@ -452,18 +452,16 @@ const styles = StyleSheet.create({
   },
   saveButton: { backgroundColor: colors.ink, borderRadius: 11, paddingVertical: 11, alignItems: "center" },
   saveButtonText: { fontFamily: typography.fontFamily.sansMedium, fontSize: typography.size.md, color: colors.onDark },
-  groupLabel: {
-    marginTop: spacing.xxl,
-    marginBottom: 10,
+  groupLabelInline: {
+    paddingTop: 16,
+    paddingHorizontal: 16,
+    paddingBottom: 2,
     fontFamily: typography.fontFamily.mono,
     fontSize: typography.size.sm,
     letterSpacing: 1,
     textTransform: "uppercase",
     color: colors.ink42,
   },
-  // Applied only when a section is actually first-in-column (see isFirstInColumn call sites) --
-  // native always passes false, since nothing is first-in-column in its single stacked layout.
-  groupLabelFirst: { marginTop: 0 },
   group: { overflow: "hidden" },
   sourceRow: {
     flexDirection: "row",
