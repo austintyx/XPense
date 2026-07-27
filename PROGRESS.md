@@ -1185,3 +1185,33 @@ rendering, and overall visual parity through a real browser session.
   `app/`, publish directory `app/dist`). Set `EXPO_PUBLIC_API_BASE_URL` as a **build-time** env var
   on that static site (Expo inlines `EXPO_PUBLIC_*` at build time, not runtime). Once its URL is
   known, add it to the backend's `CORS_ALLOWED_ORIGINS` on Render.
+
+## Sync-on-app-open catch-up
+
+Render's free web service sleeps after ~15 minutes idle, which suspends the in-process 10-minute
+background scheduler along with it -- previously, opening the app after a sleep window just showed
+whatever stale data happened to already be in the database, with no way to force a fresh read
+short of the next scheduler tick (which itself requires the service to already be awake).
+
+No backend change was needed: `sync_email_account`'s normal (no `since`) path already builds its
+Gmail query from `account.last_synced_at` when set, and Graph's default query re-scans and relies
+on `source_email_id` dedup either way -- both already mean "catch up since the last successful
+sync," which is exactly what's wanted. The gap was that nothing ever actually called `POST /sync`
+on app open; `TransactionsProvider`'s mount effect only ever read existing data
+(`getTransactions`/`getSummary`/etc.), never triggered a sync.
+
+**Frontend** (`app/src/store/TransactionsProvider.tsx`): the mount effect now calls
+`syncTransactions(CURRENT_USER_ID)` (no `since` -- the incremental path above) before `refetch()`,
+best-effort (a cold Render start timing out, a network hiccup, or one account's expired token must
+never block the app from showing whatever's already stored, so failures are swallowed and
+`refetch()` still runs). This also happens to be *why* it helps with the sleep problem specifically:
+the sync call is itself a real HTTP request, so opening the app is what wakes the service back up
+in the first place. Scoped to the mount effect only, not the general-purpose `refetch()` used after
+every mutation (categorizing a transaction, editing a budget, etc.) -- those shouldn't each trigger
+a mail sync.
+
+**Tested:** frontend `jest` -> 66 passed (up from 64): new `TransactionsProvider.test.tsx` asserts
+the sync call fires with the current user id before data loads, and that a rejected sync still lets
+already-stored data render. `mockClientDefaults()` (`app/src/testUtils.tsx`) now mocks
+`syncTransactions` by default, since every screen-level test mounts `TransactionsProvider`.
+Backend unchanged, still 172 passed.

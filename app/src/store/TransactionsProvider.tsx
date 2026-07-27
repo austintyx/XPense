@@ -10,6 +10,7 @@ import {
   type Summary,
   type Transaction,
   type TransactionDraft,
+  CURRENT_USER_ID,
   createCategory,
   createSubcategory,
   createTransaction,
@@ -24,6 +25,7 @@ import {
   getSummary,
   getTransactions,
   getUser,
+  syncTransactions,
   updateBudget as apiUpdateBudget,
   updateGoal as apiUpdateGoal,
   updateTransactionCategory,
@@ -120,7 +122,20 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
   }, []);
 
   useEffect(() => {
-    refetch();
+    (async () => {
+      try {
+        // Catch up on mail since the last successful sync before loading data -- the backend's
+        // free-tier host sleeps after inactivity, so the 10-minute background scheduler may not
+        // have run in a while; this makes "open the app" itself trigger a fresh read instead of
+        // showing however-stale data happened to already be in the database. Best-effort: a cold
+        // start, a network hiccup, or one account's expired token must never block the app from
+        // showing whatever's already stored.
+        await syncTransactions(CURRENT_USER_ID);
+      } catch {
+        // swallow -- refetch() below still runs regardless
+      }
+      await refetch();
+    })();
   }, [refetch]);
 
   const categorize = useCallback(

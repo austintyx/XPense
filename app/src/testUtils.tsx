@@ -30,6 +30,7 @@ export function mockClientDefaults(overrides: {
   );
   jest.spyOn(client, 'getLinkedAccounts').mockResolvedValue(overrides.accounts ?? []);
   jest.spyOn(client, 'getCategories').mockResolvedValue(overrides.categories ?? { categories: [], subcategories: [] });
+  jest.spyOn(client, 'syncTransactions').mockResolvedValue({ user_id: 1, inserted: 0, accounts: [] });
 }
 
 export function makeTxn(overrides: Partial<client.Transaction> = {}): client.Transaction {
