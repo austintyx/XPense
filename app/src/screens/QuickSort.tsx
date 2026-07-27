@@ -1,6 +1,6 @@
 import { useNavigation } from "@react-navigation/native";
 import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { CategoryChip } from "../components/CategoryChip";
 import { useToast } from "../components/Toast";
@@ -131,7 +131,14 @@ export default function QuickSort() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.canvas, paddingTop: spacing.screenTop, paddingHorizontal: spacing.screenH, paddingBottom: 30 },
+  container: {
+    flex: 1,
+    backgroundColor: colors.canvas,
+    paddingTop: spacing.screenTop,
+    paddingHorizontal: spacing.screenH,
+    paddingBottom: 30,
+    ...(Platform.OS === "web" ? { maxWidth: 460, width: "100%" as const, alignSelf: "center" as const } : null),
+  },
   topRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 18 },
   doneLink: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.md, color: colors.ink55 },
   counter: { fontFamily: typography.fontFamily.mono, fontSize: typography.size.sm, color: colors.ink42 },

@@ -5,14 +5,13 @@ import { useMemo, useState } from "react";
 import { Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 
 import { CURRENT_USER_ID, buildAuthUrl, syncTransactions, type Provider } from "../api/client";
-import { ResponsiveColumns } from "../components/ResponsiveColumns";
 import { SyncBackfillSheet } from "../components/SyncBackfillSheet";
 import { useToast } from "../components/Toast";
 import { useAuth } from "../store/AuthProvider";
 import { useAppData } from "../store/TransactionsProvider";
 import { colors, radii, shadow, spacing, typography } from "../theme/tokens";
 import { confirmDestructive } from "../utils/confirm";
-import { currentMonthTransactions, formatMoney } from "../utils/derive";
+import { currentMonthTransactions, formatMoney, initialsOf } from "../utils/derive";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -20,12 +19,6 @@ const PROVIDER_LABELS: Record<Provider, string> = {
   google: "Connect Gmail",
   microsoft: "Connect Outlook",
 };
-
-function initialsOf(name: string | null): string {
-  if (!name) return "?";
-  const parts = name.split(" ").filter(Boolean).slice(0, 2);
-  return parts.map((p) => p[0]!.toUpperCase()).join("");
-}
 
 export default function Settings() {
   const navigation = useNavigation<any>();
@@ -151,9 +144,8 @@ export default function Settings() {
       <ScrollView style={styles.container} contentContainerStyle={styles.content} testID="settings-screen">
         <Text style={styles.title}>Settings</Text>
 
-        <ResponsiveColumns
-          left={
-            <>
+        <View style={styles.columns}>
+          <View style={styles.column}>
               <View style={[styles.card, styles.profileCard, shadow.card]}>
                 <View style={styles.avatar}>
                   <Text style={styles.avatarText}>{initialsOf(user?.name ?? null)}</Text>
@@ -227,10 +219,8 @@ export default function Settings() {
                   </Text>
                 ))}
               </View>
-            </>
-          }
-          right={
-            <>
+          </View>
+          <View style={styles.column}>
               <Text style={styles.groupLabel}>BUDGET & GOALS</Text>
               <View style={[styles.card, styles.group, shadow.card]}>
                 <View style={styles.sourceRow}>
@@ -270,6 +260,16 @@ export default function Settings() {
                   </Text>
                 </View>
               </View>
+
+              {Platform.OS === "web" && (
+                <Text
+                  style={styles.manageBudgetsLink}
+                  onPress={() => navigation.navigate("Budgets")}
+                  testID="manage-budgets-link"
+                >
+                  Manage budgets →
+                </Text>
+              )}
 
               {editingBudget && (
                 <View style={[styles.card, styles.editPanel, shadow.card]}>
@@ -366,9 +366,8 @@ export default function Settings() {
               <Text style={styles.signOut} onPress={confirmSignOut} testID="sign-out">
                 Sign out
               </Text>
-            </>
-          }
-        />
+          </View>
+        </View>
       </ScrollView>
       <SyncBackfillSheet
         visible={backfillProvider !== null}
@@ -389,6 +388,9 @@ const styles = StyleSheet.create({
     ...(Platform.OS === "web" ? { maxWidth: 1100, width: "100%" as const, alignSelf: "center" as const } : null),
   },
   title: { fontFamily: typography.fontFamily.serif, fontSize: typography.size.heading, marginBottom: 20, color: colors.ink },
+  columns: Platform.OS === "web" ? { flexDirection: "row", gap: 16, alignItems: "flex-start" } : {},
+  column: Platform.OS === "web" ? { flex: 1 } : {},
+  manageBudgetsLink: { marginTop: 10, fontFamily: typography.fontFamily.sans, fontSize: typography.size.sm5, color: colors.successText },
   card: { backgroundColor: colors.surface, borderRadius: radii.hero },
   profileCard: { padding: 20, flexDirection: "row", alignItems: "center", gap: 16 },
   avatar: { width: 54, height: 54, borderRadius: 27, backgroundColor: colors.successAvatarBg, alignItems: "center", justifyContent: "center" },
