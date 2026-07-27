@@ -1,9 +1,10 @@
 import { useNavigation } from "@react-navigation/native";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FlatList, Platform, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 
 import { AddTransactionSheet } from "./AddTransactionSheet";
 import { CategorizeSheet } from "./CategorizeSheet";
+import { getTransactions } from "../api/client";
 import { useSearch } from "../store/SearchProvider";
 import { useAppData } from "../store/TransactionsProvider";
 import { categoryColor, colors, radii, shadow, spacing, typography, type CategoryId } from "../theme/tokens";
@@ -20,10 +21,20 @@ export default function Activity() {
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<Transaction | null>(null);
   const [addVisible, setAddVisible] = useState(false);
+  // Transfers (e.g. moving money between your own accounts) are excluded from spend totals and
+  // budgets everywhere else in the app, but should still be visible somewhere -- the raw "All"
+  // activity feed here, not folded into the expense-only `transactions` the rest of the app uses.
+  const [transfers, setTransfers] = useState<Transaction[]>([]);
+
+  const loadTransfers = () => getTransactions("transfer").then(setTransfers).catch(() => {});
+
+  useEffect(() => {
+    loadTransfers();
+  }, []);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await refetch();
+    await Promise.all([refetch(), loadTransfers()]);
     setRefreshing(false);
   };
 
@@ -32,9 +43,13 @@ export default function Activity() {
     const present = new Set(transactions.map((t) => t.category).filter(Boolean) as string[]);
     return allCategories(customCategories).filter((c) => present.has(c));
   }, [transactions, customCategories]);
+  const allTransactions = useMemo(
+    () => [...transactions, ...transfers].sort((a, b) => new Date(b.txn_at).getTime() - new Date(a.txn_at).getTime()),
+    [transactions, transfers],
+  );
 
   const filtered =
-    filter === "needs" ? uncat : filter === "all" ? transactions : transactions.filter((t) => t.category === filter);
+    filter === "needs" ? uncat : filter === "all" ? allTransactions : transactions.filter((t) => t.category === filter);
   // useSearch() defaults to an always-empty, no-op search when no SearchProvider is mounted (the
   // case on native), so this filter is a harmless pass-through there -- only the web shell wires
   // up a real header search input.
