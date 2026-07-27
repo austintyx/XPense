@@ -74,8 +74,10 @@ export function CategorizeSheet({ transaction, onClose }: CategorizeSheetProps) 
   return (
     <BottomSheet visible={transaction !== null} onClose={onClose} testID="categorize-sheet">
       <View style={styles.headerRow}>
-        <Text style={styles.headerText}>{transaction.merchant_clean ?? transaction.merchant_raw ?? "Unknown"}</Text>
-        <Text style={styles.headerText}>{formatMoney(transaction.amount)}</Text>
+        <Text style={[styles.headerText, styles.merchantText]} numberOfLines={2}>
+          {transaction.merchant_clean ?? transaction.merchant_raw ?? "Unknown"}
+        </Text>
+        <Text style={[styles.headerText, styles.amountText]}>{formatMoney(transaction.amount)}</Text>
       </View>
       <Text style={styles.meta}>
         {new Date(transaction.txn_at).toLocaleDateString()} · read from {deriveSource(transaction)}
@@ -112,8 +114,10 @@ export function CategorizeSheet({ transaction, onClose }: CategorizeSheetProps) 
 }
 
 const styles = StyleSheet.create({
-  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 },
+  headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 },
   headerText: { fontFamily: typography.fontFamily.serif, fontSize: typography.size.displayXl, color: colors.ink },
+  merchantText: { flex: 1, flexShrink: 1, minWidth: 0 },
+  amountText: { flexShrink: 0, marginLeft: 10 },
   meta: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.sm, color: colors.ink50, marginBottom: 18 },
   stepLabel: {
     fontFamily: typography.fontFamily.mono,

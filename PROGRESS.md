@@ -989,3 +989,17 @@ own.
 and `test_delete_transaction_404s_for_another_users_row`. Frontend `jest` -> 45 passed: new Activity
 test drives the full delete flow (open sheet, tap Delete, confirm via mocked `Alert.alert`, assert
 `deleteTransaction` was called and the row disappears).
+
+## Follow-up: the long-name overflow was actually in the CategorizeSheet header, not the list row
+
+Screenshot from the human showed the Activity *list* row wrapping correctly (the earlier fix
+worked), but the *detail sheet* opened by tapping a row -- `CategorizeSheet.tsx` -- had the exact
+same unfixed bug in its own header: `headerRow` was `flexDirection: row` with the merchant `Text`
+and amount `Text` as siblings, neither constrained (`flex`/`flexShrink`/`numberOfLines`), so a long
+merchant name ran directly into the amount digits mid-line instead of wrapping cleanly. Applied the
+same fix as the Activity row: merchant text gets `flex: 1`, `flexShrink: 1`, `numberOfLines={2}`;
+amount text gets `flexShrink: 0` and a left margin; `alignItems` on the row changed from `baseline`
+to `flex-start` since the merchant can now be two lines tall.
+
+**Tested:** frontend `jest` -> still 45 passed (no behavior asserted by tests changed, this was a
+pure layout fix -- verified against the screenshot's exact merchant string manually).
