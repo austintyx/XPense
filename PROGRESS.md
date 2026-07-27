@@ -1121,3 +1121,67 @@ doesn't). Added a manual jest mock for `@react-native-community/datetimepicker`
 (`app/__mocks__/...`) -- the package's own jest helper only covers Android-dialog interception, not
 a renderable stand-in, so this mock renders as a pressable test hook that fires `onChange` with a
 fixed, known date for deterministic "the person picked a different date" tests.
+
+## Browser-accessible web frontend (Expo web)
+
+The app was mobile-only until now. Since `app/` is already Expo/React Native, the web version
+reuses the exact same screens/components/styling via `react-native-web` (`npm run web`) rather
+than a separate React app or a redesign -- same code, same style, same functions, as requested.
+
+Discovery surfaced three real web-incompatibilities and fixed each:
+
+1. **`@react-native-community/datetimepicker` has no web build** (its fallback renders `null` and
+   warns) -- new platform-split `DateField` component: `app/src/components/DateField.tsx` (native,
+   wraps the existing picker unchanged) and `DateField.web.tsx` (a plain HTML `<input
+   type="date">`), resolved automatically by Metro's `.web.tsx` convention. `SyncBackfillSheet.tsx`
+   now uses `DateField` instead of `DateTimePicker` directly. The local-calendar-field
+   `Date`<->`"YYYY-MM-DD"` serialization (deliberately not `toISOString()`, which can shift the
+   date across a UTC day boundary) moved out to a shared `app/src/utils/dateSerialization.ts` so
+   both the sheet and the new web input use identical logic in both directions.
+2. **`Alert.alert(...)` has no real multi-button implementation in `react-native-web`** -- new
+   `app/src/utils/confirm.ts` (`confirmDestructive`): calls `Alert.alert` on native exactly as
+   before, falls back to `window.confirm` on web (title+message concatenated, since
+   `window.confirm` only supports one message and OK/Cancel -- same function, different chrome).
+   Replaces the three direct `Alert.alert` call sites (`Settings.tsx` sign-out and unlink-account,
+   `CategorizeSheet.tsx` delete-transaction).
+3. **No backend CORS configuration at all** -- a browser calling the API from a different origin
+   would be blocked outright. Added `CORSMiddleware` (`backend/app/main.py`) with an
+   `allow_credentials=False` policy (auth here is a `user_id` in query params/bodies, never
+   cookies, so there's no cross-origin-credentials case) and a new `CORS_ALLOWED_ORIGINS` setting
+   (`backend/app/config.py`, comma-separated), defaulting to the local Expo web dev server's ports
+   so `npm run web` works with zero `.env` changes; a deployed frontend's real origin has to be
+   added explicitly.
+
+One thing initially assumed, then disproven by reading `google_oauth.py`/`ms_oauth.py`: OAuth does
+**not** need any new redirect URIs registered with Google/Microsoft for web. Both providers are
+always sent the fixed backend callback URL (`GOOGLE_REDIRECT_URI`/`MS_REDIRECT_URI`) -- the
+frontend's own redirect (`AuthSession.makeRedirectUri()`) only ever travels inside this app's own
+opaque `state` param and is used solely by our own backend's callback to build its final redirect.
+The existing OAuth app registrations are unchanged.
+
+Enabled Expo web itself: `npx expo install react-dom react-native-web @expo/metro-runtime`, plus
+`app.json`'s `web.bundler`/`web.output` set explicitly (`"single"` -- the app has no web routing,
+React Navigation renders entirely client-side inside one static `index.html`, so no server
+rewrite rules are needed to host it).
+
+**Tested:** backend `pytest` -> 172 passed (up from 169): new `test_cors.py` (an allowed origin
+gets `Access-Control-Allow-Origin` echoed back; a disallowed one doesn't; an `OPTIONS` preflight to
+`POST /sync` succeeds with the right `Access-Control-Allow-Methods`, since this app's JSON POSTs
+are non-"simple" requests and trigger real preflights in a browser). Frontend `jest` -> 64 passed
+(up from 57): new `confirm.test.ts` (both the native `Alert.alert` branch and the web
+`window.confirm` branch, including the cancel-does-nothing case) and `dateSerialization.test.ts`
+(the local-timezone-not-UTC round trip). `DateField.web.tsx` itself can't be exercised by this
+repo's Jest config (`jest-expo`'s haste platforms don't include `'web'`, so `.web.tsx` files are
+invisible to it) -- verified manually instead, alongside the OAuth popup flow, `react-native-svg`
+rendering, and overall visual parity through a real browser session.
+
+**Manual steps for the human:**
+- Nothing required for local dev -- `npm run web` and `pytest`/`jest` all work with the defaults
+  above. Optionally set `EXPO_PUBLIC_API_BASE_URL` in `app/.env` if the backend isn't on
+  `localhost:8000`.
+- **Deploying the web build** is a separate, later step (not done here, same as how the backend's
+  Render deployment was walked through manually): `npx expo export -p web` produces a static
+  `app/dist/`, deployable as a Render Static Site (build command `npx expo export -p web` run from
+  `app/`, publish directory `app/dist`). Set `EXPO_PUBLIC_API_BASE_URL` as a **build-time** env var
+  on that static site (Expo inlines `EXPO_PUBLIC_*` at build time, not runtime). Once its URL is
+  known, add it to the backend's `CORS_ALLOWED_ORIGINS` on Render.
