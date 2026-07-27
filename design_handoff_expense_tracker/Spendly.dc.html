@@ -1,0 +1,1108 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,700&family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"><style>
+body{margin:0;background:#f0eee9;font-family:"DM Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#1b1a17}a:hover{color:oklch(0.55 0.09 158)}
+*{box-sizing:border-box}
+.dv-turn{padding:44px 48px 36px;border-bottom:1px solid rgba(0,0,0,.08)}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 22px}
+.dv-tid{font:500 10px "JetBrains Mono",monospace;padding:3px 7px;background:#1b1a17;color:#fff;border-radius:4px;text-decoration:none}
+.dv-tname{font:500 13px/1.2 "DM Sans",sans-serif;color:#1b1a17}
+.dv-opts{display:flex;flex-wrap:wrap;gap:34px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:10px;scroll-margin-top:16px}
+.dv-oid{font:500 10.5px "JetBrains Mono",monospace;padding:3px 7px;background:rgba(0,0,0,.08);color:#1b1a17;border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:400 11.5px/1.3 "DM Sans",sans-serif;color:rgba(0,0,0,.55);max-width:420px}
+.dv-opt:target .dv-oid{background:oklch(0.55 0.09 158);color:#fff}
+.dv-next{margin:26px 0 0;font:12px/1.6 "DM Sans",sans-serif;color:rgba(0,0,0,.5)}
+.scr{width:390px;height:844px;border-radius:38px;overflow:hidden;position:relative;box-shadow:0 2px 24px rgba(0,0,0,.10)}
+.noscroll::-webkit-scrollbar{width:0;height:0}
+@keyframes sheetUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes riseIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes popIn{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:scale(1)}}
+</style></helmet>
+
+<section class="dv-turn" id="t1">
+<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">Automated expense tracker — working prototype + explorations</span></div>
+<div class="dv-opts">
+
+<div class="dv-opt" id="1a">
+<div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>Full interactive prototype — calm paper. All 4 tabs, tap the amber rows to categorise, ＋ to add manually, Settings → Friends.</div>
+<x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" hint-size="402px,874px">
+<div style="height:100%;position:relative;background:#F6F4EF;display:flex;flex-direction:column;font-family:'DM Sans',system-ui,sans-serif;color:#1B1A17;overflow:hidden">
+
+<div class="noscroll" style="flex:1;overflow-y:auto;padding:58px 0 96px">
+
+<sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+<div style="padding:0 22px;animation:riseIn .35s ease both">
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:26px">
+<div>
+<div style="font:400 12px/1 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:rgba(27,26,23,.42);margin-bottom:9px">{{ todayLabel }}</div>
+<div style="font:400 27px/1.15 'Instrument Serif',serif;letter-spacing:-.01em">Good evening,<br>{{ firstName }}</div>
+</div>
+<div style="width:44px;height:44px;border-radius:22px;background:oklch(0.88 0.05 158);display:flex;align-items:center;justify-content:center;font:500 15px 'DM Sans';color:oklch(0.42 0.07 158);flex:none">WL</div>
+</div>
+
+<div style="background:#FFFFFF;border-radius:24px;padding:22px 22px 20px;box-shadow:0 1px 2px rgba(27,26,23,.05),0 8px 24px -14px rgba(27,26,23,.18)">
+<div style="display:flex;background:rgba(27,26,23,.05);border-radius:11px;padding:3px;margin-bottom:20px">
+<div onClick="{{ setToday }}" style="{{ segTodayStyle }}">Today</div>
+<div onClick="{{ setWeek }}" style="{{ segWeekStyle }}">Week</div>
+<div onClick="{{ setMonth }}" style="{{ segMonthStyle }}">Month</div>
+</div>
+<div style="font:400 11px/1 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:rgba(27,26,23,.42);margin-bottom:10px">{{ periodLabel }}</div>
+<div style="display:flex;align-items:baseline;gap:8px">
+<div style="font:400 52px/1 'Instrument Serif',serif;letter-spacing:-.02em">{{ periodAmount }}</div>
+<div style="font:400 13px/1 'DM Sans';color:rgba(27,26,23,.45)">of {{ periodBudget }}</div>
+</div>
+<div style="height:9px;border-radius:5px;background:rgba(27,26,23,.07);margin:18px 0 12px;overflow:hidden">
+<div style="{{ budgetBarStyle }}"></div>
+</div>
+<div style="display:flex;justify-content:space-between;font:400 13px/1.4 'DM Sans'">
+<span style="color:rgba(27,26,23,.55)">{{ budgetPctLabel }}</span>
+<span style="color:oklch(0.48 0.08 158);font-weight:500">{{ budgetLeftLabel }}</span>
+</div>
+</div>
+
+<sc-if value="{{ hasUncat }}" hint-placeholder-val="{{ true }}">
+<div onClick="{{ openQuickSort }}" style="margin-top:14px;background:oklch(0.95 0.045 78);border:1px solid oklch(0.88 0.06 78);border-radius:20px;padding:16px 18px;display:flex;align-items:center;gap:14px;cursor:pointer;animation:popIn .3s ease both">
+<div style="width:34px;height:34px;border-radius:17px;background:oklch(0.80 0.13 72);flex:none;display:flex;align-items:center;justify-content:center;font:500 15px 'DM Sans';color:#fff">{{ uncatCount }}</div>
+<div style="flex:1">
+<div style="font:500 14px/1.3 'DM Sans'">Need a category</div>
+<div style="font:400 12.5px/1.3 'DM Sans';color:rgba(27,26,23,.52);margin-top:2px">Quick sort them — one card at a time.</div>
+</div>
+<div style="font:400 18px/1;color:rgba(27,26,23,.4)">›</div>
+</div>
+</sc-if>
+
+<div style="margin-top:14px;background:#1B1A17;color:#F6F4EF;border-radius:24px;padding:22px;display:flex;gap:20px;align-items:center">
+<div style="position:relative;width:88px;height:88px;flex:none">
+<svg width="88" height="88" viewBox="0 0 88 88">
+<circle cx="44" cy="44" r="37" fill="none" stroke="rgba(246,244,239,.15)" stroke-width="9"></circle>
+<circle cx="44" cy="44" r="37" fill="none" stroke="oklch(0.80 0.12 158)" stroke-width="9" stroke-linecap="round" stroke-dasharray="{{ goalDash }}" transform="rotate(-90 44 44)"></circle>
+</svg>
+<div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:400 21px 'Instrument Serif',serif">{{ goalPct }}</div>
+</div>
+<div style="flex:1">
+<div style="font:400 11px/1 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:rgba(246,244,239,.5);margin-bottom:8px">Savings goal</div>
+<div style="font:400 20px/1.2 'Instrument Serif',serif;margin-bottom:6px">Japan, next April</div>
+<div style="font:400 13px/1.4 'DM Sans';color:rgba(246,244,239,.6)">{{ goalSaved }} of {{ goalTarget }} · on track</div>
+</div>
+</div>
+
+<div style="margin-top:26px;display:flex;align-items:baseline;justify-content:between;gap:8px">
+<div style="font:400 11px/1 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:rgba(27,26,23,.42)">Where it went</div>
+</div>
+<div style="margin-top:14px;display:flex;flex-direction:column;gap:12px">
+<sc-for list="{{ topCats }}" as="cat" hint-placeholder-count="4">
+<div style="display:flex;align-items:center;gap:12px">
+<div style="{{ cat.dotStyle }}"></div>
+<div style="flex:1;min-width:0">
+<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+<span style="font:400 14px/1.2 'DM Sans'">{{ cat.name }}</span>
+<span style="font:400 14px/1.2 'DM Sans';color:rgba(27,26,23,.6)">{{ cat.amount }}</span>
+</div>
+<div style="height:5px;border-radius:3px;background:rgba(27,26,23,.06);overflow:hidden">
+<div style="{{ cat.barStyle }}"></div>
+</div>
+</div>
+</div>
+</sc-for>
+</div>
+<div style="height:14px"></div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isSummary }}" hint-placeholder-val="{{ false }}">
+<div style="padding:0 22px;animation:riseIn .35s ease both">
+<div style="font:400 30px/1.1 'Instrument Serif',serif;margin-bottom:18px">Summary</div>
+<div style="display:flex;gap:8px;margin-bottom:16px">
+<div onClick="{{ setSumWeek }}" style="{{ sumWeekStyle }}">Week</div>
+<div onClick="{{ setSumMonth }}" style="{{ sumMonthStyle }}">Month</div>
+<div onClick="{{ setSumYear }}" style="{{ sumYearStyle }}">Year</div>
+<div style="flex:1"></div>
+<div onClick="{{ toggleSumView }}" style="padding:7px 12px;border-radius:9px;border:1px solid rgba(27,26,23,.14);font:400 12.5px 'DM Sans';cursor:pointer;background:#fff">{{ sumViewToggleLabel }}</div>
+</div>
+
+<sc-if value="{{ isChartView }}" hint-placeholder-val="{{ true }}">
+<div style="background:#fff;border-radius:24px;padding:24px 22px;box-shadow:0 1px 2px rgba(27,26,23,.05)">
+<div style="display:flex;justify-content:center;position:relative;margin-bottom:6px">
+<svg width="196" height="196" viewBox="0 0 196 196">
+<sc-for list="{{ segments }}" as="seg" hint-placeholder-count="5">
+<path d="{{ seg.d }}" fill="{{ seg.color }}" opacity="{{ seg.opacity }}" onClick="{{ seg.onTap }}" style="cursor:pointer;transition:opacity .2s"></path>
+</sc-for>
+</svg>
+<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none">
+<div style="font:400 10.5px/1 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:rgba(27,26,23,.42);margin-bottom:7px">{{ donutCenterLabel }}</div>
+<div style="font:400 32px/1 'Instrument Serif',serif">{{ donutCenterAmount }}</div>
+</div>
+</div>
+</div>
+
+<div style="margin-top:14px;display:flex;flex-direction:column;gap:8px">
+<sc-for list="{{ catRows }}" as="cat" hint-placeholder-count="5">
+<div style="background:#fff;border-radius:18px;padding:14px 16px;box-shadow:0 1px 2px rgba(27,26,23,.05)">
+<div onClick="{{ cat.onTap }}" style="display:flex;align-items:center;gap:12px;cursor:pointer">
+<div style="{{ cat.dotStyle }}"></div>
+<div style="flex:1;font:400 14.5px/1.2 'DM Sans'">{{ cat.name }}</div>
+<div style="font:400 11px/1 'JetBrains Mono',monospace;color:rgba(27,26,23,.42)">{{ cat.pct }}</div>
+<div style="font:400 14.5px/1.2 'DM Sans';min-width:74px;text-align:right">{{ cat.amount }}</div>
+<div style="{{ cat.chevronStyle }}">⌄</div>
+</div>
+<sc-if value="{{ cat.expanded }}" hint-placeholder-val="{{ false }}">
+<div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(27,26,23,.07);display:flex;flex-direction:column;gap:9px;animation:fadeIn .25s ease both">
+<sc-for list="{{ cat.subs }}" as="sub" hint-placeholder-count="3">
+<div style="display:flex;align-items:center;gap:10px;padding-left:26px">
+<div style="flex:1;font:400 13px/1.2 'DM Sans';color:rgba(27,26,23,.62)">{{ sub.name }}</div>
+<div style="width:84px;height:4px;border-radius:2px;background:rgba(27,26,23,.06);overflow:hidden">
+<div style="{{ sub.barStyle }}"></div>
+</div>
+<div style="font:400 13px/1.2 'DM Sans';color:rgba(27,26,23,.62);min-width:64px;text-align:right">{{ sub.amount }}</div>
+</div>
+</sc-for>
+</div>
+</sc-if>
+</div>
+</sc-for>
+</div>
+</sc-if>
+
+<sc-if value="{{ isCalendarView }}" hint-placeholder-val="{{ false }}">
+<div style="background:#fff;border-radius:24px;padding:20px 18px;box-shadow:0 1px 2px rgba(27,26,23,.05);animation:fadeIn .25s ease both">
+<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:16px">
+<div style="font:400 18px/1 'Instrument Serif',serif">{{ calTitle }}</div>
+<div style="font:400 11px/1 'JetBrains Mono',monospace;color:rgba(27,26,23,.42)">darker = more spent</div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:8px">
+<sc-for list="{{ weekdayLabels }}" as="w" hint-placeholder-count="7">
+<div style="text-align:center;font:400 10px/1 'JetBrains Mono',monospace;color:rgba(27,26,23,.35)">{{ w }}</div>
+</sc-for>
+</div>
+<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:5px">
+<sc-for list="{{ calCells }}" as="d" hint-placeholder-count="35">
+<div onClick="{{ d.onTap }}" style="{{ d.style }}">{{ d.label }}</div>
+</sc-for>
+</div>
+</div>
+<div style="margin-top:14px;background:#fff;border-radius:20px;padding:18px;box-shadow:0 1px 2px rgba(27,26,23,.05)">
+<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:12px">
+<div style="font:400 14px/1.2 'DM Sans'">{{ dayTitle }}</div>
+<div style="font:400 20px/1 'Instrument Serif',serif">{{ dayTotal }}</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:9px">
+<sc-for list="{{ dayItems }}" as="it" hint-placeholder-count="3">
+<div style="display:flex;align-items:center;gap:10px">
+<div style="{{ it.dotStyle }}"></div>
+<div style="flex:1;font:400 13.5px/1.2 'DM Sans';color:rgba(27,26,23,.7)">{{ it.merchant }}</div>
+<div style="font:400 13.5px/1.2 'DM Sans'">{{ it.amount }}</div>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-if>
+<div style="height:14px"></div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isTx }}" hint-placeholder-val="{{ false }}">
+<div style="padding:0 22px;animation:riseIn .35s ease both">
+<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+<div style="font:400 30px/1.1 'Instrument Serif',serif">Transactions</div>
+<div onClick="{{ openAdd }}" style="width:40px;height:40px;border-radius:20px;background:#1B1A17;color:#F6F4EF;display:flex;align-items:center;justify-content:center;font:300 24px/1 'DM Sans';cursor:pointer;padding-bottom:3px">+</div>
+</div>
+<div style="display:flex;gap:8px;margin-bottom:18px">
+<div onClick="{{ setFilterAll }}" style="{{ filterAllStyle }}">All</div>
+<div onClick="{{ setFilterNeeds }}" style="{{ filterNeedsStyle }}">Needs a category {{ uncatCount }}</div>
+</div>
+<sc-if value="{{ showQsBanner }}" hint-placeholder-val="{{ false }}">
+<div onClick="{{ openQuickSort }}" style="margin-bottom:18px;background:oklch(0.95 0.045 78);border:1px solid oklch(0.88 0.06 78);border-radius:18px;padding:15px 17px;display:flex;align-items:center;gap:13px;cursor:pointer;animation:popIn .28s ease both">
+<div style="width:30px;height:30px;border-radius:15px;background:oklch(0.80 0.13 72);flex:none;display:flex;align-items:center;justify-content:center;font:500 14px 'DM Sans';color:#fff">{{ uncatCount }}</div>
+<div style="flex:1">
+<div style="font:500 13.5px/1.3 'DM Sans'">Quick sort</div>
+<div style="font:400 12px/1.3 'DM Sans';color:rgba(27,26,23,.52);margin-top:2px">Clear them all in one pass</div>
+</div>
+<div style="font:400 18px/1;color:rgba(27,26,23,.4)">›</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ txEmpty }}" hint-placeholder-val="{{ false }}">
+<div style="background:#fff;border-radius:24px;padding:44px 26px;text-align:center;box-shadow:0 1px 2px rgba(27,26,23,.05);animation:popIn .3s ease both">
+<div style="width:52px;height:52px;border-radius:26px;background:oklch(0.92 0.06 158);margin:0 auto 16px"></div>
+<div style="font:400 21px/1.25 'Instrument Serif',serif;margin-bottom:8px">All caught up</div>
+<div style="font:400 13.5px/1.5 'DM Sans';color:rgba(27,26,23,.52)">Every transaction has a category. Your summary is accurate to the cent.</div>
+</div>
+</sc-if>
+
+<div style="display:flex;flex-direction:column;gap:20px">
+<sc-for list="{{ txGroups }}" as="g" hint-placeholder-count="3">
+<div>
+<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px">
+<div style="font:400 11px/1 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:rgba(27,26,23,.42)">{{ g.label }}</div>
+<div style="font:400 11px/1 'JetBrains Mono',monospace;color:rgba(27,26,23,.35)">{{ g.total }}</div>
+</div>
+<div style="background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 1px 2px rgba(27,26,23,.05)">
+<sc-for list="{{ g.items }}" as="t" hint-placeholder-count="3">
+<div onClick="{{ t.onTap }}" style="{{ t.rowStyle }}">
+<div style="{{ t.dotStyle }}"></div>
+<div style="flex:1;min-width:0">
+<div style="font:400 14.5px/1.25 'DM Sans';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.merchant }}</div>
+<div style="{{ t.subStyle }}">{{ t.subLabel }}</div>
+</div>
+<div style="text-align:right">
+<div style="font:400 14.5px/1.25 'DM Sans'">{{ t.amount }}</div>
+<div style="font:400 10px/1.4 'JetBrains Mono',monospace;color:rgba(27,26,23,.35);margin-top:3px">{{ t.source }}</div>
+</div>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-for>
+</div>
+<div style="height:14px"></div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isSettings }}" hint-placeholder-val="{{ false }}">
+<div style="padding:0 22px;animation:riseIn .35s ease both">
+<div style="font:400 30px/1.1 'Instrument Serif',serif;margin-bottom:20px">Settings</div>
+
+<div style="background:#fff;border-radius:24px;padding:20px;box-shadow:0 1px 2px rgba(27,26,23,.05);display:flex;gap:16px;align-items:center">
+<div style="width:54px;height:54px;border-radius:27px;background:oklch(0.88 0.05 158);display:flex;align-items:center;justify-content:center;font:500 18px 'DM Sans';color:oklch(0.42 0.07 158)">WL</div>
+<div style="flex:1">
+<div style="font:400 18px/1.2 'Instrument Serif',serif">{{ fullName }}</div>
+<div style="font:400 12.5px/1.3 'DM Sans';color:rgba(27,26,23,.5);margin-top:3px">Member since 2025 · SGD</div>
+</div>
+<div onClick="{{ toggleEditName }}" style="padding:7px 13px;border-radius:9px;border:1px solid rgba(27,26,23,.14);font:400 12.5px 'DM Sans';cursor:pointer">{{ editNameLabel }}</div>
+</div>
+<sc-if value="{{ editingName }}" hint-placeholder-val="{{ false }}">
+<div style="margin-top:10px;background:#fff;border-radius:18px;padding:16px;box-shadow:0 1px 2px rgba(27,26,23,.05);animation:fadeIn .2s ease both">
+<div style="font:400 10.5px/1 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:rgba(27,26,23,.42);margin-bottom:8px">Display name</div>
+<input value="{{ nameDraft }}" onChange="{{ onNameChange }}" style="width:100%;border:1px solid rgba(27,26,23,.14);border-radius:11px;padding:11px 13px;font:400 15px 'DM Sans';color:#1B1A17;background:#FBFAF7;outline:none"></input>
+<div onClick="{{ saveName }}" style="margin-top:10px;background:#1B1A17;color:#F6F4EF;border-radius:11px;padding:11px;text-align:center;font:500 14px 'DM Sans';cursor:pointer">Save</div>
+</div>
+</sc-if>
+
+<div style="margin-top:22px;font:400 11px/1 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:rgba(27,26,23,.42);margin-bottom:10px">Where transactions come from</div>
+<div style="background:#fff;border-radius:20px;box-shadow:0 1px 2px rgba(27,26,23,.05);overflow:hidden">
+<sc-for list="{{ sources }}" as="s" hint-placeholder-count="3">
+<div style="display:flex;align-items:center;gap:13px;padding:15px 16px;border-bottom:1px solid rgba(27,26,23,.06)">
+<div style="{{ s.dotStyle }}"></div>
+<div style="flex:1;min-width:0">
+<div style="font:400 14.5px/1.25 'DM Sans';white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.label }}</div>
+<div style="font:400 12px/1.3 'DM Sans';color:rgba(27,26,23,.48);margin-top:2px">{{ s.meta }}</div>
+</div>
+<div onClick="{{ s.onTap }}" style="font:400 12.5px 'DM Sans';color:oklch(0.48 0.08 158);cursor:pointer">{{ s.action }}</div>
+</div>
+</sc-for>
+<div onClick="{{ addSource }}" style="padding:15px 16px;font:400 14.5px 'DM Sans';color:oklch(0.48 0.08 158);cursor:pointer">+ Connect another inbox or number</div>
+</div>
+
+<sc-if value="{{ editingEmail }}" hint-placeholder-val="{{ false }}">
+<div style="margin-top:10px;background:#fff;border-radius:18px;padding:16px;box-shadow:0 1px 2px rgba(27,26,23,.05);animation:fadeIn .2s ease both">
+<div style="font:400 10.5px/1 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:rgba(27,26,23,.42);margin-bottom:8px">Receipt inbox</div>
+<input value="{{ emailDraft }}" onChange="{{ onEmailChange }}" style="width:100%;border:1px solid rgba(27,26,23,.14);border-radius:11px;padding:11px 13px;font:400 15px 'DM Sans';color:#1B1A17;background:#FBFAF7;outline:none"></input>
+<div style="font:400 12px/1.5 'DM Sans';color:rgba(27,26,23,.48);margin-top:9px">We only read messages that look like receipts. Nothing else is stored.</div>
+<div onClick="{{ saveEmail }}" style="margin-top:12px;background:#1B1A17;color:#F6F4EF;border-radius:11px;padding:11px;text-align:center;font:500 14px 'DM Sans';cursor:pointer">Save inbox</div>
+</div>
+</sc-if>
+
+<div style="margin-top:22px;font:400 11px/1 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:rgba(27,26,23,.42);margin-bottom:10px">Preferences</div>
+<div style="background:#fff;border-radius:20px;box-shadow:0 1px 2px rgba(27,26,23,.05);overflow:hidden">
+<sc-for list="{{ prefs }}" as="p" hint-placeholder-count="4">
+<div style="display:flex;align-items:center;gap:14px;padding:15px 16px;border-bottom:1px solid rgba(27,26,23,.06)">
+<div style="flex:1">
+<div style="font:400 14.5px/1.25 'DM Sans'">{{ p.label }}</div>
+<div style="font:400 12px/1.4 'DM Sans';color:rgba(27,26,23,.48);margin-top:3px">{{ p.meta }}</div>
+</div>
+<div onClick="{{ p.onTap }}" style="{{ p.trackStyle }}"><div style="{{ p.knobStyle }}"></div></div>
+</div>
+</sc-for>
+</div>
+
+<div onClick="{{ goFriends }}" style="margin-top:14px;background:oklch(0.94 0.035 158);border:1px solid oklch(0.88 0.05 158);border-radius:20px;padding:18px;display:flex;align-items:center;gap:14px;cursor:pointer">
+<div style="display:flex">
+<div style="width:32px;height:32px;border-radius:16px;background:oklch(0.80 0.08 158);border:2px solid oklch(0.94 0.035 158)"></div>
+<div style="width:32px;height:32px;border-radius:16px;background:oklch(0.80 0.08 78);border:2px solid oklch(0.94 0.035 158);margin-left:-12px"></div>
+<div style="width:32px;height:32px;border-radius:16px;background:oklch(0.80 0.08 300);border:2px solid oklch(0.94 0.035 158);margin-left:-12px"></div>
+</div>
+<div style="flex:1">
+<div style="font:500 14px/1.3 'DM Sans'">Spend with friends</div>
+<div style="font:400 12.5px/1.35 'DM Sans';color:rgba(27,26,23,.55);margin-top:2px">Share goals, keep each other honest</div>
+</div>
+<div style="font:400 18px/1;color:rgba(27,26,23,.4)">›</div>
+</div>
+
+<div style="margin-top:18px;text-align:center;font:400 12px 'DM Sans';color:rgba(27,26,23,.4);padding-bottom:8px">Sign out</div>
+</div>
+</sc-if>
+
+</div>
+
+<div style="{{ tabBarStyle }}">
+<div onClick="{{ goHome }}" style="{{ tabHome }}">
+<svg width="22" height="22" viewBox="0 0 22 22" fill="none"><rect x="3.2" y="7.6" width="15.6" height="11.2" rx="3" stroke="currentColor" stroke-width="1.6"></rect><path d="M2 8.6L11 2.8l9 5.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+<span style="font:400 10px 'DM Sans';margin-top:4px">Home</span>
+</div>
+<div onClick="{{ goSummary }}" style="{{ tabSummary }}">
+<svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="8.2" stroke="currentColor" stroke-width="1.6"></circle><path d="M11 2.8A8.2 8.2 0 0 1 19.2 11H11z" fill="currentColor"></path></svg>
+<span style="font:400 10px 'DM Sans';margin-top:4px">Summary</span>
+</div>
+<div onClick="{{ goTx }}" style="{{ tabTx }}">
+<svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M3.5 6.5h15M3.5 11h15M3.5 15.5h9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"></path></svg>
+<span style="font:400 10px 'DM Sans';margin-top:4px">Activity</span>
+</div>
+<div onClick="{{ goSettings }}" style="{{ tabSettings }}">
+<svg width="22" height="22" viewBox="0 0 22 22" fill="none"><circle cx="11" cy="11" r="8.2" stroke="currentColor" stroke-width="1.6"></circle><circle cx="11" cy="11" r="2.8" fill="currentColor"></circle></svg>
+<span style="font:400 10px 'DM Sans';margin-top:4px">Settings</span>
+</div>
+</div>
+
+<sc-if value="{{ showQuickSort }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;inset:0;background:#F6F4EF;z-index:85;display:flex;flex-direction:column;animation:riseIn .3s ease both">
+<div class="noscroll" style="flex:1;overflow-y:auto;padding:58px 22px 30px">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px">
+<div onClick="{{ closeQuickSort }}" style="font:400 14px 'DM Sans';color:rgba(27,26,23,.55);cursor:pointer">Done</div>
+<div style="font:400 11px 'JetBrains Mono',monospace;color:rgba(27,26,23,.42)">{{ qsCounter }}</div>
+</div>
+<div style="font:400 26px/1.1 'Instrument Serif',serif;margin-bottom:6px">Quick sort</div>
+<div style="font:400 13px/1.5 'DM Sans';color:rgba(27,26,23,.5);margin-bottom:24px">A few we couldn't read confidently.</div>
+<div style="position:relative;height:290px">
+<sc-if value="{{ qsDone }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;inset:0;background:#fff;border-radius:26px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;text-align:center;box-shadow:0 1px 2px rgba(27,26,23,.05);animation:popIn .3s ease both">
+<div style="width:54px;height:54px;border-radius:27px;background:oklch(0.90 0.07 158);margin-bottom:16px"></div>
+<div style="font:400 22px/1.2 'Instrument Serif',serif;margin-bottom:8px">{{ qsDoneTitle }}</div>
+<div style="font:400 13px/1.5 'DM Sans';color:rgba(27,26,23,.52);max-width:230px">{{ qsDoneBody }}</div>
+<div onClick="{{ closeQuickSort }}" style="margin-top:20px;background:#1B1A17;color:#F6F4EF;border-radius:12px;padding:12px 22px;font:500 14px 'DM Sans';cursor:pointer">Back to spending</div>
+</div>
+</sc-if>
+<sc-if value="{{ qsActive }}" hint-placeholder-val="{{ true }}">
+<div>
+<div style="position:absolute;top:16px;left:14px;right:14px;height:250px;background:#fff;border-radius:24px;opacity:.4;box-shadow:0 1px 2px rgba(27,26,23,.04)"></div>
+<div style="position:absolute;top:8px;left:7px;right:7px;height:262px;background:#fff;border-radius:25px;opacity:.7;box-shadow:0 1px 2px rgba(27,26,23,.04)"></div>
+<div style="{{ qsCardStyle }}">
+<div style="font:400 10.5px 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:rgba(27,26,23,.42);margin-bottom:14px">{{ qsSource }}</div>
+<div style="font:400 30px/1.15 'Instrument Serif',serif;margin-bottom:6px">{{ qsMerchant }}</div>
+<div style="font:400 13px 'DM Sans';color:rgba(27,26,23,.5);margin-bottom:20px">{{ qsWhen }}</div>
+<div style="font:400 46px/1 'Instrument Serif',serif;letter-spacing:-.02em">{{ qsAmount }}</div>
+<div style="margin-top:auto;font:400 12.5px/1.4 'DM Sans';color:rgba(27,26,23,.42)">{{ qsHint }}</div>
+</div>
+</div>
+</sc-if>
+</div>
+<sc-if value="{{ qsActive }}" hint-placeholder-val="{{ true }}">
+<div>
+<div style="margin-top:24px;font:400 10.5px 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:rgba(27,26,23,.42);margin-bottom:12px">{{ qsStepLabel }}</div>
+<div style="display:flex;flex-wrap:wrap;gap:9px">
+<sc-for list="{{ qsChips }}" as="c" hint-placeholder-count="5">
+<div onClick="{{ c.onTap }}" style="{{ c.style }}">{{ c.name }}</div>
+</sc-for>
+</div>
+<div style="display:flex;justify-content:center;gap:22px;margin-top:20px">
+<sc-if value="{{ qsSubStep }}" hint-placeholder-val="{{ false }}">
+<div onClick="{{ qsBack }}" style="font:400 13px 'DM Sans';color:rgba(27,26,23,.45);cursor:pointer">‹ Categories</div>
+</sc-if>
+<div onClick="{{ qsSkip }}" style="font:400 13px 'DM Sans';color:rgba(27,26,23,.45);cursor:pointer">Skip for now</div>
+</div>
+</div>
+</sc-if>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ showFriends }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;inset:0;background:#F6F4EF;z-index:80;display:flex;flex-direction:column;animation:riseIn .3s ease both">
+<div class="noscroll" style="flex:1;overflow-y:auto;padding:58px 22px 40px">
+<div onClick="{{ backFromFriends }}" style="font:400 14px 'DM Sans';color:rgba(27,26,23,.55);cursor:pointer;margin-bottom:18px">‹ Settings</div>
+<div style="font:400 30px/1.1 'Instrument Serif',serif;margin-bottom:6px">Circle</div>
+<div style="font:400 13.5px/1.5 'DM Sans';color:rgba(27,26,23,.55);margin-bottom:22px;max-width:290px">Three friends can see your monthly spend and goal progress. They cannot see individual transactions.</div>
+<div style="background:#1B1A17;color:#F6F4EF;border-radius:22px;padding:20px;margin-bottom:16px">
+<div style="font:400 11px/1 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:rgba(246,244,239,.5);margin-bottom:12px">This month, together</div>
+<div style="display:flex;align-items:baseline;gap:10px"><div style="font:400 38px/1 'Instrument Serif',serif">3 of 4</div><div style="font:400 13px 'DM Sans';color:rgba(246,244,239,.6)">under budget</div></div>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px">
+<sc-for list="{{ friends }}" as="f" hint-placeholder-count="4">
+<div style="background:#fff;border-radius:20px;padding:16px;box-shadow:0 1px 2px rgba(27,26,23,.05)">
+<div style="display:flex;align-items:center;gap:13px;margin-bottom:13px">
+<div style="{{ f.avatarStyle }}">{{ f.initials }}</div>
+<div style="flex:1">
+<div style="font:400 15px/1.2 'DM Sans'">{{ f.name }}</div>
+<div style="font:400 12px/1.3 'DM Sans';color:rgba(27,26,23,.5);margin-top:3px">{{ f.goal }}</div>
+</div>
+<div onClick="{{ f.onNudge }}" style="{{ f.nudgeStyle }}">{{ f.nudgeLabel }}</div>
+</div>
+<div style="height:7px;border-radius:4px;background:rgba(27,26,23,.07);overflow:hidden"><div style="{{ f.barStyle }}"></div></div>
+<div style="display:flex;justify-content:space-between;margin-top:9px;font:400 12px 'DM Sans';color:rgba(27,26,23,.5)"><span>{{ f.spent }} spent</span><span>{{ f.status }}</span></div>
+</div>
+</sc-for>
+</div>
+<div style="margin-top:16px;border:1px dashed rgba(27,26,23,.2);border-radius:20px;padding:20px;text-align:center">
+<div style="font:400 14px/1.3 'DM Sans';margin-bottom:4px">Invite someone</div>
+<div style="font:400 12.5px/1.4 'DM Sans';color:rgba(27,26,23,.5)">They see totals and goals. Never merchants.</div>
+</div>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ sheetOpen }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;inset:0;z-index:90">
+<div onClick="{{ closeSheet }}" style="position:absolute;inset:0;background:rgba(27,26,23,.4);animation:fadeIn .2s ease both"></div>
+<div style="position:absolute;left:0;right:0;bottom:0;background:#FBFAF7;border-radius:28px 28px 0 0;padding:12px 22px 34px;animation:sheetUp .3s cubic-bezier(.22,1,.36,1) both;max-height:82%;overflow-y:auto">
+<div style="width:38px;height:4px;border-radius:2px;background:rgba(27,26,23,.16);margin:0 auto 18px"></div>
+
+<sc-if value="{{ isCatSheet }}" hint-placeholder-val="{{ true }}">
+<div>
+<div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:4px">
+<div style="font:400 22px/1.2 'Instrument Serif',serif">{{ sheetMerchant }}</div>
+<div style="font:400 22px/1.2 'Instrument Serif',serif">{{ sheetAmount }}</div>
+</div>
+<div style="font:400 12px/1.4 'DM Sans';color:rgba(27,26,23,.5);margin-bottom:18px">{{ sheetMeta }}</div>
+<div style="font:400 10.5px/1 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:rgba(27,26,23,.42);margin-bottom:11px">{{ sheetStepLabel }}</div>
+<div style="display:flex;flex-wrap:wrap;gap:9px">
+<sc-for list="{{ sheetOptions }}" as="o" hint-placeholder-count="5">
+<div onClick="{{ o.onTap }}" style="{{ o.style }}">{{ o.name }}</div>
+</sc-for>
+</div>
+<sc-if value="{{ catStepTwo }}" hint-placeholder-val="{{ false }}">
+<div onClick="{{ backToCats }}" style="margin-top:16px;font:400 13px 'DM Sans';color:rgba(27,26,23,.5);cursor:pointer">‹ Back to categories</div>
+</sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{ isAddSheet }}" hint-placeholder-val="{{ false }}">
+<div>
+<div style="font:400 22px/1.2 'Instrument Serif',serif;margin-bottom:18px">Add a transaction</div>
+<div style="display:flex;gap:10px;margin-bottom:14px">
+<div style="flex:1">
+<div style="font:400 10.5px/1 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:rgba(27,26,23,.42);margin-bottom:8px">Amount</div>
+<div style="display:flex;align-items:center;border:1px solid rgba(27,26,23,.14);border-radius:12px;padding:0 13px;background:#fff">
+<span style="font:400 15px 'DM Sans';color:rgba(27,26,23,.45)">S$</span>
+<input value="{{ draftAmount }}" onChange="{{ onAmountChange }}" placeholder="0.00" inputmode="decimal" style="flex:1;border:none;outline:none;background:transparent;padding:12px 8px;font:400 17px 'DM Sans';color:#1B1A17;width:100%"></input>
+</div>
+</div>
+</div>
+<div style="margin-bottom:14px">
+<div style="font:400 10.5px/1 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:rgba(27,26,23,.42);margin-bottom:8px">Merchant</div>
+<input value="{{ draftMerchant }}" onChange="{{ onMerchantChange }}" placeholder="Where did it go?" style="width:100%;border:1px solid rgba(27,26,23,.14);border-radius:12px;padding:12px 13px;font:400 15px 'DM Sans';color:#1B1A17;background:#fff;outline:none"></input>
+</div>
+<div style="font:400 10.5px/1 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:rgba(27,26,23,.42);margin-bottom:10px">Category</div>
+<div style="display:flex;flex-wrap:wrap;gap:9px;margin-bottom:8px">
+<sc-for list="{{ addCatOptions }}" as="o" hint-placeholder-count="5">
+<div onClick="{{ o.onTap }}" style="{{ o.style }}">{{ o.name }}</div>
+</sc-for>
+</div>
+<sc-if value="{{ addSubVisible }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;animation:fadeIn .2s ease both">
+<sc-for list="{{ addSubOptions }}" as="s" hint-placeholder-count="3">
+<div onClick="{{ s.onTap }}" style="{{ s.style }}">{{ s.name }}</div>
+</sc-for>
+</div>
+</sc-if>
+<div onClick="{{ saveDraft }}" style="{{ saveBtnStyle }}">Add transaction</div>
+</div>
+</sc-if>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;left:22px;right:22px;bottom:104px;z-index:95;background:#1B1A17;color:#F6F4EF;border-radius:14px;padding:13px 16px;font:400 13.5px 'DM Sans';text-align:center;animation:popIn .25s ease both">{{ toast }}</div>
+</sc-if>
+
+</div>
+</x-import>
+</div>
+
+<div class="dv-opt" id="1b">
+<div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>Home, editorial ledger — no cards, no icons. Type does the work; the budget is one hairline rule.</div>
+<div class="scr" style="background:#FFFDF8;padding:64px 26px 30px;font-family:'DM Sans',sans-serif;color:#111">
+<div style="font:400 10.5px/1 'JetBrains Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color:#111;opacity:.45">Sun 26 Jul · Day 26 of 31</div>
+<div style="font:400 40px/1.05 'Instrument Serif',serif;margin:26px 0 40px;letter-spacing:-.015em">Evening,<br>Wei Ling.</div>
+<div style="border-top:1.5px solid #111;padding-top:14px">
+<div style="display:flex;justify-content:space-between;font:400 10.5px/1 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;opacity:.5"><span>Spent, July</span><span>Budget 2,400</span></div>
+<div style="font:400 84px/.95 'Instrument Serif',serif;letter-spacing:-.03em;margin:16px 0 8px">1,486<span style="font-size:34px;opacity:.4">.20</span></div>
+<div style="height:2px;background:rgba(17,17,17,.12);position:relative;margin:18px 0 10px"><div style="position:absolute;left:0;top:0;height:2px;width:61.9%;background:#111"></div><div style="position:absolute;left:83.8%;top:-5px;width:1px;height:12px;background:oklch(0.62 0.16 40)"></div></div>
+<div style="display:flex;justify-content:space-between;font:400 12px 'DM Sans';opacity:.55"><span>61.9% used</span><span>pace mark 83.8%</span></div>
+<div style="font:italic 400 17px/1.45 'Instrument Serif',serif;margin-top:20px;max-width:280px">You're S$525 ahead of your own pace. Nice restraint.</div>
+</div>
+<div style="border-top:1px solid rgba(17,17,17,.18);margin-top:32px;padding-top:14px;display:flex;flex-direction:column;gap:0">
+<div style="display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid rgba(17,17,17,.08);font:400 14.5px 'DM Sans'"><span>Food</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px">486.30</span></div>
+<div style="display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid rgba(17,17,17,.08);font:400 14.5px 'DM Sans'"><span>Groceries</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px">338.90</span></div>
+<div style="display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid rgba(17,17,17,.08);font:400 14.5px 'DM Sans'"><span>Entertainment</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px">330.00</span></div>
+<div style="display:flex;justify-content:space-between;padding:11px 0;font:400 14.5px 'DM Sans';opacity:.45"><span>3 uncategorised</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px">66.50</span></div>
+</div>
+<div style="position:absolute;left:26px;right:26px;bottom:26px;border-top:1.5px solid #111;padding-top:12px;display:flex;justify-content:space-between;align-items:baseline">
+<span style="font:400 10.5px 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;opacity:.5">Japan fund</span>
+<span style="font:400 22px 'Instrument Serif',serif">1,850 <span style="opacity:.35">/ 3,000</span></span>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="1c">
+<div class="dv-olabel"><a class="dv-oid" href="#1c">1c</a>Home, soft dark — budget as a dial, category light. Same data, evening-friendly.</div>
+<div class="scr" style="background:#141518;padding:64px 22px 30px;font-family:'DM Sans',sans-serif;color:#EFEEEA">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:28px">
+<div><div style="font:400 10.5px/1 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:rgba(239,238,234,.4)">Sunday evening</div><div style="font:400 25px/1.2 'Instrument Serif',serif;margin-top:8px">Hey, Wei Ling</div></div>
+<div style="width:42px;height:42px;border-radius:21px;background:linear-gradient(140deg,oklch(0.62 0.10 158),oklch(0.52 0.10 235));display:flex;align-items:center;justify-content:center;font:500 14px 'DM Sans'">WL</div>
+</div>
+<div style="background:#1D1F23;border-radius:28px;padding:26px 22px;position:relative;overflow:hidden">
+<div style="position:absolute;width:220px;height:220px;border-radius:110px;background:oklch(0.62 0.12 158);filter:blur(72px);opacity:.20;top:-70px;right:-60px"></div>
+<div style="position:relative;display:flex;justify-content:center;margin-bottom:20px">
+<svg width="188" height="188" viewBox="0 0 188 188">
+<circle cx="94" cy="94" r="78" fill="none" stroke="rgba(239,238,234,.09)" stroke-width="14"></circle>
+<circle cx="94" cy="94" r="78" fill="none" stroke="oklch(0.78 0.13 158)" stroke-width="14" stroke-linecap="round" stroke-dasharray="303 490" transform="rotate(-90 94 94)"></circle>
+</svg>
+<div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+<div style="font:400 10px/1 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:rgba(239,238,234,.4);margin-bottom:8px">Left this month</div>
+<div style="font:400 40px/1 'Instrument Serif',serif">S$913</div>
+<div style="font:400 12px 'DM Sans';color:rgba(239,238,234,.45);margin-top:7px">5 days to go</div>
+</div>
+</div>
+<div style="display:flex;gap:8px;position:relative">
+<div style="flex:1;background:rgba(239,238,234,.06);border-radius:14px;padding:13px"><div style="font:400 10px 'JetBrains Mono',monospace;color:rgba(239,238,234,.4);text-transform:uppercase;letter-spacing:.08em">Today</div><div style="font:400 21px 'Instrument Serif',serif;margin-top:6px">S$42.80</div></div>
+<div style="flex:1;background:rgba(239,238,234,.06);border-radius:14px;padding:13px"><div style="font:400 10px 'JetBrains Mono',monospace;color:rgba(239,238,234,.4);text-transform:uppercase;letter-spacing:.08em">Week</div><div style="font:400 21px 'Instrument Serif',serif;margin-top:6px">S$318</div></div>
+</div>
+</div>
+<div style="margin-top:16px;display:flex;gap:12px">
+<div style="flex:1;background:#1D1F23;border-radius:22px;padding:18px">
+<div style="font:400 10px 'JetBrains Mono',monospace;color:rgba(239,238,234,.4);text-transform:uppercase;letter-spacing:.08em">Japan fund</div>
+<div style="font:400 26px 'Instrument Serif',serif;margin:9px 0 12px">62%</div>
+<div style="height:6px;border-radius:3px;background:rgba(239,238,234,.09);overflow:hidden"><div style="width:62%;height:6px;border-radius:3px;background:oklch(0.78 0.13 158)"></div></div>
+</div>
+<div style="flex:1;background:oklch(0.32 0.06 72);border-radius:22px;padding:18px">
+<div style="font:400 10px 'JetBrains Mono',monospace;color:oklch(0.86 0.08 78);text-transform:uppercase;letter-spacing:.08em">To sort</div>
+<div style="font:400 26px 'Instrument Serif',serif;margin:9px 0 12px">3 items</div>
+<div style="font:400 12px/1.35 'DM Sans';color:rgba(239,238,234,.6)">Tap to categorise</div>
+</div>
+</div>
+<div style="margin-top:22px;font:400 10.5px 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:rgba(239,238,234,.4);margin-bottom:14px">Categories</div>
+<div style="display:flex;flex-direction:column;gap:13px">
+<div style="display:flex;align-items:center;gap:12px"><div style="width:9px;height:9px;border-radius:5px;background:oklch(0.78 0.12 45)"></div><div style="flex:1;font:400 14px 'DM Sans'">Food</div><div style="width:110px;height:5px;border-radius:3px;background:rgba(239,238,234,.08);overflow:hidden"><div style="width:100%;height:5px;background:oklch(0.78 0.12 45)"></div></div><div style="font:400 12.5px 'JetBrains Mono',monospace;color:rgba(239,238,234,.6);width:58px;text-align:right">486.30</div></div>
+<div style="display:flex;align-items:center;gap:12px"><div style="width:9px;height:9px;border-radius:5px;background:oklch(0.78 0.12 145)"></div><div style="flex:1;font:400 14px 'DM Sans'">Groceries</div><div style="width:110px;height:5px;border-radius:3px;background:rgba(239,238,234,.08);overflow:hidden"><div style="width:70%;height:5px;background:oklch(0.78 0.12 145)"></div></div><div style="font:400 12.5px 'JetBrains Mono',monospace;color:rgba(239,238,234,.6);width:58px;text-align:right">338.90</div></div>
+<div style="display:flex;align-items:center;gap:12px"><div style="width:9px;height:9px;border-radius:5px;background:oklch(0.78 0.12 15)"></div><div style="flex:1;font:400 14px 'DM Sans'">Entertainment</div><div style="width:110px;height:5px;border-radius:3px;background:rgba(239,238,234,.08);overflow:hidden"><div style="width:68%;height:5px;background:oklch(0.78 0.12 15)"></div></div><div style="font:400 12.5px 'JetBrains Mono',monospace;color:rgba(239,238,234,.6);width:58px;text-align:right">330.00</div></div>
+<div style="display:flex;align-items:center;gap:12px"><div style="width:9px;height:9px;border-radius:5px;background:oklch(0.78 0.12 235)"></div><div style="flex:1;font:400 14px 'DM Sans'">Transport</div><div style="width:110px;height:5px;border-radius:3px;background:rgba(239,238,234,.08);overflow:hidden"><div style="width:44%;height:5px;background:oklch(0.78 0.12 235)"></div></div><div style="font:400 12.5px 'JetBrains Mono',monospace;color:rgba(239,238,234,.6);width:58px;text-align:right">212.40</div></div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="1d">
+<div class="dv-olabel"><a class="dv-oid" href="#1d">1d</a>Summary without a pie — one stacked bar per week, a spend calendar, and a trend line. Easier to read change over time.</div>
+<div class="scr" style="background:#F6F4EF;padding:64px 22px 30px;font-family:'DM Sans',sans-serif;color:#1B1A17;overflow-y:auto">
+<div style="font:400 30px/1.1 'Instrument Serif',serif;margin-bottom:18px">Summary</div>
+<div style="display:flex;gap:8px;margin-bottom:18px">
+<div style="padding:7px 14px;border-radius:9px;background:#1B1A17;color:#F6F4EF;font:400 12.5px 'DM Sans'">Month</div>
+<div style="padding:7px 14px;border-radius:9px;border:1px solid rgba(27,26,23,.14);font:400 12.5px 'DM Sans'">Year</div>
+<div style="flex:1"></div>
+<div style="padding:7px 12px;border-radius:9px;border:1px solid rgba(27,26,23,.14);font:400 12.5px 'DM Sans';background:#fff">Bars ⇄ Pie</div>
+</div>
+<div style="background:#fff;border-radius:24px;padding:20px;box-shadow:0 1px 2px rgba(27,26,23,.05)">
+<div style="font:400 10.5px 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:rgba(27,26,23,.42);margin-bottom:16px">By week · July</div>
+<div style="display:flex;flex-direction:column;gap:16px">
+<div><div style="display:flex;justify-content:space-between;font:400 12.5px 'DM Sans';margin-bottom:7px"><span style="color:rgba(27,26,23,.55)">1–7 Jul</span><span>S$402.10</span></div><div style="display:flex;height:14px;border-radius:7px;overflow:hidden"><div style="width:33%;background:oklch(0.72 0.10 45)"></div><div style="width:14%;background:oklch(0.72 0.10 235)"></div><div style="width:24%;background:oklch(0.72 0.10 145)"></div><div style="width:8%;background:oklch(0.72 0.10 300)"></div><div style="width:21%;background:oklch(0.72 0.10 15)"></div></div></div>
+<div><div style="display:flex;justify-content:space-between;font:400 12.5px 'DM Sans';margin-bottom:7px"><span style="color:rgba(27,26,23,.55)">8–14 Jul</span><span>S$388.60</span></div><div style="display:flex;height:14px;border-radius:7px;overflow:hidden"><div style="width:28%;background:oklch(0.72 0.10 45)"></div><div style="width:18%;background:oklch(0.72 0.10 235)"></div><div style="width:26%;background:oklch(0.72 0.10 145)"></div><div style="width:9%;background:oklch(0.72 0.10 300)"></div><div style="width:19%;background:oklch(0.72 0.10 15)"></div></div></div>
+<div><div style="display:flex;justify-content:space-between;font:400 12.5px 'DM Sans';margin-bottom:7px"><span style="color:rgba(27,26,23,.55)">15–21 Jul</span><span>S$377.10</span></div><div style="display:flex;height:14px;border-radius:7px;overflow:hidden"><div style="width:36%;background:oklch(0.72 0.10 45)"></div><div style="width:12%;background:oklch(0.72 0.10 235)"></div><div style="width:20%;background:oklch(0.72 0.10 145)"></div><div style="width:8%;background:oklch(0.72 0.10 300)"></div><div style="width:24%;background:oklch(0.72 0.10 15)"></div></div></div>
+<div><div style="display:flex;justify-content:space-between;font:400 12.5px 'DM Sans';margin-bottom:7px"><span style="color:rgba(27,26,23,.55)">22–26 Jul</span><span>S$318.40</span></div><div style="display:flex;height:14px;border-radius:7px;overflow:hidden"><div style="width:30%;background:oklch(0.72 0.10 45)"></div><div style="width:16%;background:oklch(0.72 0.10 235)"></div><div style="width:22%;background:oklch(0.72 0.10 145)"></div><div style="width:10%;background:oklch(0.72 0.10 300)"></div><div style="width:22%;background:oklch(0.72 0.10 15)"></div><div style="width:14%;background:repeating-linear-gradient(45deg,rgba(27,26,23,.18) 0 4px,rgba(27,26,23,.06) 4px 8px)"></div></div></div>
+</div>
+<div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:18px;padding-top:16px;border-top:1px solid rgba(27,26,23,.07)">
+<div style="display:flex;align-items:center;gap:6px;font:400 11.5px 'DM Sans';color:rgba(27,26,23,.6)"><div style="width:8px;height:8px;border-radius:4px;background:oklch(0.72 0.10 45)"></div>Food</div>
+<div style="display:flex;align-items:center;gap:6px;font:400 11.5px 'DM Sans';color:rgba(27,26,23,.6)"><div style="width:8px;height:8px;border-radius:4px;background:oklch(0.72 0.10 235)"></div>Transport</div>
+<div style="display:flex;align-items:center;gap:6px;font:400 11.5px 'DM Sans';color:rgba(27,26,23,.6)"><div style="width:8px;height:8px;border-radius:4px;background:oklch(0.72 0.10 145)"></div>Groceries</div>
+<div style="display:flex;align-items:center;gap:6px;font:400 11.5px 'DM Sans';color:rgba(27,26,23,.6)"><div style="width:8px;height:8px;border-radius:4px;background:oklch(0.72 0.10 300)"></div>Subs</div>
+<div style="display:flex;align-items:center;gap:6px;font:400 11.5px 'DM Sans';color:rgba(27,26,23,.6)"><div style="width:8px;height:8px;border-radius:4px;background:oklch(0.72 0.10 15)"></div>Fun</div>
+<div style="display:flex;align-items:center;gap:6px;font:400 11.5px 'DM Sans';color:rgba(27,26,23,.6)"><div style="width:8px;height:8px;border-radius:4px;background:repeating-linear-gradient(45deg,rgba(27,26,23,.3) 0 3px,rgba(27,26,23,.08) 3px 6px)"></div>Unsorted</div>
+</div>
+</div>
+<div style="margin-top:14px;background:#fff;border-radius:24px;padding:20px;box-shadow:0 1px 2px rgba(27,26,23,.05)">
+<div style="font:400 10.5px 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:rgba(27,26,23,.42);margin-bottom:14px">Six months</div>
+<svg width="100%" height="96" viewBox="0 0 300 96" preserveAspectRatio="none">
+<polyline points="10,62 68,44 126,70 184,38 242,54 290,30" fill="none" stroke="oklch(0.55 0.09 158)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></polyline>
+<circle cx="290" cy="30" r="4.5" fill="oklch(0.55 0.09 158)"></circle>
+</svg>
+<div style="display:flex;justify-content:space-between;font:400 10.5px 'JetBrains Mono',monospace;color:rgba(27,26,23,.35);margin-top:6px"><span>FEB</span><span>MAR</span><span>APR</span><span>MAY</span><span>JUN</span><span>JUL</span></div>
+</div>
+<div style="height:20px"></div>
+</div>
+</div>
+
+<div class="dv-opt" id="1e">
+<div class="dv-olabel"><a class="dv-oid" href="#1e">1e</a>Categorise as a stack, not a list — one card at a time, tap a chip, it flies away. Interactive: try it.</div>
+<div class="scr" style="background:#F6F4EF;padding:64px 22px 30px;font-family:'DM Sans',sans-serif;color:#1B1A17">
+<div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+<div style="font:400 26px/1.1 'Instrument Serif',serif">Quick sort</div>
+<div style="font:400 11px 'JetBrains Mono',monospace;color:rgba(27,26,23,.42)">{{ deckCounter }}</div>
+</div>
+<div style="font:400 13px/1.5 'DM Sans';color:rgba(27,26,23,.5);margin-bottom:26px">A few we couldn't read confidently.</div>
+<div style="position:relative;height:290px">
+<sc-if value="{{ deckDone }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;inset:0;background:#fff;border-radius:26px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;text-align:center;box-shadow:0 1px 2px rgba(27,26,23,.05);animation:popIn .3s ease both">
+<div style="width:54px;height:54px;border-radius:27px;background:oklch(0.90 0.07 158);margin-bottom:16px"></div>
+<div style="font:400 22px/1.2 'Instrument Serif',serif;margin-bottom:8px">Inbox zero</div>
+<div style="font:400 13px/1.5 'DM Sans';color:rgba(27,26,23,.52);max-width:220px">Everything's sorted. That took eleven seconds.</div>
+<div onClick="{{ resetDeck }}" style="margin-top:18px;font:400 13px 'DM Sans';color:oklch(0.48 0.08 158);cursor:pointer">Replay</div>
+</div>
+</sc-if>
+<sc-if value="{{ deckActive }}" hint-placeholder-val="{{ true }}">
+<div>
+<div style="position:absolute;top:16px;left:14px;right:14px;height:250px;background:#fff;border-radius:24px;opacity:.4;box-shadow:0 1px 2px rgba(27,26,23,.04)"></div>
+<div style="position:absolute;top:8px;left:7px;right:7px;height:262px;background:#fff;border-radius:25px;opacity:.7;box-shadow:0 1px 2px rgba(27,26,23,.04)"></div>
+<div style="{{ deckCardStyle }}">
+<div style="font:400 10.5px 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:rgba(27,26,23,.42);margin-bottom:14px">{{ deckSource }}</div>
+<div style="font:400 30px/1.15 'Instrument Serif',serif;margin-bottom:6px">{{ deckMerchant }}</div>
+<div style="font:400 13px 'DM Sans';color:rgba(27,26,23,.5);margin-bottom:22px">{{ deckWhen }}</div>
+<div style="font:400 46px/1 'Instrument Serif',serif;letter-spacing:-.02em">{{ deckAmount }}</div>
+<div style="margin-top:auto;font:400 12.5px/1.4 'DM Sans';color:rgba(27,26,23,.42)">{{ deckHint }}</div>
+</div>
+</div>
+</sc-if>
+</div>
+<div style="margin-top:26px;font:400 10.5px 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:rgba(27,26,23,.42);margin-bottom:12px">Tap a category</div>
+<div style="display:flex;flex-wrap:wrap;gap:9px">
+<sc-for list="{{ deckChips }}" as="c" hint-placeholder-count="5">
+<div onClick="{{ c.onTap }}" style="{{ c.style }}">{{ c.name }}</div>
+</sc-for>
+</div>
+<div onClick="{{ deckSkip }}" style="margin-top:18px;text-align:center;font:400 13px 'DM Sans';color:rgba(27,26,23,.45);cursor:pointer">Skip for now</div>
+</div>
+</div>
+
+</div>
+<p class="dv-next">Try next: "make <a class="dv-oid" href="#1a">1a</a>'s home look like <a class="dv-oid" href="#1b">1b</a>" · "swap the pie in <a class="dv-oid" href="#1a">1a</a> for <a class="dv-oid" href="#1d">1d</a>'s bars" · "put the <a class="dv-oid" href="#1e">1e</a> quick-sort into the real prototype" · "show the friends screen as its own tab"</p>
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:1000}}">
+class Component extends DCLogic {
+  cats = [
+    { id: 'food', name: 'Food', hue: 45, total: 486.30, subs: [['Lunch',186.50],['Dinner',142.80],['Coffee',87.00],['Takeaway',70.00]] },
+    { id: 'groceries', name: 'Groceries', hue: 145, total: 338.90, subs: [['Supermarket',268.90],['Wet market',45.00],['Convenience',25.00]] },
+    { id: 'fun', name: 'Entertainment', hue: 15, total: 330.00, subs: [['Dining out',210.00],['Movies',48.00],['Events',72.00]] },
+    { id: 'transport', name: 'Transport', hue: 235, total: 212.40, subs: [['Ride-hail',96.40],['MRT & Bus',62.00],['Parking',54.00]] },
+    { id: 'subs', name: 'Subscriptions', hue: 300, total: 118.60, subs: [['Streaming',43.60],['Software',45.00],['Gym',30.00]] },
+  ];
+
+  state = {
+    tab: 'home', period: 'month', sumPeriod: 'month', sumView: 'chart',
+    openCat: null, txFilter: 'all', sheet: null, sheetTx: null, catStep: 1, pickedCat: null,
+    draft: { amount: '', merchant: '', cat: null, sub: null },
+    selectedDay: 26, screen: 'main', toast: null,
+    qsSkipped: [], qsPicked: null, qsSorted: 0,
+    editingName: false, nameDraft: 'Wei Ling Tan', name: 'Wei Ling Tan',
+    editingEmail: false, emailDraft: 'weiling@gmail.com', email: 'weiling@gmail.com',
+    prefs: { auto: true, digest: true, roundup: false, alerts: true },
+    nudged: {},
+    deck: 0,
+    txs: [
+      { id: 1, day: 'Today', merchant: 'Tiong Bahru Bakery', amount: 8.40, cat: 'food', sub: 'Coffee', source: 'SMS · DBS' },
+      { id: 2, day: 'Today', merchant: 'Grab', amount: 14.20, cat: null, sub: null, source: 'SMS · DBS' },
+      { id: 3, day: 'Today', merchant: 'FairPrice Finest', amount: 20.20, cat: 'groceries', sub: 'Supermarket', source: 'Email' },
+      { id: 4, day: 'Yesterday', merchant: 'Netflix', amount: 19.98, cat: 'subs', sub: 'Streaming', source: 'Email' },
+      { id: 5, day: 'Yesterday', merchant: 'Kopitiam', amount: 5.60, cat: 'food', sub: 'Lunch', source: 'SMS · DBS' },
+      { id: 6, day: 'Yesterday', merchant: 'Shopee', amount: 43.90, cat: null, sub: null, source: 'Email' },
+      { id: 7, day: 'Yesterday', merchant: 'Golden Village', amount: 24.00, cat: 'fun', sub: 'Movies', source: 'Email' },
+      { id: 8, day: 'Thu 23 Jul', merchant: 'Grab', amount: 11.80, cat: 'transport', sub: 'Ride-hail', source: 'SMS · DBS' },
+      { id: 9, day: 'Thu 23 Jul', merchant: 'Cold Storage', amount: 62.15, cat: 'groceries', sub: 'Supermarket', source: 'Email' },
+      { id: 10, day: 'Thu 23 Jul', merchant: 'Guzman y Gomez', amount: 16.50, cat: null, sub: null, source: 'SMS · DBS' },
+      { id: 11, day: 'Thu 23 Jul', merchant: 'SimplyGo', amount: 2.40, cat: 'transport', sub: 'MRT & Bus', source: 'SMS · OCBC' },
+    ],
+  };
+
+  hints = {
+    'Grab': 'Ride or food delivery? The SMS does not say.',
+    'Shopee': 'Marketplace order — no line items in the receipt.',
+    'Guzman y Gomez': 'First time at this merchant.',
+  };
+
+  color(hue, l = 0.72, c = 0.10) { return 'oklch(' + l + ' ' + c + ' ' + hue + ')'; }
+  cat(id) { return this.cats.find(c => c.id === id); }
+  fmt(n) { return 'S$' + n.toLocaleString('en-SG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  fmt0(n) { return 'S$' + Math.round(n).toLocaleString('en-SG'); }
+  toast(msg) {
+    clearTimeout(this._t);
+    this.setState({ toast: msg });
+    this._t = setTimeout(() => this.setState({ toast: null }), 2200);
+  }
+  componentWillUnmount() { clearTimeout(this._t); }
+
+  seg(cx, cy, r0, r1, a0, a1) {
+    const p = (r, a) => [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+    const large = (a1 - a0) > Math.PI ? 1 : 0;
+    const [x0, y0] = p(r1, a0), [x1, y1] = p(r1, a1), [x2, y2] = p(r0, a1), [x3, y3] = p(r0, a0);
+    return `M${x0} ${y0} A${r1} ${r1} 0 ${large} 1 ${x1} ${y1} L${x2} ${y2} A${r0} ${r0} 0 ${large} 0 ${x3} ${y3} Z`;
+  }
+
+  chip(active, color) {
+    return {
+      padding: '10px 15px', borderRadius: 12, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif",
+      fontSize: 14, transition: 'all .18s ease', userSelect: 'none',
+      background: active ? (color || '#1B1A17') : '#fff',
+      color: active ? '#fff' : '#1B1A17',
+      border: '1px solid ' + (active ? 'transparent' : 'rgba(27,26,23,.14)'),
+    };
+  }
+
+  periodData(monthTotal, extraToday, extraWeek) {
+    const p = this.state.period;
+    if (p === 'today') return { label: 'Spent today', amount: 42.80 + extraToday, budget: 80, budgetLabel: 'S$80 daily' };
+    if (p === 'week') return { label: 'Spent this week', amount: 318.40 + extraWeek, budget: 560, budgetLabel: 'S$560 weekly' };
+    return { label: 'Spent this month', amount: monthTotal, budget: 2400, budgetLabel: 'S$2,400 monthly' };
+  }
+
+  calData() {
+    const amounts = [0,38.2,64.1,12,0,88.4,41.6,22.9,0,57.3,31.8,74.2,19.5,0,46.7,29.1,0,63.4,15.2,52.8,37.9,0,80.1,26.4,58.6,42.8,0,0,0,0,0];
+    return amounts;
+  }
+
+  renderVals() {
+    const s = this.state;
+    const uncat = s.txs.filter(t => !t.cat);
+    const qsQueue = uncat.filter(t => s.qsSkipped.indexOf(t.id) === -1);
+    const qsTx = qsQueue[0] || null;
+    const qsPicked = s.qsPicked ? this.cat(s.qsPicked) : null;
+    const catTotals = {};
+    this.cats.forEach(c => { catTotals[c.id] = c.total; });
+    s.txs.forEach(t => { if (t.cat && t.manual) catTotals[t.cat] += t.amount; });
+    const grand = Object.values(catTotals).reduce((a, b) => a + b, 0);
+    const manualTxs = s.txs.filter(t => t.cat && t.manual);
+    const extraWeek = manualTxs.reduce((a, t) => a + t.amount, 0);
+    const extraToday = manualTxs.filter(t => t.day === 'Today').reduce((a, t) => a + t.amount, 0);
+    const pd = this.periodData(grand, extraToday, extraWeek);
+    const pct = pd.amount / pd.budget;
+
+    // ─ donut
+    let a = -Math.PI / 2;
+    const segments = this.cats.map(c => {
+      const frac = catTotals[c.id] / grand;
+      const a0 = a, a1 = a + frac * Math.PI * 2 - 0.035;
+      a += frac * Math.PI * 2;
+      return {
+        d: this.seg(98, 98, 56, 88, a0, a1),
+        color: this.color(c.hue),
+        opacity: !s.openCat || s.openCat === c.id ? 1 : 0.28,
+        onTap: () => this.setState({ openCat: s.openCat === c.id ? null : c.id }),
+      };
+    });
+
+    const catRows = this.cats.map(c => {
+      const expanded = s.openCat === c.id;
+      const maxSub = Math.max.apply(null, c.subs.map(x => x[1]));
+      return {
+        name: c.name, amount: this.fmt(catTotals[c.id]),
+        pct: Math.round(catTotals[c.id] / grand * 100) + '%',
+        expanded,
+        dotStyle: { width: 11, height: 11, borderRadius: 6, background: this.color(c.hue), flex: 'none' },
+        chevronStyle: { fontSize: 15, color: 'rgba(27,26,23,.35)', transition: 'transform .2s', transform: expanded ? 'rotate(180deg)' : 'none', lineHeight: '10px' },
+        onTap: () => this.setState({ openCat: expanded ? null : c.id }),
+        subs: c.subs.map(([n, v]) => ({
+          name: n, amount: this.fmt(v),
+          barStyle: { width: (v / maxSub * 100) + '%', height: 4, borderRadius: 2, background: this.color(c.hue, 0.80, 0.08) },
+        })),
+      };
+    });
+
+    const topCats = this.cats.slice(0, 4).map(c => ({
+      name: c.name, amount: this.fmt(catTotals[c.id]),
+      dotStyle: { width: 10, height: 10, borderRadius: 5, background: this.color(c.hue), flex: 'none' },
+      barStyle: { width: (catTotals[c.id] / this.cats[0].total * 100) + '%', height: 5, borderRadius: 3, background: this.color(c.hue) },
+    }));
+
+    // ─ calendar
+    const amounts = this.calData();
+    const maxDay = Math.max.apply(null, amounts);
+    const calCells = [];
+    for (let i = 0; i < 3; i++) calCells.push({ label: '', style: { height: 42 }, onTap: () => {} });
+    for (let d = 1; d <= 31; d++) {
+      const v = amounts[d - 1] || 0;
+      const k = v / maxDay;
+      const sel = s.selectedDay === d;
+      calCells.push({
+        label: String(d),
+        onTap: () => this.setState({ selectedDay: d }),
+        style: {
+          height: 42, borderRadius: 11, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontFamily: "'JetBrains Mono',monospace", fontSize: 11.5, cursor: 'pointer',
+          background: v ? 'oklch(' + (0.95 - k * 0.30) + ' ' + (0.02 + k * 0.07) + ' 158)' : 'rgba(27,26,23,.035)',
+          color: k > 0.62 ? '#fff' : 'rgba(27,26,23,.7)',
+          outline: sel ? '2px solid #1B1A17' : 'none', outlineOffset: -2,
+          transition: 'outline .15s',
+        },
+      });
+    }
+    const dayAmt = amounts[s.selectedDay - 1] || 0;
+    const dayItems = dayAmt
+      ? [
+          { merchant: 'Tiong Bahru Bakery', amount: this.fmt(dayAmt * 0.2), dotStyle: { width: 8, height: 8, borderRadius: 4, background: this.color(45) } },
+          { merchant: 'Grab', amount: this.fmt(dayAmt * 0.33), dotStyle: { width: 8, height: 8, borderRadius: 4, background: this.color(235) } },
+          { merchant: 'FairPrice Finest', amount: this.fmt(dayAmt * 0.47), dotStyle: { width: 8, height: 8, borderRadius: 4, background: this.color(145) } },
+        ]
+      : [];
+
+    // ─ transactions
+    const visible = s.txFilter === 'needs' ? uncat : s.txs;
+    const order = ['Today', 'Yesterday', 'Thu 23 Jul'];
+    const txGroups = order.filter(d => visible.some(t => t.day === d)).map(d => {
+      const items = visible.filter(t => t.day === d);
+      return {
+        label: d,
+        total: this.fmt(items.reduce((x, t) => x + t.amount, 0)),
+        items: items.map((t, i) => {
+          const c = t.cat ? this.cat(t.cat) : null;
+          return {
+            merchant: t.merchant, amount: this.fmt(t.amount), source: t.source,
+            subLabel: c ? c.name + ' · ' + t.sub : 'Tap to categorise',
+            rowStyle: {
+              display: 'flex', alignItems: 'center', gap: 13, padding: '14px 16px', cursor: 'pointer',
+              borderBottom: i < items.length - 1 ? '1px solid rgba(27,26,23,.06)' : 'none',
+              background: c ? '#fff' : 'oklch(0.97 0.028 78)',
+              transition: 'background .2s',
+            },
+            dotStyle: c
+              ? { width: 10, height: 10, borderRadius: 5, background: this.color(c.hue), flex: 'none' }
+              : { width: 10, height: 10, borderRadius: 5, background: 'transparent', border: '1.5px dashed oklch(0.70 0.13 72)', flex: 'none' },
+            subStyle: {
+              fontFamily: "'DM Sans',sans-serif", fontSize: 12.5, marginTop: 3,
+              color: c ? 'rgba(27,26,23,.5)' : 'oklch(0.55 0.12 62)',
+              fontWeight: c ? 400 : 500,
+            },
+            onTap: () => this.setState({ sheet: 'cat', sheetTx: t.id, catStep: 1, pickedCat: t.cat || null }),
+          };
+        }),
+      };
+    });
+
+    // ─ sheet
+    const sheetTx = s.txs.find(t => t.id === s.sheetTx);
+    const catStepTwo = s.catStep === 2;
+    const pickedCat = s.pickedCat ? this.cat(s.pickedCat) : null;
+    const sheetOptions = catStepTwo && pickedCat
+      ? pickedCat.subs.map(([n]) => ({
+          name: n, style: this.chip(false),
+          onTap: () => {
+            this.setState({
+              txs: s.txs.map(t => t.id === s.sheetTx ? Object.assign({}, t, { cat: pickedCat.id, sub: n, manual: true }) : t),
+              sheet: null, sheetTx: null, catStep: 1, pickedCat: null,
+            });
+            this.toast('Filed under ' + pickedCat.name + ' · ' + n);
+          },
+        }))
+      : this.cats.map(c => ({
+          name: c.name, style: this.chip(s.pickedCat === c.id, this.color(c.hue, 0.62, 0.11)),
+          onTap: () => this.setState({ pickedCat: c.id, catStep: 2 }),
+        }));
+
+    // ─ add sheet
+    const d = s.draft;
+    const draftCat = d.cat ? this.cat(d.cat) : null;
+    const canSave = d.amount && d.merchant && d.cat;
+    const addCatOptions = this.cats.map(c => ({
+      name: c.name, style: this.chip(d.cat === c.id, this.color(c.hue, 0.62, 0.11)),
+      onTap: () => this.setState({ draft: Object.assign({}, d, { cat: c.id, sub: null }) }),
+    }));
+    const addSubOptions = draftCat ? draftCat.subs.map(([n]) => ({
+      name: n,
+      style: Object.assign(this.chip(d.sub === n), { padding: '8px 13px', fontSize: 13, borderRadius: 10 }),
+      onTap: () => this.setState({ draft: Object.assign({}, d, { sub: n }) }),
+    })) : [];
+
+    const tabStyle = (id) => ({
+      flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      cursor: 'pointer', color: s.tab === id ? '#1B1A17' : 'rgba(27,26,23,.38)',
+      transition: 'color .2s', paddingTop: 2,
+    });
+    const segStyle = (id) => ({
+      flex: 1, textAlign: 'center', padding: '8px 0', borderRadius: 9, cursor: 'pointer',
+      fontFamily: "'DM Sans',sans-serif", fontSize: 13, transition: 'all .2s',
+      background: s.period === id ? '#fff' : 'transparent',
+      color: s.period === id ? '#1B1A17' : 'rgba(27,26,23,.5)',
+      boxShadow: s.period === id ? '0 1px 3px rgba(27,26,23,.10)' : 'none',
+      fontWeight: s.period === id ? 500 : 400,
+    });
+    const pillStyle = (active) => ({
+      padding: '7px 14px', borderRadius: 9, cursor: 'pointer', fontFamily: "'DM Sans',sans-serif", fontSize: 12.5,
+      background: active ? '#1B1A17' : '#fff', color: active ? '#F6F4EF' : '#1B1A17',
+      border: '1px solid ' + (active ? '#1B1A17' : 'rgba(27,26,23,.14)'), transition: 'all .18s',
+    });
+
+    const friendsData = [
+      { name: 'Marcus Lee', initials: 'ML', hue: 158, goal: 'Emergency fund · S$5,000', spent: 'S$1,120', p: 0.42, status: 'Under budget' },
+      { name: 'Priya Nair', initials: 'PN', hue: 78, goal: 'New laptop · S$2,400', spent: 'S$2,090', p: 0.91, status: 'Close to limit' },
+      { name: 'Jun Hao', initials: 'JH', hue: 300, goal: 'Wedding fund · S$12,000', spent: 'S$860', p: 0.31, status: 'Under budget' },
+    ];
+
+    const deckItems = [
+      { merchant: 'Grab', amount: 'S$14.20', when: 'Today, 6:42 PM', source: 'SMS · DBS', hint: 'Ride or food delivery? We could not tell.' },
+      { merchant: 'Shopee', amount: 'S$43.90', when: 'Yesterday, 11:08 PM', source: 'Email receipt', hint: 'Marketplace order, no line items in the receipt.' },
+      { merchant: 'Guzman y Gomez', amount: 'S$16.50', when: 'Thu, 12:31 PM', source: 'SMS · DBS', hint: 'First time at this merchant.' },
+    ];
+    const deckCur = deckItems[s.deck];
+
+    return {
+      firstName: s.name.split(' ').slice(0, -1).join(' ') || s.name, fullName: s.name,
+      todayLabel: 'Sunday, 26 July',
+      isHome: s.tab === 'home', isSummary: s.tab === 'summary', isTx: s.tab === 'tx', isSettings: s.tab === 'settings',
+      goHome: () => this.setState({ tab: 'home' }), goSummary: () => this.setState({ tab: 'summary' }),
+      goTx: () => this.setState({ tab: 'tx' }), goSettings: () => this.setState({ tab: 'settings' }),
+      tabHome: tabStyle('home'), tabSummary: tabStyle('summary'), tabTx: tabStyle('tx'), tabSettings: tabStyle('settings'),
+      tabBarStyle: {
+        position: 'absolute', left: 0, right: 0, bottom: 0, height: 84, paddingBottom: 22,
+        display: 'flex', background: 'rgba(246,244,239,.88)', backdropFilter: 'blur(18px)',
+        borderTop: '1px solid rgba(27,26,23,.08)', zIndex: 40,
+      },
+
+      setToday: () => this.setState({ period: 'today' }), setWeek: () => this.setState({ period: 'week' }), setMonth: () => this.setState({ period: 'month' }),
+      segTodayStyle: segStyle('today'), segWeekStyle: segStyle('week'), segMonthStyle: segStyle('month'),
+      periodLabel: pd.label, periodAmount: this.fmt(pd.amount), periodBudget: pd.budgetLabel,
+      budgetBarStyle: { width: Math.min(100, pct * 100) + '%', height: 9, borderRadius: 5, background: pct > 0.9 ? 'oklch(0.62 0.14 40)' : 'oklch(0.60 0.09 158)', transition: 'width .45s cubic-bezier(.22,1,.36,1)' },
+      budgetPctLabel: Math.round(pct * 100) + '% of budget used',
+      budgetLeftLabel: this.fmt0(pd.budget - pd.amount) + ' left',
+      hasUncat: uncat.length > 0, uncatCount: uncat.length,
+      goReview: () => this.setState({ tab: 'tx', txFilter: 'needs' }),
+      goalDash: (0.617 * 232.5) + ' 232.5', goalPct: '62%', goalSaved: 'S$1,850', goalTarget: 'S$3,000',
+      topCats,
+
+      sumWeekStyle: pillStyle(s.sumPeriod === 'week'), sumMonthStyle: pillStyle(s.sumPeriod === 'month'), sumYearStyle: pillStyle(s.sumPeriod === 'year'),
+      setSumWeek: () => this.setState({ sumPeriod: 'week' }), setSumMonth: () => this.setState({ sumPeriod: 'month' }), setSumYear: () => this.setState({ sumPeriod: 'year' }),
+      isChartView: s.sumView === 'chart', isCalendarView: s.sumView === 'calendar',
+      toggleSumView: () => this.setState({ sumView: s.sumView === 'chart' ? 'calendar' : 'chart' }),
+      sumViewToggleLabel: s.sumView === 'chart' ? 'Calendar view' : 'Chart view',
+      segments, catRows,
+      donutCenterLabel: s.sumPeriod === 'week' ? 'This week' : s.sumPeriod === 'year' ? 'This year' : 'July total',
+      donutCenterAmount: s.sumPeriod === 'week' ? 'S$318' : s.sumPeriod === 'year' ? 'S$11,420' : this.fmt0(grand),
+      calTitle: 'July 2026', weekdayLabels: ['S', 'M', 'T', 'W', 'T', 'F', 'S'], calCells,
+      dayTitle: dayAmt ? s.selectedDay + ' July' : s.selectedDay + ' July — nothing spent',
+      dayTotal: dayAmt ? this.fmt(dayAmt) : 'S$0.00', dayItems,
+
+      txGroups, txEmpty: visible.length === 0,
+      filterAllStyle: pillStyle(s.txFilter === 'all'), filterNeedsStyle: pillStyle(s.txFilter === 'needs'),
+      setFilterAll: () => this.setState({ txFilter: 'all' }), setFilterNeeds: () => this.setState({ txFilter: 'needs' }),
+
+      sheetOpen: !!s.sheet, isCatSheet: s.sheet === 'cat', isAddSheet: s.sheet === 'add',
+      closeSheet: () => this.setState({ sheet: null, sheetTx: null, catStep: 1, pickedCat: null }),
+      sheetMerchant: sheetTx ? sheetTx.merchant : '', sheetAmount: sheetTx ? this.fmt(sheetTx.amount) : '',
+      sheetMeta: sheetTx ? sheetTx.day + ' · read from ' + sheetTx.source : '',
+      sheetStepLabel: catStepTwo && pickedCat ? 'Which kind of ' + pickedCat.name.toLowerCase() + '?' : 'Pick a category',
+      sheetOptions, catStepTwo, backToCats: () => this.setState({ catStep: 1 }),
+
+      openAdd: () => this.setState({ sheet: 'add', draft: { amount: '', merchant: '', cat: null, sub: null } }),
+      draftAmount: d.amount, draftMerchant: d.merchant,
+      onAmountChange: (e) => this.setState({ draft: Object.assign({}, d, { amount: e.target.value }) }),
+      onMerchantChange: (e) => this.setState({ draft: Object.assign({}, d, { merchant: e.target.value }) }),
+      addCatOptions, addSubOptions, addSubVisible: !!draftCat,
+      saveBtnStyle: {
+        marginTop: 20, borderRadius: 14, padding: '15px', textAlign: 'center',
+        fontFamily: "'DM Sans',sans-serif", fontSize: 15, fontWeight: 500,
+        background: canSave ? '#1B1A17' : 'rgba(27,26,23,.10)',
+        color: canSave ? '#F6F4EF' : 'rgba(27,26,23,.35)',
+        cursor: canSave ? 'pointer' : 'default', transition: 'all .2s',
+      },
+      saveDraft: () => {
+        if (!canSave) return;
+        const amt = parseFloat(d.amount) || 0;
+        this.setState({
+          txs: [{ id: Date.now(), day: 'Today', merchant: d.merchant, amount: amt, cat: d.cat, sub: d.sub || this.cat(d.cat).subs[0][0], source: 'Manual', manual: true }].concat(s.txs),
+          sheet: null, draft: { amount: '', merchant: '', cat: null, sub: null }, txFilter: 'all',
+        });
+        this.toast('Added ' + this.fmt(amt) + ' · ' + d.merchant);
+      },
+
+      editingName: s.editingName, editNameLabel: s.editingName ? 'Close' : 'Edit',
+      toggleEditName: () => this.setState({ editingName: !s.editingName, nameDraft: s.name }),
+      nameDraft: s.nameDraft, onNameChange: (e) => this.setState({ nameDraft: e.target.value }),
+      saveName: () => { this.setState({ name: s.nameDraft || s.name, editingName: false }); this.toast('Name updated'); },
+      editingEmail: s.editingEmail, emailDraft: s.emailDraft,
+      onEmailChange: (e) => this.setState({ emailDraft: e.target.value }),
+      saveEmail: () => { this.setState({ email: s.emailDraft, editingEmail: false }); this.toast('Now reading receipts from ' + s.emailDraft); },
+      sources: [
+        { label: s.email, meta: 'Receipt emails · 41 found this month', action: 'Change', dotStyle: { width: 9, height: 9, borderRadius: 5, background: 'oklch(0.65 0.12 158)', flex: 'none' }, onTap: () => this.setState({ editingEmail: !s.editingEmail, emailDraft: s.email }) },
+        { label: '+65 9123 4567', meta: 'Bank SMS alerts · DBS, OCBC', action: 'Manage', dotStyle: { width: 9, height: 9, borderRadius: 5, background: 'oklch(0.65 0.12 158)', flex: 'none' }, onTap: () => this.toast('SMS sources are managed on-device') },
+        { label: 'work@studio.sg', meta: 'Paused since 3 June', action: 'Resume', dotStyle: { width: 9, height: 9, borderRadius: 5, background: 'rgba(27,26,23,.2)', flex: 'none' }, onTap: () => this.toast('Resumed reading work@studio.sg') },
+      ],
+      addSource: () => this.toast('We would walk you through connecting here'),
+      prefs: [
+        { key: 'auto', label: 'Categorise automatically', meta: 'Silently. You can always correct it.' },
+        { key: 'digest', label: 'Sunday digest', meta: 'One summary, no daily nagging' },
+        { key: 'roundup', label: 'Round up to savings', meta: 'Spare change into the Japan fund' },
+        { key: 'alerts', label: 'Alert at 80% of budget', meta: 'A heads-up, not an alarm' },
+      ].map(p => {
+        const on = s.prefs[p.key];
+        return Object.assign({}, p, {
+          onTap: () => this.setState({ prefs: Object.assign({}, s.prefs, { [p.key]: !on }) }),
+          trackStyle: { width: 48, height: 29, borderRadius: 15, background: on ? 'oklch(0.62 0.10 158)' : 'rgba(27,26,23,.16)', cursor: 'pointer', padding: 3, transition: 'background .22s', flex: 'none' },
+          knobStyle: { width: 23, height: 23, borderRadius: 12, background: '#fff', transform: on ? 'translateX(19px)' : 'none', transition: 'transform .22s cubic-bezier(.22,1,.36,1)', boxShadow: '0 1px 3px rgba(0,0,0,.2)' },
+        });
+      }),
+
+      showFriends: s.screen === 'friends',
+      goFriends: () => this.setState({ screen: 'friends' }),
+      backFromFriends: () => this.setState({ screen: 'main' }),
+      friends: friendsData.map(f => ({
+        name: f.name, initials: f.initials, goal: f.goal, spent: f.spent,
+        status: f.status,
+        avatarStyle: { width: 40, height: 40, borderRadius: 20, background: this.color(f.hue, 0.88, 0.05), color: this.color(f.hue, 0.42, 0.07), display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'DM Sans',sans-serif", fontSize: 13.5, fontWeight: 500, flex: 'none' },
+        barStyle: { width: (f.p * 100) + '%', height: 7, borderRadius: 4, background: f.p > 0.85 ? 'oklch(0.68 0.14 60)' : 'oklch(0.62 0.10 158)' },
+        nudgeLabel: s.nudged[f.name] ? 'Sent' : 'Nudge',
+        nudgeStyle: { padding: '7px 13px', borderRadius: 10, fontFamily: "'DM Sans',sans-serif", fontSize: 12.5, cursor: 'pointer', border: '1px solid rgba(27,26,23,.14)', color: s.nudged[f.name] ? 'rgba(27,26,23,.4)' : '#1B1A17', background: s.nudged[f.name] ? 'rgba(27,26,23,.04)' : '#fff' },
+        onNudge: () => { this.setState({ nudged: Object.assign({}, s.nudged, { [f.name]: true }) }); this.toast('Nudged ' + f.name.split(' ')[0]); },
+      })),
+      toast: s.toast,
+
+      showQuickSort: s.screen === 'quicksort',
+      showQsBanner: s.txFilter === 'needs' && uncat.length > 0,
+      openQuickSort: () => this.setState({ screen: 'quicksort', qsSkipped: [], qsPicked: null, qsSorted: 0 }),
+      closeQuickSort: () => this.setState({ screen: 'main', qsPicked: null }),
+      qsActive: !!qsTx, qsDone: !qsTx,
+      qsCounter: qsQueue.length ? (s.qsSorted + 1) + ' of ' + (s.qsSorted + qsQueue.length) : s.qsSorted + ' sorted',
+      qsMerchant: qsTx ? qsTx.merchant : '',
+      qsAmount: qsTx ? this.fmt(qsTx.amount) : '',
+      qsWhen: qsTx ? qsTx.day + (qsTx.day === 'Today' ? ', 6:42 PM' : ', 11:08 PM') : '',
+      qsSource: qsTx ? qsTx.source : '',
+      qsHint: qsTx ? (this.hints[qsTx.merchant] || 'No line items in the receipt, so we left it to you.') : '',
+      qsCardStyle: { position: 'absolute', top: 0, left: 0, right: 0, height: 274, background: '#fff', borderRadius: 26, padding: 24, display: 'flex', flexDirection: 'column', boxShadow: '0 2px 4px rgba(27,26,23,.06),0 18px 40px -24px rgba(27,26,23,.4)', animation: 'popIn .28s cubic-bezier(.22,1,.36,1) both' },
+      qsSubStep: !!qsPicked,
+      qsStepLabel: qsPicked ? 'Which kind of ' + qsPicked.name.toLowerCase() + '?' : 'Tap a category',
+      qsChips: qsPicked
+        ? qsPicked.subs.map(([n]) => ({
+            name: n,
+            style: Object.assign(this.chip(false), { padding: '9px 14px', fontSize: 13.5, borderRadius: 11 }),
+            onTap: () => {
+              this.setState({
+                txs: s.txs.map(t => t.id === qsTx.id ? Object.assign({}, t, { cat: qsPicked.id, sub: n, manual: true }) : t),
+                qsPicked: null, qsSorted: s.qsSorted + 1,
+              });
+              this.toast(qsTx.merchant + ' → ' + qsPicked.name + ' · ' + n);
+            },
+          }))
+        : this.cats.map(c => ({
+            name: c.name,
+            style: Object.assign(this.chip(false), { borderLeft: '4px solid ' + this.color(c.hue) }),
+            onTap: () => this.setState({ qsPicked: c.id }),
+          })),
+      qsBack: () => this.setState({ qsPicked: null }),
+      qsSkip: () => this.setState({ qsSkipped: s.qsSkipped.concat(qsTx ? [qsTx.id] : []), qsPicked: null }),
+      qsDoneTitle: s.qsSorted > 0 ? 'All sorted' : 'Nothing to sort',
+      qsDoneBody: s.qsSorted > 0
+        ? 'You filed ' + s.qsSorted + (s.qsSorted === 1 ? ' transaction' : ' transactions') + '. Your summary is accurate again.'
+        : 'Everything already has a category. Come back when something new lands.',
+
+      deckActive: s.deck < deckItems.length, deckDone: s.deck >= deckItems.length,
+      deckCounter: Math.min(s.deck + 1, deckItems.length) + ' / ' + deckItems.length,
+      deckMerchant: deckCur ? deckCur.merchant : '', deckAmount: deckCur ? deckCur.amount : '',
+      deckWhen: deckCur ? deckCur.when : '', deckSource: deckCur ? deckCur.source : '', deckHint: deckCur ? deckCur.hint : '',
+      deckCardStyle: { position: 'absolute', top: 0, left: 0, right: 0, height: 274, background: '#fff', borderRadius: 26, padding: 24, display: 'flex', flexDirection: 'column', boxShadow: '0 2px 4px rgba(27,26,23,.06),0 18px 40px -24px rgba(27,26,23,.4)', animation: 'popIn .28s cubic-bezier(.22,1,.36,1) both' },
+      deckChips: this.cats.map(c => ({
+        name: c.name,
+        style: Object.assign(this.chip(false), { borderLeft: '4px solid ' + this.color(c.hue) }),
+        onTap: () => this.setState({ deck: s.deck + 1 }),
+      })),
+      deckSkip: () => this.setState({ deck: s.deck + 1 }),
+      resetDeck: () => this.setState({ deck: 0 }),
+    };
+  }
+}
+</script>
+</body>
+</html>

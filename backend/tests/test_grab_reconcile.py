@@ -1,0 +1,203 @@
+from datetime import datetime
+from decimal import Decimal
+from zoneinfo import ZoneInfo
+
+import pytest
+
+from app.services.grab_reconcile import (
+    GRAB_RECEIPT_SENDER,
+    is_generic_grab_merchant,
+    parse_grab_receipt,
+    reconcile_grab_transaction,
+)
+
+SGT = ZoneInfo("Asia/Singapore")
+
+GRAB_FOOD_RECEIPT_TEXT = (
+    "Your GrabFood receipt Thanks for ordering with GrabFood! Order #GF-88213012 "
+    "Order from:Chicken Rice Stall Profile:Personal x1 S$7.20 Delivery fee S$2.60 Total S$9.80 "
+    "Paid with DBS card ending 1234 We hope you enjoyed your meal."
+)
+GRAB_MART_RECEIPT_TEXT = "Your GrabMart receipt Thanks for shopping with GrabMart! Total S$32.10 Paid with DBS card."
+GRAB_EXPRESS_RECEIPT_TEXT = "Your GrabExpress receipt Your parcel has been delivered. Total S$6.00 Paid with DBS card."
+GRAB_RIDE_RECEIPT_TEXT = (
+    "Your Grab receipt Thanks for riding with Grab! Trip from Tampines to Changi Airport "
+    "Total S$18.50 Paid with DBS card ending 1234."
+)
+# Verbatim (whitespace-collapsed) plain text of a real "Your Grab E-Receipt" email, captured from
+# a live account. Two real quirks this must handle: "TOTAL" and "SGD" have no space between them
+# (HTML-stripping artifact), and "Subtotal" elsewhere in the body must not be mistaken for "Total".
+REAL_GRAB_FOOD_RECEIPT_TEXT = (
+    "Hope you enjoyed your food!TOTALSGD 5.12DATE | TIME26 Jul 26 01:16 +0800Order Details"
+    "Vehicle type:GrabFood Issued toAustin Booking code001224847382-C8CKWF5ZVUJVN6 "
+    "Order from:CHAGEE - Tampines West Community Club Profile:Personal Receipt Summary"
+    "Payment Method:Visa Description: Amount: 1x Peach Oolong Milk Tea SGD 6.40 Large Fresh Milk "
+    "Normal Ice Normal Sweet Subtotal SGD 6.40 PICKUP20- SGD 1.28 TOTAL (INCL. TAX) SGD 5.12 "
+    "Rate your meal!"
+)
+
+
+@pytest.mark.parametrize(
+    "merchant, expected",
+    [
+        ("GRAB", True),
+        ("Grab* 2-C8CKWF5ZVUJVN6", True),
+        ("GRABFOOD", False),  # no word boundary between B and F -- already-specific, no re-check needed
+        ("GOJEK", False),
+        ("SAIZERIYA - POIZ CENTRE", False),
+    ],
+)
+def test_is_generic_grab_merchant(merchant, expected):
+    assert is_generic_grab_merchant(merchant) == expected
+
+
+def test_parse_grab_receipt_identifies_grabfood():
+    receipt = parse_grab_receipt(GRAB_FOOD_RECEIPT_TEXT)
+    assert receipt is not None
+    assert receipt.amount == Decimal("9.80")
+    assert receipt.category == "Food"
+    assert receipt.merchant == "Chicken Rice Stall"
+
+
+def test_parse_grab_receipt_handles_a_real_receipt_ignoring_the_subtotal():
+    receipt = parse_grab_receipt(REAL_GRAB_FOOD_RECEIPT_TEXT)
+    assert receipt is not None
+    assert receipt.amount == Decimal("5.12")  # not 6.40 (the Subtotal), not a Subtotal-as-Total match
+    assert receipt.category == "Food"
+    assert receipt.merchant == "CHAGEE - Tampines West Community Club"
+
+
+def test_parse_grab_receipt_identifies_grabmart():
+    receipt = parse_grab_receipt(GRAB_MART_RECEIPT_TEXT)
+    assert receipt is not None
+    assert receipt.amount == Decimal("32.10")
+    assert receipt.category == "Groceries"
+
+
+def test_parse_grab_receipt_identifies_grabexpress():
+    receipt = parse_grab_receipt(GRAB_EXPRESS_RECEIPT_TEXT)
+    assert receipt is not None
+    assert receipt.amount == Decimal("6.00")
+    assert receipt.category == "Other"
+
+
+def test_parse_grab_receipt_returns_none_for_a_ride():
+    # A ride receipt has no recognized service keyword -- this means "no override", the caller
+    # keeps the default Transport/Private classification.
+    assert parse_grab_receipt(GRAB_RIDE_RECEIPT_TEXT) is None
+
+
+def test_parse_grab_receipt_returns_none_without_an_amount():
+    assert parse_grab_receipt("Your GrabFood receipt, thanks for ordering!") is None
+
+
+class _FakeMailService:
+    def __init__(self, stubs, messages, senders, bodies):
+        self.stubs = stubs
+        self.messages = messages
+        self.senders = senders
+        self.bodies = bodies
+        self.list_calls = []
+
+    def list_messages_from_sender(self, access_token, sender_email, around, window=None):
+        self.list_calls.append(sender_email)
+        return self.stubs
+
+    def fetch_message(self, access_token, message_id):
+        return self.messages[message_id]
+
+    def get_sender(self, message):
+        return self.senders[message["id"]]
+
+    def extract_plain_text(self, message):
+        return self.bodies[message["id"]]
+
+
+def test_reconcile_grab_transaction_matches_grabfood_receipt_by_amount():
+    mail_service = _FakeMailService(
+        stubs=[{"id": "receipt-1"}],
+        messages={"receipt-1": {"id": "receipt-1"}},
+        senders={"receipt-1": f"Grab <{GRAB_RECEIPT_SENDER}>"},
+        bodies={"receipt-1": GRAB_FOOD_RECEIPT_TEXT},
+    )
+
+    result = reconcile_grab_transaction(
+        mail_service, "fake-token", "GRAB", Decimal("9.80"), datetime(2026, 5, 12, 12, 30, tzinfo=SGT)
+    )
+
+    assert result == ("Food", "Lunch", "Chicken Rice Stall")
+    assert mail_service.list_calls == [GRAB_RECEIPT_SENDER]
+
+
+def test_reconcile_grab_transaction_uses_the_receipt_merchant_for_beverage_subcategory():
+    """The bank alert only ever says generic "GRAB" -- beverage-brand detection only works once
+    the real store name (from the receipt's "Order from" line) is used for subcategorization."""
+    mail_service = _FakeMailService(
+        stubs=[{"id": "receipt-1"}],
+        messages={"receipt-1": {"id": "receipt-1"}},
+        senders={"receipt-1": f"Grab <{GRAB_RECEIPT_SENDER}>"},
+        bodies={"receipt-1": REAL_GRAB_FOOD_RECEIPT_TEXT},
+    )
+
+    result = reconcile_grab_transaction(
+        mail_service, "fake-token", "GRAB", Decimal("5.12"), datetime(2026, 7, 25, 17, 16, tzinfo=SGT)
+    )
+
+    assert result == ("Food", "Beverage", "CHAGEE - Tampines West Community Club")
+
+
+def test_reconcile_grab_transaction_returns_none_when_amount_does_not_match():
+    mail_service = _FakeMailService(
+        stubs=[{"id": "receipt-1"}],
+        messages={"receipt-1": {"id": "receipt-1"}},
+        senders={"receipt-1": f"Grab <{GRAB_RECEIPT_SENDER}>"},
+        bodies={"receipt-1": GRAB_FOOD_RECEIPT_TEXT},
+    )
+
+    result = reconcile_grab_transaction(
+        mail_service, "fake-token", "GRAB", Decimal("99.99"), datetime(2026, 5, 12, 12, 30, tzinfo=SGT)
+    )
+
+    assert result is None
+
+
+def test_reconcile_grab_transaction_returns_none_for_a_ride_receipt():
+    mail_service = _FakeMailService(
+        stubs=[{"id": "receipt-1"}],
+        messages={"receipt-1": {"id": "receipt-1"}},
+        senders={"receipt-1": f"Grab <{GRAB_RECEIPT_SENDER}>"},
+        bodies={"receipt-1": GRAB_RIDE_RECEIPT_TEXT},
+    )
+
+    result = reconcile_grab_transaction(
+        mail_service, "fake-token", "GRAB", Decimal("18.50"), datetime(2026, 5, 12, 12, 30, tzinfo=SGT)
+    )
+
+    assert result is None
+
+
+def test_reconcile_grab_transaction_ignores_non_grab_sender():
+    mail_service = _FakeMailService(
+        stubs=[{"id": "spam-1"}],
+        messages={"spam-1": {"id": "spam-1"}},
+        senders={"spam-1": "promo@somewhere-else.com"},
+        bodies={"spam-1": GRAB_FOOD_RECEIPT_TEXT},
+    )
+
+    result = reconcile_grab_transaction(
+        mail_service, "fake-token", "GRAB", Decimal("9.80"), datetime(2026, 5, 12, 12, 30, tzinfo=SGT)
+    )
+
+    assert result is None
+
+
+def test_reconcile_grab_transaction_never_raises_on_mail_service_failure():
+    class _BrokenMailService:
+        def list_messages_from_sender(self, access_token, sender_email, around, window=None):
+            raise RuntimeError("network error")
+
+    result = reconcile_grab_transaction(
+        _BrokenMailService(), "fake-token", "GRAB", Decimal("9.80"), datetime(2026, 5, 12, 12, 30, tzinfo=SGT)
+    )
+
+    assert result is None
