@@ -39,6 +39,7 @@ class User(Base):
     transactions: Mapped[list["Transaction"]] = relationship(back_populates="user")
     categories: Mapped[list["Category"]] = relationship(back_populates="user")
     subcategories: Mapped[list["Subcategory"]] = relationship(back_populates="user")
+    category_budgets: Mapped[list["CategoryBudget"]] = relationship(back_populates="user")
 
 
 class EmailAccount(Base):
@@ -108,6 +109,19 @@ class Subcategory(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
 
     user: Mapped["User"] = relationship(back_populates="subcategories")
+
+
+class CategoryBudget(Base):
+    __tablename__ = "category_budgets"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    # Free text, same convention as Subcategory.category -- built-in categories (Food, Transport,
+    # ...) have no row in Category, so a limit keyed by Category.id would silently exclude them.
+    category: Mapped[str] = mapped_column(String, nullable=False)
+    monthly_limit: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+
+    user: Mapped["User"] = relationship(back_populates="category_budgets")
 
 
 class Budget(Base):

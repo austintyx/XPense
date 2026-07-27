@@ -4,7 +4,18 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import auth, budget, categories, email_accounts, goals, health, sync, transactions, users
+from app.routers import (
+    auth,
+    budget,
+    categories,
+    category_budgets,
+    email_accounts,
+    goals,
+    health,
+    sync,
+    transactions,
+    users,
+)
 from app.services.scheduler import start_scheduler, stop_scheduler
 
 
@@ -35,3 +46,4 @@ app.include_router(budget.router)
 app.include_router(goals.router)
 app.include_router(users.router)
 app.include_router(categories.router)
+app.include_router(category_budgets.router)

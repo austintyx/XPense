@@ -113,6 +113,17 @@ class BudgetUpdateIn(BaseModel):
     monthly_target: Decimal
 
 
+class CategoryBudgetOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    category: str
+    monthly_limit: Decimal
+
+
+class CategoryBudgetUpdateIn(BaseModel):
+    monthly_limit: Decimal
+
+
 class SavingsGoalOut(BaseModel):
     user_id: int
     name: str
