@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react-native';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 
 import Activity from '../src/screens/Activity';
@@ -33,24 +33,29 @@ test('renders transactions grouped by day, with categorized and uncategorized ro
   expect(screen.getByText('Tap to categorise')).toBeTruthy();
 });
 
-test('the All filter also shows transfer transactions, excluded from the Needs a category count', async () => {
+test('the All filter shows transfer and income transactions, excluded from the Needs a category count', async () => {
   mockClientDefaults({
     transactions: [makeTxn({ id: 1, merchant_raw: 'CHICKEN RICE', category: 'Food' })],
     transfers: [makeTxn({ id: 2, merchant_raw: 'A/C ending 9249', type: 'transfer', category: null })],
+    income: [makeTxn({ id: 3, merchant_raw: 'LOU SIM TENG', type: 'income', category: null })],
   });
 
   renderWithProviders(<Activity />);
 
   expect(await screen.findByText('CHICKEN RICE')).toBeTruthy();
   expect(await screen.findByText('A/C ending 9249')).toBeTruthy();
+  expect(await screen.findByText('LOU SIM TENG')).toBeTruthy();
   expect(screen.getByTestId('needs-count-badge')).toHaveTextContent('0');
 
-  // The transfer shows with a "+" prefix in green, and subtracts from (rather than adds to) the
-  // day's group total -- both amounts default to 10.00 in makeTxn, so the net total is 0.00.
-  const transferAmount = screen.getByText('+S$10.00');
-  expect(transferAmount.props.style).toEqual(
+  // Income shows with a "+" prefix in green; transfer shows plain, like an expense.
+  const incomeAmount = within(screen.getByTestId('transaction-3')).getByText('+S$10.00');
+  expect(incomeAmount.props.style).toEqual(
     expect.arrayContaining([expect.objectContaining({ color: colors.success })]),
   );
+  expect(within(screen.getByTestId('transaction-2')).getByText('S$10.00')).toBeTruthy();
+  expect(within(screen.getByTestId('transaction-2')).queryByText('+S$10.00')).toBeNull();
+
+  // Only income affects the day total (subtracts); transfer is excluded entirely: 10 - 10 = 0.
   expect(screen.getByText('S$0.00')).toBeTruthy();
 });
 

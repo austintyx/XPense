@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { BottomSheet } from "../components/BottomSheet";
 import { CategoryChip } from "../components/CategoryChip";
+import { DateField } from "../components/DateField";
 import { useToast } from "../components/Toast";
 import { useAppData } from "../store/TransactionsProvider";
 import { categoryColorChip, colors, typography } from "../theme/tokens";
@@ -13,11 +14,18 @@ interface AddTransactionSheetProps {
   onClose: () => void;
 }
 
+const TYPE_OPTIONS = [
+  { value: "expense", label: "Expense" },
+  { value: "income", label: "Income" },
+] as const;
+
 export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetProps) {
   const { addTransaction, user, customCategories, customSubcategories } = useAppData();
   const { showToast } = useToast();
+  const [type, setType] = useState<"expense" | "income">("expense");
   const [amount, setAmount] = useState("");
   const [merchant, setMerchant] = useState("");
+  const [date, setDate] = useState(new Date());
   const [category, setCategory] = useState<string | null>(null);
   const [subcategory, setSubcategory] = useState<string | null>(null);
 
@@ -25,8 +33,10 @@ export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetPro
   const subcategories = category ? mergedSubcategories(category, customSubcategories) : [];
 
   const reset = () => {
+    setType("expense");
     setAmount("");
     setMerchant("");
+    setDate(new Date());
     setCategory(null);
     setSubcategory(null);
   };
@@ -40,14 +50,18 @@ export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetPro
 
   const save = async () => {
     if (!canSave || !category) return;
+    const now = new Date();
+    const txnAt = new Date(date.getFullYear(), date.getMonth(), date.getDate(), now.getHours(), now.getMinutes(), now.getSeconds());
     await addTransaction({
       user_id: user?.id ?? 1,
       amount,
+      type,
+      direction: type === "income" ? "credit" : "debit",
       merchant_raw: merchant,
       merchant_clean: merchant,
       category,
       subcategory: subcategories.length > 0 ? subcategory : null,
-      txn_at: new Date().toISOString(),
+      txn_at: txnAt.toISOString(),
     });
     showToast(`Added ${formatMoney(amount)} · ${merchant}`);
     reset();
@@ -57,6 +71,19 @@ export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetPro
   return (
     <BottomSheet visible={visible} onClose={handleClose} testID="add-transaction-sheet">
       <Text style={styles.title}>Add a transaction</Text>
+
+      <View style={styles.typeRow}>
+        {TYPE_OPTIONS.map((opt) => (
+          <Pressable
+            key={opt.value}
+            onPress={() => setType(opt.value)}
+            style={[styles.typeOption, type === opt.value && styles.typeOptionActive]}
+            testID={`draft-type-${opt.value}`}
+          >
+            <Text style={[styles.typeOptionText, type === opt.value && styles.typeOptionTextActive]}>{opt.label}</Text>
+          </Pressable>
+        ))}
+      </View>
 
       <Text style={styles.label}>Amount</Text>
       <View style={styles.amountBox}>
@@ -69,6 +96,11 @@ export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetPro
           style={styles.amountInput}
           testID="draft-amount"
         />
+      </View>
+
+      <Text style={styles.label}>Date</Text>
+      <View style={styles.dateBox}>
+        <DateField testID="draft-date" value={date} maximumDate={new Date()} onChange={setDate} />
       </View>
 
       <Text style={styles.label}>Merchant</Text>
@@ -128,6 +160,28 @@ export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetPro
 
 const styles = StyleSheet.create({
   title: { fontFamily: typography.fontFamily.serif, fontSize: typography.size.displayXl, marginBottom: 18, color: colors.ink },
+  typeRow: { flexDirection: "row", gap: 9, marginBottom: 18 },
+  typeOption: {
+    flex: 1,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.ink14,
+    borderRadius: 12,
+    paddingVertical: 11,
+    backgroundColor: colors.surface,
+  },
+  typeOptionActive: { backgroundColor: colors.ink, borderColor: colors.ink },
+  typeOptionText: { fontFamily: typography.fontFamily.sansMedium, fontSize: typography.size.md, color: colors.ink },
+  typeOptionTextActive: { color: colors.onDark },
+  dateBox: {
+    borderWidth: 1,
+    borderColor: colors.ink14,
+    borderRadius: 12,
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    backgroundColor: colors.surface,
+    marginBottom: 14,
+  },
   label: {
     fontFamily: typography.fontFamily.mono,
     fontSize: typography.size.xs5,

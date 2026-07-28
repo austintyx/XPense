@@ -143,7 +143,10 @@ export default function Settings() {
   // column, original order) vs web (two columns, matching the mockup's grouping) below -- so
   // moving Preferences into the left column on web doesn't silently reorder native's layout too.
   const profileSection = (
-    <>
+    // A View, not a fragment -- see the comment on budgetGoalsSection below for why: this section
+    // can render two top-level pieces (the card, the edit panel), and it's a direct child of the
+    // gapped `column` View.
+    <View>
       <View style={[styles.card, styles.profileCard, shadow.card]}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>{initialsOf(user?.name ?? null)}</Text>
@@ -175,7 +178,7 @@ export default function Settings() {
           </Pressable>
         </View>
       )}
-    </>
+    </View>
   );
 
   const accountsSection = (
@@ -244,7 +247,11 @@ export default function Settings() {
   );
 
   const budgetGoalsSection = (
-    <>
+    // A single wrapping View (not a fragment) -- this section can render more than one top-level
+    // piece (the card, the web-only "Manage budgets" link, either edit panel), and since it's
+    // composed as a direct child of the gapped `column` View, a fragment would let flexbox `gap`
+    // apply *between* those pieces too, not just between this section and its neighbors.
+    <View>
       <View style={[styles.card, styles.group, shadow.card]}>
         <Text style={styles.groupLabelInline}>BUDGET & GOALS</Text>
         <View style={styles.sourceRow}>
@@ -332,7 +339,7 @@ export default function Settings() {
           </Pressable>
         </View>
       )}
-    </>
+    </View>
   );
 
   const manageCategoriesSection = (
@@ -387,7 +394,7 @@ export default function Settings() {
             </View>
           </View>
         ) : (
-          <>
+          <View style={styles.column}>
             {profileSection}
             {accountsSection}
             {budgetGoalsSection}
@@ -395,7 +402,7 @@ export default function Settings() {
             {manageCategoriesSection}
             {circleSection}
             {signOutSection}
-          </>
+          </View>
         )}
       </ScrollView>
       <SyncBackfillSheet
@@ -418,7 +425,7 @@ const styles = StyleSheet.create({
   },
   title: { fontFamily: typography.fontFamily.serif, fontSize: typography.size.heading, marginBottom: 20, color: colors.ink },
   columns: Platform.OS === "web" ? { flexDirection: "row", gap: 16, alignItems: "flex-start" } : {},
-  column: Platform.OS === "web" ? { flex: 1 } : {},
+  column: { gap: spacing.lg, ...(Platform.OS === "web" ? { flex: 1 } : {}) },
   manageBudgetsLink: { marginTop: 10, fontFamily: typography.fontFamily.sans, fontSize: typography.size.sm5, color: colors.successText },
   card: { backgroundColor: colors.surface, borderRadius: radii.hero },
   profileCard: { padding: 20, flexDirection: "row", alignItems: "center", gap: 16 },
@@ -486,7 +493,6 @@ const styles = StyleSheet.create({
     color: colors.successText,
   },
   manageCategoriesCard: {
-    marginTop: spacing.lg,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.ink14,
@@ -498,7 +504,6 @@ const styles = StyleSheet.create({
   },
   manageCategoriesDot: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.ink08 },
   circleCard: {
-    marginTop: spacing.lg,
     backgroundColor: colors.successTintCard,
     borderWidth: 1,
     borderColor: colors.successAvatarBg,
@@ -515,7 +520,6 @@ const styles = StyleSheet.create({
   circleSub: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.sm5, color: colors.ink55, marginTop: 2 },
   chevron: { fontSize: 18, color: colors.ink40 },
   signOut: {
-    marginTop: spacing.xl,
     textAlign: "center",
     fontFamily: typography.fontFamily.sans,
     fontSize: typography.size.sm,

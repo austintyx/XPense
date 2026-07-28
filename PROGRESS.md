@@ -1698,3 +1698,70 @@ and confirm no Activity content is visible in the background at any viewport wid
 and confirm the card visibly slides out to the right with a slight rotation while the next
 transaction is revealed underneath. Also worth checking on a physical device via Expo Go, since the
 animation change applies there too.
+
+## Add Transaction: rename, expense/income toggle, date picker; income relabel; Settings spacing
+
+Four independent fixes.
+
+**Sidebar button renamed** (`Sidebar.tsx`): "Add expense" -> "Add transaction", matching the sheet
+it opens (which already called itself "Add a transaction" internally). Copy-only -- the
+`onAddExpense` prop name and `sidebar-add-expense` testID are untouched internal identifiers.
+
+**Add Transaction sheet gets an expense/income toggle and a date picker**
+(`AddTransactionSheet.tsx`): previously had no type field at all (relied on the backend's
+`expense`/`debit` defaults) and hardcoded `txn_at` to `new Date().toISOString()`. Added two
+Pressable pills (Expense/Income) driving both `type` and `direction` (`expense`->`debit`,
+`income`->`credit`) in the save payload -- the backend already accepted both fields with no
+changes needed. Added a `DateField` (the app's only cross-platform date input, already used by
+`SyncBackfillSheet.tsx` -- native wraps `@react-native-community/datetimepicker`, web is a plain
+`<input type="date">`, since the picker library has no web build) for the transaction's date; since
+only the *date* was asked for (not time), the picked date's Y/M/D is combined with the current
+time-of-day to build `txn_at`, rather than adding a time picker that doesn't exist as a component
+in this codebase.
+
+**Incoming PayNow relabelled `income`, not `transfer`** (`backend/app/services/parser.py`):
+`_classify_paynow`'s "receive"/"received" branch now returns `TransactionTypeEnum.income` instead
+of `.transfer` -- `transfer` is now reserved specifically for DBS's "Own Funds Transfer" (moving
+money between the user's own accounts), which is a separate code path
+(`_DBS_OWN_TRANSFER_RE`/`_DBS_TABLE_OWN_ACCOUNT_RE`) untouched by this change. This surfaced a real
+bug during planning: `backend/app/routers/transactions.py`'s `/summary` endpoint only excluded
+`transfer` from the monthly spend total, so incoming money reclassified as `income` would have
+started counting *toward* spend. Fixed by filtering `type == expense` instead of `type != transfer`
+(equivalent to excluding both non-expense types, and clearer intent).
+
+Frontend consumption updated to match (confirmed with the user: a self-transfer is still money
+leaving the viewed account, so it shouldn't look like an inflow):
+- `Activity.tsx`'s "All" filter now fetches `income` as a third type alongside the existing
+  `expense`/`transfer` fetches, merged and re-sorted by `txn_at`.
+- The green "+"" styling moved from `type === "transfer"` to `type === "income"` only --
+  `amountTransfer` renamed to `amountIncome`. Self-transfers render plain, like an expense row.
+- `groupByDay`'s (`derive.ts`) day-total math is now three-way: `income` subtracts (real money
+  in), `transfer` is excluded entirely (neither adds nor subtracts -- not spending, but not
+  confirmed net-new money either), everything else (`expense`) adds normally as before.
+- `testUtils.tsx`'s `mockClientDefaults` mock gained an `overrides.income` branch alongside the
+  existing `overrides.transfers`.
+
+**Settings: gap between cards** (`Settings.tsx`): `column`'s style had no `gap` at all (only
+`Platform.OS === "web"`-gated to `{ flex: 1 }`, empty on native), and most section cards had zero
+margin after them, so they sat flush against whatever followed. Added `gap: spacing.lg` (14) to
+`column` on both platforms, and wrapped native's previously-unwrapped flat list of sections in a
+`<View style={styles.column}>` too (a bare fragment can't carry a `gap` style). Removed the
+now-redundant explicit `marginTop`s on `manageCategoriesCard`/`circleCard`/`signOut` that would
+otherwise double up with the new uniform gap. Also converted `profileSection`/`budgetGoalsSection`
+from fragments to single wrapping `View`s -- both can render more than one top-level piece (a card
+plus a conditional edit panel, or plus the web-only "Manage budgets" link), and since each section
+is now a direct child of the gapped `column`, a fragment would have let flexbox `gap` leak *inside*
+a section (between its card and its own edit panel/link) rather than only between sections.
+
+**Tested:** backend `pytest -q` -- 181 passed (unchanged count; updated the `dbs_paynow_received`
+fixture-test and the synthetic receive-wording test to expect `income`, added an `income` row to
+the summary-exclusion test, renamed to `..._and_income`). Frontend `npx tsc --noEmit` clean,
+`jest --runInBand` -- 86 passed (unchanged count; updated the Activity "All filter" test to cover
+transfer *and* income side by side, asserting income gets the green "+" and only income affects
+the day total while transfer is excluded). Web bundle still compiles (200, ~3.7MB).
+
+**Manual steps for the human:** confirm the sidebar button reads "Add transaction"; open it and
+check the Expense/Income toggle and date field both work and the saved transaction reflects them;
+trigger a sync and confirm a real "received" PayNow transaction shows green with a "+" under
+`income` in Activity's "All" filter; check Settings' cards now have visible, even spacing on both
+web and (if you can) native.

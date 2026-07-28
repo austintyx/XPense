@@ -187,7 +187,7 @@ def summary(user_id: int, db: Session = Depends(get_db)):
         db.query(Transaction.category, func.sum(Transaction.amount))
         .filter(
             Transaction.user_id == user_id,
-            Transaction.type != TransactionTypeEnum.transfer,
+            Transaction.type == TransactionTypeEnum.expense,
             Transaction.txn_at >= month_start,
             Transaction.txn_at < next_month_start,
         )

@@ -48,9 +48,11 @@ export interface DayGroup {
 }
 
 /** Groups transactions by calendar day, newest group first, rows within a group preserving the
- * caller's (already txn_at-desc) ordering. Transfers (money coming in) subtract from the day's
- * total rather than adding to it -- callers mixing expense and transfer rows (Activity's "All"
- * filter) get a net-spend total per day, not an inflated sum of unrelated inflows and outflows. */
+ * caller's (already txn_at-desc) ordering. Income (real money received from someone else)
+ * subtracts from the day's total -- callers mixing expense and income rows (Activity's "All"
+ * filter) get a net-spend total per day, not an inflated sum of unrelated inflows and outflows.
+ * Transfers (moving money between the user's own accounts) are excluded from the total entirely --
+ * not spending, but also not confirmed net-new money -- while still appearing in `items`. */
 export function groupByDay(transactions: Transaction[], now: Date = new Date()): DayGroup[] {
   const groups: DayGroup[] = [];
   const indexByLabel = new Map<string, number>();
@@ -64,8 +66,11 @@ export function groupByDay(transactions: Transaction[], now: Date = new Date()):
       groups.push({ label, total: 0, items: [] });
     }
     groups[idx].items.push(txn);
-    const signedAmount = txn.type === "transfer" ? -Number(txn.amount) : Number(txn.amount);
-    groups[idx].total += signedAmount;
+    if (txn.type === "income") {
+      groups[idx].total -= Number(txn.amount);
+    } else if (txn.type !== "transfer") {
+      groups[idx].total += Number(txn.amount);
+    }
   }
 
   return groups;
