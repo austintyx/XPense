@@ -17,7 +17,7 @@ dependencies = [
     "httpx",
     "cryptography",
     "apscheduler",
-    "anthropic",
+    "google-genai",
 ]
 
 [project.optional-dependencies]

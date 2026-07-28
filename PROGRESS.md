@@ -1989,3 +1989,65 @@ cleanly (678 modules, no errors). Backend untouched, reconfirmed 189 passed.
 **Manual steps for the human:** open Summary (year/month/week) and Home in a browser and confirm
 an "Uncategorized" gray slice/row now appears whenever there's uncategorized spend in the period,
 and that the category percentages sum to 100%.
+
+## Free (Gemini) AI auto-categorization, with a merchant->category cache
+
+**The user had a lot of uncategorized transactions and asked for a free LLM to auto-categorize
+them.** Turned out auto-categorization already existed (`hardcoded_category()` regex rules, then
+an AI fallback) but the AI step called **Anthropic Claude Haiku**, gated on `LLM_API_KEY` -- which
+almost certainly was never set locally (Claude has no literal free tier), so nearly everything was
+silently falling through to `None`. Confirmed with the user via `AskUserQuestion`: swap to **Google
+Gemini** (genuinely free tier, no card required) -- a full swap, not "alongside Anthropic": removed
+the `anthropic` dependency (`pip uninstall anthropic` too, not just the pyproject.toml line) and
+`LLM_API_KEY`, replaced with `google-genai` and `GEMINI_API_KEY`.
+
+**Verified the SDK shape by installing it and introspecting the actual package**, not by trusting
+recalled or web-fetched docs -- Gemini's Python API has shifted since this project's knowledge
+cutoff (a newer "Interactions API" now exists alongside the classic one). `inspect.signature()`
+against the installed `google-genai` 2.14.0 confirmed `client.models.generate_content(model=,
+contents=, config=GenerateContentConfig(...))` with a plain `.text` accessor is still fully
+present and stable, so `ai_category()` (`backend/app/services/categorize.py`) now asks Gemini
+(`gemini-2.5-flash-lite`, `thinking_config=ThinkingConfig(thinking_budget=0)` to keep classification
+calls fast/cheap) for **plain text** (just the category name), matched case-insensitively against
+the 8 known categories -- deliberately simpler than replicating Anthropic's structured-output/
+Pydantic-schema approach, since the answer space here is tiny.
+
+**The actual efficiency ask: a merchant->category cache, not per-transaction AI calls.** New
+`MerchantCategoryCache` table (`merchant_key` unique index, `category`) -- deliberately **not**
+user-scoped, since "STARBUCKS is Food" is a fact independent of whose account synced it, so a
+global cache maximizes hits across every user. `categorize_transaction()` now checks this cache
+between the hardcoded-rules step and the AI step; a hit skips Gemini entirely. **Also caches manual
+corrections**, not just AI results (the user's explicit second ask): `remember_category()`
+upserts by merchant, called from `update_category` (every QuickSort/CategorizeSheet recategorize)
+and `create_manual_transaction` (manual add with a category picked) as well as from a successful AI
+classification -- so a user's correction permanently overwrites any prior (possibly wrong) guess
+for that merchant, and every future transaction from it is categorized instantly with zero further
+API calls, even for users who never configure a `GEMINI_API_KEY` at all.
+
+**Caught a real bug during testing, not just a hypothetical one**: this project's SQLAlchemy
+sessions are all created with `autoflush=False` (`backend/app/db.py` and `tests/conftest.py`
+both), so my first draft of `remember_category()` silently failed to make a newly-cached row
+visible to a later lookup in the *same* batch/request (e.g. two transactions from the same new
+merchant in one sync run) -- a plain `db.add(...)` isn't enough here. Fixed by adding an explicit
+`db.flush()` inside `remember_category()`; caught by the new caching tests actually failing on the
+first attempt, not by inspection.
+
+**Also added a self-service way to clear the existing backlog**: the backend already had a
+`POST /transactions/categorize-pending` backfill endpoint, but nothing in the frontend called it.
+Added `categorizePending()` to `client.ts` and a "Try auto-categorize first" button next to
+Activity's existing "Quick sort" banner (shown whenever the "Needs a category" filter has rows),
+which calls it, toasts a result, and refetches -- this is what actually clears transactions that
+already exist, separate from the pipeline change that only affects newly-synced ones.
+
+**Tested:** backend `pytest -q` -- 196 passed (was 189; new cases in `test_categorize.py` for the
+Gemini mock swap and the cache write/hit/overwrite behavior, new cases in `test_transactions.py`
+confirming `update_category` and manual-add both write/overwrite the cache and that a subsequent
+transaction from the same merchant is categorized from the cache with `ai_category` mocked to
+raise if called). Frontend `jest --runInBand` -- 98 passed across 15 suites (+2 in
+`Activity.test.tsx` for the new button). Applied the new migration locally and confirmed via
+`\d merchant_category_cache`; ran the full backend suite again after `pip uninstall anthropic` to
+confirm nothing depended on it being present.
+
+**Manual steps for the human:** get a free key at https://aistudio.google.com/apikey (no card
+required) and set `GEMINI_API_KEY` in `backend/.env`; run `alembic upgrade head` on the deployed
+Render database whenever next deployed, same as every prior schema change in this project.

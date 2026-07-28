@@ -134,6 +134,17 @@ class Subscription(Base):
     user: Mapped["User"] = relationship(back_populates="subscriptions")
 
 
+class MerchantCategoryCache(Base):
+    __tablename__ = "merchant_category_cache"
+
+    # Not user-scoped, deliberately -- "STARBUCKS is Food" is a fact independent of whose account
+    # synced it, so one global cache maximizes hits across every user, not just within one.
+    id: Mapped[int] = mapped_column(primary_key=True)
+    merchant_key: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    category: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class Budget(Base):
     __tablename__ = "budgets"
 

@@ -1,11 +1,12 @@
 import re
 from datetime import datetime
-from typing import Literal
 
-import anthropic
-from pydantic import BaseModel
+from google import genai
+from google.genai import types
+from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.models import MerchantCategoryCache
 from app.services.parser import SGT
 
 CATEGORIES = ["Food", "Groceries", "Transport", "Shopping", "Bills", "Entertainment", "Health", "Other"]
@@ -82,36 +83,35 @@ def transport_subcategory(merchant: str) -> str:
     return "Others"
 
 
-class _MerchantCategoryResult(BaseModel):
-    category: Literal[
-        "Food", "Groceries", "Transport", "Shopping", "Bills", "Entertainment", "Health", "Other"
-    ]
-
-
 def ai_category(merchant: str, bank: str | None) -> str | None:
-    """Ask Claude to classify a merchant name the hardcoded rules couldn't resolve. Never
-    raises -- returns None on any failure (unset key, network error, etc.) so this is a pure
-    enrichment step that can never block a sync."""
-    if not settings.llm_api_key:
+    """Ask Gemini (free tier) to classify a merchant name the hardcoded rules couldn't resolve.
+    Never raises -- returns None on any failure (unset key, network error, unparseable reply,
+    etc.) so this is a pure enrichment step that can never block a sync. Plain-text classification
+    (not a structured-output schema) is deliberate: the answer space is just the 8 category names,
+    so matching the reply against that list is simpler and more robust than depending on a
+    schema-validation API surface."""
+    if not settings.gemini_api_key:
         return None
     try:
-        client = anthropic.Anthropic(api_key=settings.llm_api_key)
-        response = client.messages.parse(
-            model="claude-haiku-4-5",
-            max_tokens=64,
-            messages=[
-                {
-                    "role": "user",
-                    "content": (
-                        "Classify this Singapore bank transaction merchant into exactly one "
-                        f"spending category. Merchant: \"{merchant}\". Bank: {bank or 'unknown'}."
-                    ),
-                }
-            ],
-            output_format=_MerchantCategoryResult,
+        client = genai.Client(api_key=settings.gemini_api_key)
+        response = client.models.generate_content(
+            model="gemini-2.5-flash-lite",
+            contents=(
+                "Classify this Singapore bank transaction merchant into exactly one spending "
+                f"category: {', '.join(CATEGORIES)}. Reply with ONLY the category name, nothing "
+                f"else. Merchant: \"{merchant}\". Bank: {bank or 'unknown'}."
+            ),
+            config=types.GenerateContentConfig(
+                max_output_tokens=20,
+                temperature=0,
+                thinking_config=types.ThinkingConfig(thinking_budget=0),
+            ),
         )
-        parsed = response.parsed_output
-        return parsed.category if parsed is not None else None
+        reply = (response.text or "").strip()
+        for category in CATEGORIES:
+            if reply.lower() == category.lower():
+                return category
+        return None
     except Exception:
         return None
 
@@ -124,9 +124,44 @@ def subcategory_for(category: str | None, merchant: str, txn_at: datetime) -> st
     return None
 
 
+def _normalize_merchant_key(merchant: str) -> str:
+    return re.sub(r"\s+", " ", merchant).strip().upper()
+
+
+def _get_cached_category(db: Session, merchant: str) -> str | None:
+    row = (
+        db.query(MerchantCategoryCache)
+        .filter_by(merchant_key=_normalize_merchant_key(merchant))
+        .one_or_none()
+    )
+    return row.category if row is not None else None
+
+
+def remember_category(db: Session, merchant: str, category: str) -> None:
+    """Upserts the merchant->category cache, overwriting any existing entry -- called both after
+    a successful AI classification and whenever a user manually (re)categorizes a transaction, so
+    a user's correction always wins over a prior guess and sticks for every future transaction
+    from that merchant. Flushes (but doesn't commit) so the change is visible to a subsequent
+    _get_cached_category call later in the same request/batch -- this project's sessions are
+    created with autoflush=False, so that visibility isn't automatic."""
+    key = _normalize_merchant_key(merchant)
+    row = db.query(MerchantCategoryCache).filter_by(merchant_key=key).one_or_none()
+    if row is None:
+        db.add(MerchantCategoryCache(merchant_key=key, category=category))
+    else:
+        row.category = category
+    db.flush()
+
+
 def categorize_transaction(
-    merchant: str, bank: str | None, txn_at: datetime
+    db: Session, merchant: str, bank: str | None, txn_at: datetime
 ) -> tuple[str | None, str | None]:
-    category = hardcoded_category(merchant) or ai_category(merchant, bank)
+    category = hardcoded_category(merchant)
+    if category is None:
+        category = _get_cached_category(db, merchant)
+        if category is None:
+            category = ai_category(merchant, bank)
+            if category is not None:
+                remember_category(db, merchant, category)
     subcategory = subcategory_for(category, merchant, txn_at)
     return category, subcategory

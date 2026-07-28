@@ -200,3 +200,29 @@ test('add transaction sheet requires amount, merchant and category before Save i
     expect.objectContaining({ amount: '19.80', merchant_raw: 'Star Western', category: 'Food' }),
   );
 });
+
+test('auto-categorize calls the backfill endpoint and refetches, showing a result toast', async () => {
+  mockClientDefaults({
+    transactions: [makeTxn({ id: 1, merchant_raw: 'BUS/MRT', category: null })],
+  });
+  const categorizeSpy = jest
+    .spyOn(client, 'categorizePending')
+    .mockResolvedValue({ categorized: 1, remaining: 0 });
+
+  renderWithProviders(<Activity />);
+
+  fireEvent.press(await screen.findByTestId('filter-needs'));
+  fireEvent.press(await screen.findByTestId('auto-categorize-button'));
+
+  await waitFor(() => expect(categorizeSpy).toHaveBeenCalled());
+  expect(await screen.findByText('Categorized 1, 0 left for Quick Sort')).toBeTruthy();
+});
+
+test('the auto-categorize action is hidden once nothing needs a category', async () => {
+  mockClientDefaults({ transactions: [makeTxn({ id: 1, category: 'Food' })] });
+
+  renderWithProviders(<Activity />);
+
+  fireEvent.press(await screen.findByTestId('filter-needs'));
+  expect(screen.queryByTestId('auto-categorize-button')).toBeNull();
+});
