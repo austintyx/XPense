@@ -49,6 +49,27 @@ test('picking a category with no subcategories sorts the card and advances the q
   expect(await screen.findByText('NETFLIX')).toBeTruthy();
 });
 
+test('picking a category reveals the next card immediately, sliding the old one out on top of it', async () => {
+  mockClientDefaults({
+    transactions: [
+      makeTxn({ id: 1, merchant_raw: 'SHOPEE', category: null }),
+      makeTxn({ id: 2, merchant_raw: 'NETFLIX', category: null }),
+    ],
+  });
+  jest.spyOn(client, 'updateTransactionCategory').mockResolvedValue(makeTxn({ id: 1, category: 'Shopping' }));
+
+  renderWithProviders(<QuickSort />);
+
+  await screen.findByText('SHOPEE');
+  fireEvent.press(screen.getByTestId('qs-cat-Shopping'));
+
+  // The queue advances optimistically -- NETFLIX (the new current card) is revealed underneath
+  // the exiting SHOPEE snapshot without waiting for the categorize() network round-trip.
+  expect(screen.getByTestId('quicksort-card-exiting')).toBeTruthy();
+  expect(screen.getByText('SHOPEE')).toBeTruthy();
+  expect(screen.getByText('NETFLIX')).toBeTruthy();
+});
+
 test('picking Food shows a subcategory step before sorting', async () => {
   mockClientDefaults({ transactions: [makeTxn({ id: 1, merchant_raw: 'SAIZERIYA', category: null })] });
   const updateSpy = jest
