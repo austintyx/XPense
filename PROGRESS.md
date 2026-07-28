@@ -1953,3 +1953,39 @@ assertions, since the behavior itself didn't change -- only which screen renders
 suite untouched by this change, reconfirmed still 189 passed.
 
 **Manual steps for the human:** none -- purely a frontend UI relocation, no schema or API changes.
+
+## Pie charts now show an Uncategorized slice so their percentages actually tally
+
+**The bug:** the Summary donut and the Home page's "Where it went" donut are both built from
+`categoryTotals()`, which silently excludes any transaction with `category === null`. After last
+round's fix made the *headline total* (`grand`) correctly include uncategorized spend, this made
+the mismatch more visible, not less: the wedges/rows (categorized-only) now summed to noticeably
+less than the number shown in the middle of the donut, and each category row's `%` no longer added
+up to 100% across the whole breakdown.
+
+**Fix:** in `Summary.tsx`, `Summary.web.tsx`, and `Home.web.tsx` (the three places with an actual
+pie/donut chart -- `Home.tsx`'s native "Where it went" is a plain bar list, not a pie, so it has no
+"slices don't tally" failure mode and was left alone), fold the period's uncategorized total into
+the same `sortedCats` array that feeds both the `Donut` segments and the category-row list, instead
+of leaving it out. Added `UNCATEGORIZED_LABEL = "Uncategorized"` (`derive.ts`) as the shared sentinel
+category name, and taught `categoryTransactions()` to route to `uncategorized()` when it's asked for
+that label, so Summary's existing row-expand-to-see-transactions behavior works for the new row with
+zero special-casing in the screen files themselves.
+
+**Uncategorized needed its own color**, not a random hashed hue (`categoryColor()`'s fallback for
+any unrecognized id) that could coincidentally look like a real category. `categoryColor`/
+`categoryColorChip`/`categoryColorBar` (`theme/tokens.ts`) now special-case `"Uncategorized"` to a
+fixed neutral gray (same lightness as normal, chroma forced to 0) rather than hashing it like a
+custom category name would be.
+
+**Tested:** frontend `jest --runInBand` -- 96 passed across 15 suites (+1: `Summary.test.tsx` now
+asserts an `Uncategorized` row appears with the correct amount/percentage and expands to show its
+transactions). `Home.web.tsx`/`Summary.web.tsx` aren't reachable by this project's Jest config at
+all (confirmed: Jest has no `.web.tsx` platform resolution configured, so `import Summary from
+'../src/screens/Summary'` in any test always resolves to the plain `.tsx` file, never the `.web.tsx`
+one -- this predates this change) -- verified instead via `npx expo export -p web`, which compiled
+cleanly (678 modules, no errors). Backend untouched, reconfirmed 189 passed.
+
+**Manual steps for the human:** open Summary (year/month/week) and Home in a browser and confirm
+an "Uncategorized" gray slice/row now appears whenever there's uncategorized spend in the period,
+and that the category percentages sum to 100%.

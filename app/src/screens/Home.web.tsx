@@ -18,6 +18,7 @@ import {
   isExpense,
   previousMonthTransactions,
   uncategorized,
+  UNCATEGORIZED_LABEL,
 } from "../utils/derive";
 
 type HomeLayout = "focused" | "command";
@@ -58,10 +59,17 @@ export default function Home() {
   const sparkAvg = spark.reduce((a, b) => a + b, 0) / spark.length;
 
   const totals = useMemo(() => categoryTotals(monthTxns), [monthTxns]);
-  const sortedCats = useMemo(
-    () => (Object.entries(totals) as [CategoryId, number][]).sort((a, b) => b[1] - a[1]),
-    [totals],
+  const uncategorizedTotal = useMemo(
+    () => uncategorized(monthTxns).reduce((sum, t) => sum + Number(t.amount), 0),
+    [monthTxns],
   );
+  // Uncategorized spend is folded in as its own slice/row (rather than left out) so the donut's
+  // wedges and the "Where it went" rows actually tally to `grand`.
+  const sortedCats = useMemo(() => {
+    const entries = Object.entries(totals) as [CategoryId, number][];
+    if (uncategorizedTotal > 0) entries.push([UNCATEGORIZED_LABEL as CategoryId, uncategorizedTotal]);
+    return entries.sort((a, b) => b[1] - a[1]);
+  }, [totals, uncategorizedTotal]);
   const grand = sortedCats.reduce((sum, [, v]) => sum + v, 0);
 
   const reviewQueue = useMemo(() => uncategorized(transactions).slice(0, 4), [transactions]);
