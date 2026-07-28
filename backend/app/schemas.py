@@ -4,7 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
-from app.models import DirectionEnum, ProviderEnum
+from app.models import DirectionEnum, FrequencyEnum, ProviderEnum
 
 
 class TransactionOut(BaseModel):
@@ -120,6 +120,23 @@ class CategoryBudgetOut(BaseModel):
 
 class CategoryBudgetUpdateIn(BaseModel):
     monthly_limit: Decimal
+
+
+class SubscriptionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    amount: Decimal
+    frequency: FrequencyEnum
+    next_due: datetime
+
+
+class SubscriptionCreateIn(BaseModel):
+    name: str
+    amount: Decimal
+    frequency: FrequencyEnum
+    next_due: datetime
 
 
 class SavingsGoalOut(BaseModel):

@@ -101,6 +101,23 @@ test('paging the month chart view back a month shows that month\'s own total, no
   expect(screen.queryByText('S$40')).toBeNull();
 });
 
+test('year view total includes uncategorized expenses, not just categorized ones', async () => {
+  mockClientDefaults({
+    transactions: [
+      makeTxn({ id: 1, category: 'Food', amount: '40.00', txn_at: '2026-07-15T10:00:00Z' }),
+      makeTxn({ id: 2, category: null, amount: '25.00', txn_at: '2026-03-01T10:00:00Z', merchant_raw: 'UNCATEGORIZED' }),
+      makeTxn({ id: 3, category: 'Food', amount: '5.00', direction: 'credit', txn_at: '2026-02-01T10:00:00Z' }),
+    ],
+  });
+
+  renderWithProviders(<Summary />);
+
+  fireEvent.press(await screen.findByTestId('sum-period-year'));
+
+  // 40 (Food) + 25 (uncategorized) -- the 5.00 credit must not be added or subtracted.
+  expect(await screen.findByText('S$65')).toBeTruthy();
+});
+
 test('week view uses the Sunday-Saturday calendar week, not a rolling 7-day window', async () => {
   mockClientDefaults({
     transactions: [

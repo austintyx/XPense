@@ -21,6 +21,13 @@ class DirectionEnum(str, enum.Enum):
     credit = "credit"
 
 
+class FrequencyEnum(str, enum.Enum):
+    weekly = "weekly"
+    monthly = "monthly"
+    quarterly = "quarterly"
+    yearly = "yearly"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -34,6 +41,7 @@ class User(Base):
     categories: Mapped[list["Category"]] = relationship(back_populates="user")
     subcategories: Mapped[list["Subcategory"]] = relationship(back_populates="user")
     category_budgets: Mapped[list["CategoryBudget"]] = relationship(back_populates="user")
+    subscriptions: Mapped[list["Subscription"]] = relationship(back_populates="user")
 
 
 class EmailAccount(Base):
@@ -111,6 +119,19 @@ class CategoryBudget(Base):
     monthly_limit: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
 
     user: Mapped["User"] = relationship(back_populates="category_budgets")
+
+
+class Subscription(Base):
+    __tablename__ = "subscriptions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    frequency: Mapped[FrequencyEnum] = mapped_column(SAEnum(FrequencyEnum, name="frequency_enum"), nullable=False)
+    next_due: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    user: Mapped["User"] = relationship(back_populates="subscriptions")
 
 
 class Budget(Base):

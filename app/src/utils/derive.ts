@@ -83,6 +83,12 @@ export function categoryTotals(transactions: Transaction[]): Record<string, numb
   return totals;
 }
 
+/** Total expense spend regardless of category -- unlike summing categoryTotals(), this doesn't
+ * silently drop uncategorized transactions, so it's the right source for a period's headline total. */
+export function expenseTotal(transactions: Transaction[]): number {
+  return transactions.filter(isExpense).reduce((sum, t) => sum + Number(t.amount), 0);
+}
+
 export interface CategoryTotal {
   category: CategoryId;
   total: number;

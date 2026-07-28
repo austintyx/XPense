@@ -14,6 +14,7 @@ import {
   currentMonthTransactions,
   dayLabel,
   endOfWeek,
+  expenseTotal,
   firstWeekdayOfMonth,
   formatMoney,
   isExpense,
@@ -77,8 +78,7 @@ export default function Summary() {
 
   const totals = useMemo(() => categoryTotals(periodTransactions), [periodTransactions]);
   const isCurrentRealMonth = sumPeriod === "month" && isSameMonth(viewAnchor, now);
-  const grand =
-    isCurrentRealMonth && summary ? Number(summary.total) : Object.values(totals).reduce((a, b) => a + b, 0);
+  const grand = isCurrentRealMonth && summary ? Number(summary.total) : expenseTotal(periodTransactions);
   const sortedCats = useMemo(
     () => Object.entries(totals).sort((a, b) => b[1] - a[1]) as [CategoryId, number][],
     [totals],

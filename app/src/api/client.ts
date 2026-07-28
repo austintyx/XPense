@@ -247,6 +247,51 @@ export async function deleteCategoryBudget(category: string, userId: number = CU
   }
 }
 
+export type Frequency = "weekly" | "monthly" | "quarterly" | "yearly";
+
+export interface Subscription {
+  id: number;
+  name: string;
+  amount: string;
+  frequency: Frequency;
+  next_due: string;
+}
+
+export async function getSubscriptions(userId: number = CURRENT_USER_ID): Promise<Subscription[]> {
+  const response = await fetch(`${API_BASE_URL}/subscriptions?user_id=${userId}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch subscriptions (${response.status})`);
+  }
+  return response.json();
+}
+
+export async function createSubscription(
+  name: string,
+  amount: string,
+  frequency: Frequency,
+  nextDue: string,
+  userId: number = CURRENT_USER_ID,
+): Promise<Subscription> {
+  const response = await fetch(`${API_BASE_URL}/subscriptions?user_id=${userId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, amount, frequency, next_due: nextDue }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to create subscription (${response.status})`);
+  }
+  return response.json();
+}
+
+export async function deleteSubscription(subscriptionId: number, userId: number = CURRENT_USER_ID): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/subscriptions/${subscriptionId}?user_id=${userId}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to delete subscription (${response.status})`);
+  }
+}
+
 export interface SavingsGoal {
   user_id: number;
   name: string;

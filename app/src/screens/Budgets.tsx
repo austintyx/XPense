@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 
-import { getCategoryBudgets, updateCategoryBudget, type CategoryBudget } from "../api/client";
+import { getCategoryBudgets, updateCategoryBudget, type CategoryBudget, type Frequency } from "../api/client";
+import { AddSubscriptionSheet } from "./AddSubscriptionSheet";
 import { useToast } from "../components/Toast";
 import { useAppData } from "../store/TransactionsProvider";
 import { colors, radii, shadow, typography } from "../theme/tokens";
+import { confirmDestructive } from "../utils/confirm";
 import {
   allCategories,
   categoryTotals,
@@ -14,6 +16,24 @@ import {
   formatMoney,
   isExpense,
 } from "../utils/derive";
+
+interface SubscriptionRow {
+  key: string;
+  name: string;
+  amount: number;
+  source: "derived" | "manual";
+  id?: number;
+}
+
+// Normalizes a subscription's amount to a monthly-equivalent so mixed-frequency subscriptions
+// (weekly/quarterly/yearly) can be summed into one meaningful "a month" caption alongside the
+// auto-detected ones, which are already effectively monthly.
+function monthlyEquivalent(amount: number, frequency: Frequency): number {
+  if (frequency === "weekly") return amount * (52 / 12);
+  if (frequency === "quarterly") return amount / 3;
+  if (frequency === "yearly") return amount / 12;
+  return amount;
+}
 
 const GOAL_RING_CIRCUMFERENCE = 2 * Math.PI * 28;
 
@@ -37,12 +57,13 @@ const SUGGESTED_CATEGORY_SHARE: Record<string, number> = {
 };
 
 export default function Budgets() {
-  const { transactions, budget, goal, customCategories, loading } = useAppData();
+  const { transactions, budget, goal, customCategories, subscriptions, removeSubscription, loading } = useAppData();
   const { showToast } = useToast();
   const [limits, setLimits] = useState<CategoryBudget[]>([]);
   const [limitsLoading, setLimitsLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [addSubscriptionVisible, setAddSubscriptionVisible] = useState(false);
 
   useEffect(() => {
     getCategoryBudgets()
@@ -59,7 +80,32 @@ export default function Budgets() {
     (cat) => (totals[cat] ?? 0) > 0 || limits.some((l) => l.category === cat),
   );
   const recurring = useMemo(() => deriveRecurring(transactions).slice(0, 5), [transactions]);
-  const monthlySubTotal = recurring.reduce((sum, r) => sum + r.amount, 0);
+  const subscriptionRows = useMemo<SubscriptionRow[]>(
+    () => [
+      ...recurring.map((r) => ({ key: `derived-${r.merchant}`, name: r.merchant, amount: r.amount, source: "derived" as const })),
+      ...subscriptions.map((s) => ({
+        key: `manual-${s.id}`,
+        name: s.name,
+        amount: monthlyEquivalent(Number(s.amount), s.frequency),
+        source: "manual" as const,
+        id: s.id,
+      })),
+    ],
+    [recurring, subscriptions],
+  );
+  const monthlySubTotal = subscriptionRows.reduce((sum, r) => sum + r.amount, 0);
+
+  const confirmDeleteSubscription = (id: number, name: string) => {
+    confirmDestructive({
+      title: "Delete subscription?",
+      message: `Delete ${name}? This can't be undone.`,
+      confirmLabel: "Delete",
+      onConfirm: async () => {
+        await removeSubscription(id);
+        showToast("Subscription deleted");
+      },
+    });
+  };
 
   const startEditAll = () => {
     const next: Record<string, string> = {};
@@ -221,25 +267,37 @@ export default function Budgets() {
           </View>
 
           <View style={[styles.card, shadow.card]}>
-            <Text style={styles.eyebrow}>SUBSCRIPTIONS</Text>
+            <View style={styles.headerRow}>
+              <Text style={styles.eyebrow}>SUBSCRIPTIONS</Text>
+              <Pressable style={styles.editAllButton} onPress={() => setAddSubscriptionVisible(true)} testID="add-subscription">
+                <Text style={styles.editAllButtonText}>Add</Text>
+              </Pressable>
+            </View>
             <Text style={styles.subCaption}>
-              {formatMoney(monthlySubTotal, false)} a month across {recurring.length} {recurring.length === 1 ? "service" : "services"}
+              {formatMoney(monthlySubTotal, false)} a month across {subscriptionRows.length}{" "}
+              {subscriptionRows.length === 1 ? "service" : "services"}
             </Text>
-            {recurring.length === 0 ? (
+            {subscriptionRows.length === 0 ? (
               <Text style={styles.emptyText}>Nothing recurring detected yet.</Text>
             ) : (
-              recurring.map((r) => (
-                <View key={r.merchant} style={styles.subRow}>
+              subscriptionRows.map((r) => (
+                <View key={r.key} style={styles.subRow} testID={`sub-row-${r.key}`}>
                   <Text style={styles.subName} numberOfLines={1}>
-                    {r.merchant}
+                    {r.name}
                   </Text>
                   <Text style={styles.subAmount}>{formatMoney(r.amount)}</Text>
+                  {r.source === "manual" && r.id !== undefined && (
+                    <Pressable onPress={() => confirmDeleteSubscription(r.id!, r.name)} testID={`delete-sub-${r.id}`}>
+                      <Text style={styles.subDelete}>×</Text>
+                    </Pressable>
+                  )}
                 </View>
               ))
             )}
           </View>
         </View>
       </View>
+      <AddSubscriptionSheet visible={addSubscriptionVisible} onClose={() => setAddSubscriptionVisible(false)} />
     </ScrollView>
   );
 }
@@ -279,4 +337,5 @@ const styles = StyleSheet.create({
   subRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10, paddingVertical: 11, borderTopWidth: 1, borderTopColor: colors.ink06 },
   subName: { flex: 1, fontFamily: typography.fontFamily.sans, fontSize: typography.size.base5 },
   subAmount: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.base5 },
+  subDelete: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.lg, color: colors.ink38, marginLeft: 4 },
 });

@@ -14,6 +14,7 @@ export function mockClientDefaults(overrides: {
   user?: client.AppUser;
   accounts?: client.EmailAccount[];
   categories?: client.CustomCategories;
+  subscriptions?: client.Subscription[];
 } = {}) {
   jest.spyOn(client, 'getTransactions').mockImplementation(async (direction) => {
     const all = overrides.transactions ?? [];
@@ -34,6 +35,18 @@ export function mockClientDefaults(overrides: {
   jest.spyOn(client, 'getLinkedAccounts').mockResolvedValue(overrides.accounts ?? []);
   jest.spyOn(client, 'getCategories').mockResolvedValue(overrides.categories ?? { categories: [], subcategories: [] });
   jest.spyOn(client, 'syncTransactions').mockResolvedValue({ user_id: 1, inserted: 0, accounts: [] });
+  jest.spyOn(client, 'getSubscriptions').mockResolvedValue(overrides.subscriptions ?? []);
+}
+
+export function makeSubscription(overrides: Partial<client.Subscription> = {}): client.Subscription {
+  return {
+    id: 1,
+    name: 'Netflix',
+    amount: '14.98',
+    frequency: 'monthly',
+    next_due: new Date().toISOString(),
+    ...overrides,
+  };
 }
 
 export function makeTxn(overrides: Partial<client.Transaction> = {}): client.Transaction {
