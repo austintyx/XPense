@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from app.db import SessionLocal
-from app.models import DirectionEnum, Transaction, TransactionTypeEnum, User
+from app.models import DirectionEnum, Transaction, User
 
 DEMO_USER_EMAIL = "demo@xpense.dev"
 
@@ -12,28 +12,24 @@ FAKE_TRANSACTIONS = [
         category="Food",
         amount=Decimal("6.00"),
         bank="DBS",
-        type=TransactionTypeEnum.expense,
     ),
     dict(
         merchant_raw="24HRS CITY FLORIST",
         category="Shopping",
         amount=Decimal("87.00"),
         bank="DBS",
-        type=TransactionTypeEnum.expense,
     ),
     dict(
         merchant_raw="Transit: Kovan-Sengkang",
         category="Transport",
         amount=Decimal("1.38"),
         bank="SimplyGo",
-        type=TransactionTypeEnum.expense,
     ),
     dict(
         merchant_raw="A/C ending 9249",
         category=None,
         amount=Decimal("200.00"),
         bank="DBS",
-        type=TransactionTypeEnum.transfer,
     ),
 ]
 
@@ -66,7 +62,6 @@ def seed() -> None:
                     amount=row["amount"],
                     currency="SGD",
                     direction=DirectionEnum.debit,
-                    type=row["type"],
                     merchant_raw=row["merchant_raw"],
                     merchant_clean=row["merchant_raw"],
                     category=row["category"],

@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from app.models import DirectionEnum, EmailAccount, ProviderEnum, Transaction, TransactionTypeEnum
+from app.models import DirectionEnum, EmailAccount, ProviderEnum, Transaction
 from app.security.crypto import encrypt
 from app.services import gmail
 from app.services.grab_reconcile import GRAB_RECEIPT_SENDER
@@ -17,7 +17,6 @@ def _make_txn(db_session, user, **overrides):
         amount=Decimal("10.00"),
         currency="SGD",
         direction=DirectionEnum.debit,
-        type=TransactionTypeEnum.expense,
         merchant_raw="TEST MERCHANT",
         merchant_clean="Test Merchant",
         category="Food",
@@ -32,22 +31,40 @@ def _make_txn(db_session, user, **overrides):
     return txn
 
 
-def test_list_returns_seeded_rows_newest_first(client, db_session, user):
+def test_list_returns_all_rows_newest_first_by_default(client, db_session, user):
     now = datetime.now(timezone.utc)
     older = _make_txn(db_session, user, merchant_raw="OLDER", txn_at=now - timedelta(days=2))
     newer = _make_txn(db_session, user, merchant_raw="NEWER", txn_at=now - timedelta(hours=1))
-    _make_txn(
+    credit = _make_txn(
         db_session,
         user,
-        merchant_raw="A TRANSFER",
-        type=TransactionTypeEnum.transfer,
+        merchant_raw="A CREDIT",
+        direction=DirectionEnum.credit,
         txn_at=now,
     )
 
     response = client.get("/transactions", params={"user_id": user.id})
     assert response.status_code == 200
     ids = [row["id"] for row in response.json()]
-    assert ids == [newer.id, older.id]  # newest first, transfers excluded by default
+    assert ids == [credit.id, newer.id, older.id]  # newest first, no filter applied by default
+
+
+def test_list_filters_by_direction_when_requested(client, db_session, user):
+    now = datetime.now(timezone.utc)
+    debit = _make_txn(db_session, user, merchant_raw="DEBIT ROW", txn_at=now)
+    credit = _make_txn(
+        db_session,
+        user,
+        merchant_raw="CREDIT ROW",
+        direction=DirectionEnum.credit,
+        txn_at=now,
+    )
+
+    response = client.get("/transactions", params={"user_id": user.id, "direction": "credit"})
+    assert response.status_code == 200
+    ids = [row["id"] for row in response.json()]
+    assert ids == [credit.id]
+    assert debit.id not in ids
 
 
 def test_category_update_persists(client, db_session, user):
@@ -146,7 +163,6 @@ def test_manual_add_creates_row(client, user):
         "amount": "19.80",
         "currency": "SGD",
         "direction": "debit",
-        "type": "expense",
         "merchant_raw": "Star Western",
         "category": "Food",
         "txn_at": datetime.now(timezone.utc).isoformat(),
@@ -168,7 +184,6 @@ def test_manual_add_accepts_food_subcategory(client, user):
         "amount": "8.40",
         "currency": "SGD",
         "direction": "debit",
-        "type": "expense",
         "merchant_raw": "Tiong Bahru Bakery",
         "category": "Food",
         "subcategory": "Coffee",
@@ -300,26 +315,28 @@ def test_delete_transaction_404s_for_another_users_row(client, db_session, user)
     assert response.status_code == 404
 
 
-def test_summary_sums_categories_and_excludes_transfers_and_income(client, db_session, user):
+def test_summary_sums_debit_categories_and_excludes_credit_rows(client, db_session, user):
     now = datetime.now(timezone.utc)
     _make_txn(db_session, user, category="Food", amount=Decimal("10.00"), txn_at=now)
     _make_txn(db_session, user, category="Food", amount=Decimal("5.00"), txn_at=now)
     _make_txn(db_session, user, category="Transport", amount=Decimal("2.00"), txn_at=now)
+    # an uncategorized debit row (e.g. a self-transfer between the user's own accounts) now counts
+    # toward spend -- direction is the only signal left, and this is still money leaving the
+    # account, so it's included (confirmed with the user as an accepted consequence of removing
+    # the old `type` field).
     _make_txn(
         db_session,
         user,
         category=None,
         amount=Decimal("200.00"),
-        type=TransactionTypeEnum.transfer,
         txn_at=now,
     )
-    # received PayNow money - should be excluded from the spend summary, same as transfers
+    # received money (credit direction) - excluded from the spend summary
     _make_txn(
         db_session,
         user,
         category=None,
         amount=Decimal("50.00"),
-        type=TransactionTypeEnum.income,
         direction=DirectionEnum.credit,
         txn_at=now,
     )
@@ -339,4 +356,5 @@ def test_summary_sums_categories_and_excludes_transfers_and_income(client, db_se
 
     assert totals["Food"] == Decimal("15.00")
     assert totals["Transport"] == Decimal("2.00")
-    assert Decimal(str(body["total"])) == Decimal("17.00")
+    assert totals[None] == Decimal("200.00")
+    assert Decimal(str(body["total"])) == Decimal("217.00")

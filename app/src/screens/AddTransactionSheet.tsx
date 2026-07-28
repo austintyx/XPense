@@ -14,15 +14,15 @@ interface AddTransactionSheetProps {
   onClose: () => void;
 }
 
-const TYPE_OPTIONS = [
-  { value: "expense", label: "Expense" },
-  { value: "income", label: "Income" },
+const DIRECTION_OPTIONS = [
+  { value: "debit", label: "Expense" },
+  { value: "credit", label: "Income" },
 ] as const;
 
 export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetProps) {
   const { addTransaction, user, customCategories, customSubcategories } = useAppData();
   const { showToast } = useToast();
-  const [type, setType] = useState<"expense" | "income">("expense");
+  const [direction, setDirection] = useState<"debit" | "credit">("debit");
   const [amount, setAmount] = useState("");
   const [merchant, setMerchant] = useState("");
   const [date, setDate] = useState(new Date());
@@ -33,7 +33,7 @@ export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetPro
   const subcategories = category ? mergedSubcategories(category, customSubcategories) : [];
 
   const reset = () => {
-    setType("expense");
+    setDirection("debit");
     setAmount("");
     setMerchant("");
     setDate(new Date());
@@ -55,8 +55,7 @@ export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetPro
     await addTransaction({
       user_id: user?.id ?? 1,
       amount,
-      type,
-      direction: type === "income" ? "credit" : "debit",
+      direction,
       merchant_raw: merchant,
       merchant_clean: merchant,
       category,
@@ -73,14 +72,14 @@ export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetPro
       <Text style={styles.title}>Add a transaction</Text>
 
       <View style={styles.typeRow}>
-        {TYPE_OPTIONS.map((opt) => (
+        {DIRECTION_OPTIONS.map((opt) => (
           <Pressable
             key={opt.value}
-            onPress={() => setType(opt.value)}
-            style={[styles.typeOption, type === opt.value && styles.typeOptionActive]}
+            onPress={() => setDirection(opt.value)}
+            style={[styles.typeOption, direction === opt.value && styles.typeOptionActive]}
             testID={`draft-type-${opt.value}`}
           >
-            <Text style={[styles.typeOptionText, type === opt.value && styles.typeOptionTextActive]}>{opt.label}</Text>
+            <Text style={[styles.typeOptionText, direction === opt.value && styles.typeOptionTextActive]}>{opt.label}</Text>
           </Pressable>
         ))}
       </View>

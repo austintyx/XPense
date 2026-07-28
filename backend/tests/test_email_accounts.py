@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from app.models import EmailAccount, ProviderEnum, Transaction, DirectionEnum, TransactionTypeEnum, User
+from app.models import DirectionEnum, EmailAccount, ProviderEnum, Transaction, User
 from app.security.crypto import encrypt
 
 
@@ -49,7 +49,6 @@ def test_unlink_removes_the_account_but_keeps_its_transactions(client, db_sessio
         amount=Decimal("10.00"),
         currency="SGD",
         direction=DirectionEnum.debit,
-        type=TransactionTypeEnum.expense,
         merchant_raw="CHICKEN RICE",
         txn_at=datetime.now(timezone.utc),
     )

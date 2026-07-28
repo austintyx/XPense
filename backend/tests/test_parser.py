@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from app.models import DirectionEnum, ProviderEnum, Transaction, TransactionTypeEnum
+from app.models import DirectionEnum, ProviderEnum, Transaction
 from app.services.parser import parse_email, save_parsed_transaction
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "emails"
@@ -22,7 +22,6 @@ CASES = [
             currency="SGD",
             merchant_raw="24HRS CITY FLORIST",
             direction=DirectionEnum.debit,
-            type=TransactionTypeEnum.expense,
             bank="DBS",
         ),
         dict(day=22, month=7, hour=18, minute=1),
@@ -36,7 +35,6 @@ CASES = [
             currency="SGD",
             merchant_raw="LEX KOX SIXX",
             direction=DirectionEnum.debit,
-            type=TransactionTypeEnum.expense,
             bank="DBS",
         ),
         dict(day=21, month=7, hour=14, minute=26),
@@ -50,7 +48,6 @@ CASES = [
             currency="SGD",
             merchant_raw="CHICKEN RICE",
             direction=DirectionEnum.debit,
-            type=TransactionTypeEnum.expense,
             bank="DBS",
         ),
         dict(day=21, month=7, hour=14, minute=25),
@@ -64,7 +61,6 @@ CASES = [
             currency="SGD",
             merchant_raw="LOU SIM TENG",
             direction=DirectionEnum.credit,
-            type=TransactionTypeEnum.income,
             bank="DBS",
         ),
         dict(day=23, month=7, hour=22, minute=31, year=2026),
@@ -77,7 +73,6 @@ CASES = [
             amount=Decimal("200.00"),
             currency="SGD",
             direction=DirectionEnum.debit,
-            type=TransactionTypeEnum.transfer,
             bank="DBS",
         ),
         dict(day=21, month=7, hour=14, minute=20),
@@ -91,7 +86,6 @@ CASES = [
             currency="SGD",
             merchant_raw="NTUC FAIRPRICE",
             direction=DirectionEnum.debit,
-            type=TransactionTypeEnum.expense,
             bank="DBS",
         ),
         dict(day=24, month=7, hour=18, minute=58),
@@ -104,7 +98,6 @@ CASES = [
             amount=Decimal("200.00"),
             currency="SGD",
             direction=DirectionEnum.debit,
-            type=TransactionTypeEnum.expense,
             bank="UOB",
         ),
         dict(day=18, month=7, hour=19, minute=37, year=2026),
@@ -118,7 +111,6 @@ CASES = [
             currency="SGD",
             merchant_raw="Transit: Kovan-Sengkang",
             direction=DirectionEnum.debit,
-            type=TransactionTypeEnum.expense,
             bank="SimplyGo",
             category="Transport",
         ),
@@ -145,20 +137,6 @@ def test_parses_expected_fields(fixture, sender, expected, expected_dt):
     assert result.txn_at.minute == expected_dt["minute"]
     if "year" in expected_dt:
         assert result.txn_at.year == expected_dt["year"]
-
-
-def test_dbs_paynow_wording_containing_received_classifies_as_income():
-    # Synthetic text (not a verified real DBS wording, unlike the fixtures above) exercising the
-    # receive/received boundary directly: money coming *into* the account isn't spending, so it
-    # should be income even though the "To:" field still carries a PayNow id suffix.
-    text = (
-        "Dear Customer, You have received a PayNow payment. Date & Time: 23 Jul 09:15 (SGT) "
-        "Amount: SGD50.00 From: JANE TAN To: JANE TAN (MOBILE ending 1234) If unauthorised, "
-        "please call our DBS hotline."
-    )
-    result = parse_email(text, "ibanking.alert@dbs.com")
-    assert result is not None
-    assert result.type == TransactionTypeEnum.income
 
 
 def test_unparseable_email_returns_none():

@@ -33,11 +33,16 @@ test('renders transactions grouped by day, with categorized and uncategorized ro
   expect(screen.getByText('Tap to categorise')).toBeTruthy();
 });
 
-test('the All filter shows transfer and income transactions, excluded from the Needs a category count', async () => {
+test('the All filter shows credit and debit transactions together, credit excluded from the Needs a category count', async () => {
   mockClientDefaults({
-    transactions: [makeTxn({ id: 1, merchant_raw: 'CHICKEN RICE', category: 'Food' })],
-    transfers: [makeTxn({ id: 2, merchant_raw: 'A/C ending 9249', type: 'transfer', category: null })],
-    income: [makeTxn({ id: 3, merchant_raw: 'LOU SIM TENG', type: 'income', category: null })],
+    transactions: [
+      makeTxn({ id: 1, merchant_raw: 'CHICKEN RICE', category: 'Food', amount: '10.00' }),
+      // A debit with no type field left to exempt it now counts like any other debit -- give it a
+      // category so this test stays focused on credit/debit display, not the needs-review queue.
+      makeTxn({ id: 2, merchant_raw: 'A/C ending 9249', direction: 'debit', category: 'Other', amount: '5.00' }),
+      // Uncategorized, but credit -- must NOT show up in Needs a category regardless.
+      makeTxn({ id: 3, merchant_raw: 'LOU SIM TENG', direction: 'credit', category: null, amount: '3.00' }),
+    ],
   });
 
   renderWithProviders(<Activity />);
@@ -47,16 +52,17 @@ test('the All filter shows transfer and income transactions, excluded from the N
   expect(await screen.findByText('LOU SIM TENG')).toBeTruthy();
   expect(screen.getByTestId('needs-count-badge')).toHaveTextContent('0');
 
-  // Income shows with a "+" prefix in green; transfer shows plain, like an expense.
-  const incomeAmount = within(screen.getByTestId('transaction-3')).getByText('+S$10.00');
-  expect(incomeAmount.props.style).toEqual(
+  // Credit shows with a "+" prefix in green; debit shows plain, like an expense.
+  const creditAmount = within(screen.getByTestId('transaction-3')).getByText('+S$3.00');
+  expect(creditAmount.props.style).toEqual(
     expect.arrayContaining([expect.objectContaining({ color: colors.success })]),
   );
-  expect(within(screen.getByTestId('transaction-2')).getByText('S$10.00')).toBeTruthy();
-  expect(within(screen.getByTestId('transaction-2')).queryByText('+S$10.00')).toBeNull();
+  expect(within(screen.getByTestId('transaction-2')).getByText('S$5.00')).toBeTruthy();
+  expect(within(screen.getByTestId('transaction-2')).queryByText('+S$5.00')).toBeNull();
 
-  // Only income affects the day total (subtracts); transfer is excluded entirely: 10 - 10 = 0.
-  expect(screen.getByText('S$0.00')).toBeTruthy();
+  // Debits add to the day total, credits subtract: 10 (CHICKEN RICE) + 5 (A/C ending 9249) - 3
+  // (LOU SIM TENG) = 12.
+  expect(screen.getByText('S$12.00')).toBeTruthy();
 });
 
 test('the Needs a category filter shows only uncategorized rows and the count badge', async () => {

@@ -8,8 +8,6 @@ import { TransactionsProvider } from './store/TransactionsProvider';
 
 export function mockClientDefaults(overrides: {
   transactions?: client.Transaction[];
-  transfers?: client.Transaction[];
-  income?: client.Transaction[];
   summary?: client.Summary;
   budget?: client.Budget;
   goal?: client.SavingsGoal;
@@ -17,10 +15,9 @@ export function mockClientDefaults(overrides: {
   accounts?: client.EmailAccount[];
   categories?: client.CustomCategories;
 } = {}) {
-  jest.spyOn(client, 'getTransactions').mockImplementation(async (type = 'expense') => {
-    if (type === 'transfer') return overrides.transfers ?? [];
-    if (type === 'income') return overrides.income ?? [];
-    return overrides.transactions ?? [];
+  jest.spyOn(client, 'getTransactions').mockImplementation(async (direction) => {
+    const all = overrides.transactions ?? [];
+    return direction ? all.filter((t) => t.direction === direction) : all;
   });
   jest.spyOn(client, 'getSummary').mockResolvedValue(
     overrides.summary ?? { user_id: 1, month: '2026-07', categories: [], total: '0' },
@@ -48,7 +45,6 @@ export function makeTxn(overrides: Partial<client.Transaction> = {}): client.Tra
     amount: '10.00',
     currency: 'SGD',
     direction: 'debit',
-    type: 'expense',
     merchant_raw: 'TEST MERCHANT',
     merchant_clean: null,
     category: null,

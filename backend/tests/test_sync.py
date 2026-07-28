@@ -4,7 +4,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.models import EmailAccount, ProviderEnum, Transaction, TransactionTypeEnum
+from app.models import DirectionEnum, EmailAccount, ProviderEnum, Transaction
 from app.security.crypto import encrypt
 from app.services import gmail, graph
 from app.services.grab_reconcile import GRAB_RECEIPT_SENDER
@@ -141,7 +141,7 @@ def test_sync_microsoft_account_reaches_identical_output_through_same_parser(
     assert txn.amount == Decimal("87.00")
     assert txn.currency == "SGD"
     assert txn.merchant_raw == "24HRS CITY FLORIST"
-    assert txn.type == TransactionTypeEnum.expense
+    assert txn.direction == DirectionEnum.debit
     assert txn.bank == "DBS"
 
 

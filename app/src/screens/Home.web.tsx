@@ -15,6 +15,7 @@ import {
   dailyTotalsForRange,
   deriveRecurring,
   formatMoney,
+  isExpense,
   previousMonthTransactions,
   uncategorized,
 } from "../utils/derive";
@@ -38,11 +39,11 @@ export default function Home() {
   const monthTxns = useMemo(() => currentMonthTransactions(transactions, now), [transactions, now]);
   const prevMonthTxns = useMemo(() => previousMonthTransactions(transactions, now), [transactions, now]);
   const spent = useMemo(
-    () => monthTxns.filter((t) => t.type === "expense").reduce((sum, t) => sum + Number(t.amount), 0),
+    () => monthTxns.filter(isExpense).reduce((sum, t) => sum + Number(t.amount), 0),
     [monthTxns],
   );
   const prevSpent = useMemo(
-    () => prevMonthTxns.filter((t) => t.type === "expense").reduce((sum, t) => sum + Number(t.amount), 0),
+    () => prevMonthTxns.filter(isExpense).reduce((sum, t) => sum + Number(t.amount), 0),
     [prevMonthTxns],
   );
   const momDeltaPct = prevSpent > 0 ? ((spent - prevSpent) / prevSpent) * 100 : null;
@@ -64,7 +65,7 @@ export default function Home() {
   const grand = sortedCats.reduce((sum, [, v]) => sum + v, 0);
 
   const reviewQueue = useMemo(() => uncategorized(transactions).slice(0, 4), [transactions]);
-  const recentTx = useMemo(() => transactions.slice(0, 6), [transactions]);
+  const recentTx = useMemo(() => transactions.filter(isExpense).slice(0, 6), [transactions]);
   const recurring = useMemo(() => deriveRecurring(transactions).slice(0, 4), [transactions]);
 
   const daysRemaining = daysInMonth(now) - now.getDate() + 1;
@@ -76,7 +77,7 @@ export default function Home() {
   const biggestTxn = useMemo(
     () =>
       monthTxns
-        .filter((t) => t.type === "expense")
+        .filter(isExpense)
         .reduce((max: Transaction | null, t) => (!max || Number(t.amount) > Number(max.amount) ? t : max), null),
     [monthTxns],
   );

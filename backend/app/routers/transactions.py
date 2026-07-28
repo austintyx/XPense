@@ -7,7 +7,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import EmailAccount, Transaction, TransactionTypeEnum
+from app.models import DirectionEnum, EmailAccount, Transaction
 from app.schemas import (
     CategorySummary,
     CategoryUpdateIn,
@@ -26,15 +26,13 @@ router = APIRouter()
 @router.get("/transactions", response_model=list[TransactionOut])
 def list_transactions(
     user_id: int,
-    type: TransactionTypeEnum = TransactionTypeEnum.expense,
+    direction: DirectionEnum | None = None,
     db: Session = Depends(get_db),
 ):
-    return (
-        db.query(Transaction)
-        .filter(Transaction.user_id == user_id, Transaction.type == type)
-        .order_by(Transaction.txn_at.desc())
-        .all()
-    )
+    query = db.query(Transaction).filter(Transaction.user_id == user_id)
+    if direction is not None:
+        query = query.filter(Transaction.direction == direction)
+    return query.order_by(Transaction.txn_at.desc()).all()
 
 
 @router.post("/transactions/{transaction_id}/category", response_model=TransactionOut)
@@ -160,7 +158,6 @@ def create_manual_transaction(body: TransactionCreateIn, db: Session = Depends(g
         amount=body.amount,
         currency=body.currency,
         direction=body.direction,
-        type=body.type,
         merchant_raw=body.merchant_raw,
         merchant_clean=body.merchant_clean,
         category=body.category,
@@ -187,7 +184,7 @@ def summary(user_id: int, db: Session = Depends(get_db)):
         db.query(Transaction.category, func.sum(Transaction.amount))
         .filter(
             Transaction.user_id == user_id,
-            Transaction.type == TransactionTypeEnum.expense,
+            Transaction.direction == DirectionEnum.debit,
             Transaction.txn_at >= month_start,
             Transaction.txn_at < next_month_start,
         )

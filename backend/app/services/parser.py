@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
-from app.models import DirectionEnum, ProviderEnum, Transaction, TransactionTypeEnum
+from app.models import DirectionEnum, ProviderEnum, Transaction
 
 SGT = ZoneInfo("Asia/Singapore")
 
@@ -24,7 +24,6 @@ class ParsedTxn:
     currency: str
     merchant_raw: str
     direction: DirectionEnum
-    type: TransactionTypeEnum
     bank: str
     txn_at: datetime
     category: str | None = None
@@ -41,22 +40,6 @@ def _sgt_datetime(day: int, month_abbr: str, hour: int, minute: int, year: int |
     if year is None:
         year = datetime.now(SGT).year
     return datetime(year, month, day, hour, minute, tzinfo=SGT)
-
-
-_RECEIVE_RE = re.compile(r"\b(?:receive|received)\b", re.IGNORECASE)
-
-
-def _classify_paynow(text: str) -> TransactionTypeEnum:
-    # Whether the payee is a business (UEN) or a person (mobile/NRIC) doesn't reliably say
-    # whether this was really spending -- e.g. plenty of hawker stalls take PayNow on a personal
-    # mobile number, not a UEN, and would be wrongly excluded from spend totals. What the email
-    # actually says is more reliable: money coming into the account ("you have received...") is
-    # income, not spending; everything else (paying a shop or a person) is money going out ->
-    # expense. Note this is distinct from `transfer`, which is reserved for moving money between
-    # the user's own accounts (see _DBS_OWN_TRANSFER_RE / _DBS_TABLE_OWN_ACCOUNT_RE below).
-    if _RECEIVE_RE.search(text):
-        return TransactionTypeEnum.income
-    return TransactionTypeEnum.expense
 
 
 _DBS_OWN_TRANSFER_RE = re.compile(
@@ -99,7 +82,6 @@ _DBS_TABLE_RE = re.compile(
 # A PayNow "To:" field carries a "(... ending NNNN)" suffix identifying who was paid (a business'
 # UEN vs. a person's mobile/NRIC); a plain card purchase or NETS Scan & Pay merchant name doesn't.
 _DBS_TABLE_PAYNOW_SUFFIX_RE = re.compile(rf"^(?P<name>.+?)\s*\((?P<idtype>{_ID_SUFFIX})\)$", re.IGNORECASE)
-_DBS_TABLE_OWN_ACCOUNT_RE = re.compile(r"^A/C ending \d+$", re.IGNORECASE)
 
 
 def _parse_dbs(text: str) -> ParsedTxn | None:
@@ -109,7 +91,6 @@ def _parse_dbs(text: str) -> ParsedTxn | None:
             currency="SGD",
             merchant_raw=f"A/C ending {match['to_acct']}",
             direction=DirectionEnum.debit,
-            type=TransactionTypeEnum.transfer,
             bank="DBS",
             txn_at=_sgt_datetime(int(match["day"]), match["month"], int(match["hour"]), int(match["minute"])),
             raw_parsed=match.groupdict(),
@@ -121,7 +102,6 @@ def _parse_dbs(text: str) -> ParsedTxn | None:
             currency="SGD",
             merchant_raw=match["sender"].strip(),
             direction=DirectionEnum.credit,
-            type=_classify_paynow(text),
             bank="DBS",
             txn_at=_sgt_datetime(
                 int(match["day"]), match["month"], int(match["hour"]), int(match["minute"]), year=int(match["year"])
@@ -139,19 +119,6 @@ def _parse_dbs(text: str) -> ParsedTxn | None:
                 currency="SGD",
                 merchant_raw=id_match["name"].strip(),
                 direction=DirectionEnum.debit,
-                type=_classify_paynow(text),
-                bank="DBS",
-                txn_at=txn_at,
-                raw_parsed=match.groupdict(),
-            )
-
-        if _DBS_TABLE_OWN_ACCOUNT_RE.match(merchant_field):
-            return ParsedTxn(
-                amount=_parse_amount(match["amount"]),
-                currency="SGD",
-                merchant_raw=merchant_field,
-                direction=DirectionEnum.debit,
-                type=TransactionTypeEnum.transfer,
                 bank="DBS",
                 txn_at=txn_at,
                 raw_parsed=match.groupdict(),
@@ -162,7 +129,6 @@ def _parse_dbs(text: str) -> ParsedTxn | None:
             currency="SGD",
             merchant_raw=merchant_field,
             direction=DirectionEnum.debit,
-            type=TransactionTypeEnum.expense,
             bank="DBS",
             txn_at=txn_at,
             raw_parsed=match.groupdict(),
@@ -192,7 +158,6 @@ def _parse_uob(text: str) -> ParsedTxn | None:
             currency="SGD",
             merchant_raw=match["merchant"].strip(),
             direction=DirectionEnum.debit,
-            type=_classify_paynow(text),
             bank="UOB",
             txn_at=_sgt_datetime(
                 int(match["day"]), match["month"], hour, int(match["minute"]), year=2000 + int(match["year"])
@@ -218,7 +183,6 @@ def _parse_simplygo(text: str) -> ParsedTxn | None:
             currency="SGD",
             merchant_raw=f"Transit: {origin}-{destination}",
             direction=DirectionEnum.debit,
-            type=TransactionTypeEnum.expense,
             bank="SimplyGo",
             txn_at=_sgt_datetime(int(match["day"]), match["month"], int(match["hour"]), int(match["minute"])),
             category="Transport",
@@ -263,7 +227,6 @@ def save_parsed_transaction(
         amount=parsed.amount,
         currency=parsed.currency,
         direction=parsed.direction,
-        type=parsed.type,
         merchant_raw=parsed.merchant_raw,
         merchant_clean=parsed.merchant_raw,
         category=parsed.category,
