@@ -57,13 +57,31 @@ const SUGGESTED_CATEGORY_SHARE: Record<string, number> = {
 };
 
 export default function Budgets() {
-  const { transactions, budget, goal, customCategories, subscriptions, removeSubscription, loading } = useAppData();
+  const {
+    transactions,
+    budget,
+    goal,
+    customCategories,
+    subscriptions,
+    removeSubscription,
+    updateBudget,
+    updateGoal,
+    loading,
+  } = useAppData();
   const { showToast } = useToast();
   const [limits, setLimits] = useState<CategoryBudget[]>([]);
   const [limitsLoading, setLimitsLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [addSubscriptionVisible, setAddSubscriptionVisible] = useState(false);
+
+  const [editingBudget, setEditingBudget] = useState(false);
+  const [budgetDraft, setBudgetDraft] = useState("");
+
+  const [editingGoal, setEditingGoal] = useState(false);
+  const [goalNameDraft, setGoalNameDraft] = useState("");
+  const [goalTargetDraft, setGoalTargetDraft] = useState("");
+  const [goalSavedDraft, setGoalSavedDraft] = useState("");
 
   useEffect(() => {
     getCategoryBudgets()
@@ -145,6 +163,20 @@ export default function Budgets() {
     setEditMode(false);
   };
 
+  const saveBudget = async () => {
+    if (!budgetDraft.trim()) return;
+    await updateBudget(budgetDraft.trim());
+    setEditingBudget(false);
+    showToast("Budget updated");
+  };
+
+  const saveGoal = async () => {
+    if (!goalNameDraft.trim() || !goalTargetDraft.trim() || !goalSavedDraft.trim()) return;
+    await updateGoal({ name: goalNameDraft.trim(), target_amount: goalTargetDraft.trim(), saved_amount: goalSavedDraft.trim() });
+    setEditingGoal(false);
+    showToast("Goal updated");
+  };
+
   const goalPct = goal && Number(goal.target_amount) > 0 ? Number(goal.saved_amount) / Number(goal.target_amount) : 0;
   const goalPctClamped = Math.min(1, Math.max(0, goalPct));
 
@@ -164,12 +196,39 @@ export default function Budgets() {
                 {formatMoney(budget.monthly_target, false)}
               </Text>
               {!editMode && (
-                <Pressable style={styles.editAllButton} onPress={startEditAll} testID="edit-all-limits">
-                  <Text style={styles.editAllButtonText}>Edit</Text>
-                </Pressable>
+                <>
+                  <Text
+                    style={styles.linkText}
+                    onPress={() => {
+                      setBudgetDraft(budget.monthly_target);
+                      setEditingBudget(!editingBudget);
+                    }}
+                    testID="edit-budget-toggle"
+                  >
+                    {editingBudget ? "Close" : "Edit target"}
+                  </Text>
+                  <Pressable style={styles.editAllButton} onPress={startEditAll} testID="edit-all-limits">
+                    <Text style={styles.editAllButtonText}>Edit</Text>
+                  </Pressable>
+                </>
               )}
             </View>
           </View>
+          {editingBudget && (
+            <View style={styles.editPanel}>
+              <Text style={styles.formLabel}>Monthly budget</Text>
+              <TextInput
+                value={budgetDraft}
+                onChangeText={setBudgetDraft}
+                keyboardType="decimal-pad"
+                style={styles.editInput}
+                testID="budget-input"
+              />
+              <Pressable style={[styles.saveButton, styles.editPanelSaveButton]} onPress={saveBudget} testID="save-budget">
+                <Text style={styles.saveButtonText}>Save</Text>
+              </Pressable>
+            </View>
+          )}
           <View style={{ gap: 18 }}>
             {editMode
               ? categories.map((cat) => (
@@ -264,7 +323,45 @@ export default function Budgets() {
                 {formatMoney(goal.saved_amount, false)} of {formatMoney(goal.target_amount, false)}
               </Text>
             </View>
+            <Text
+              style={styles.goalEditLink}
+              onPress={() => {
+                setGoalNameDraft(goal.name);
+                setGoalTargetDraft(goal.target_amount);
+                setGoalSavedDraft(goal.saved_amount);
+                setEditingGoal(!editingGoal);
+              }}
+              testID="edit-goal-toggle"
+            >
+              {editingGoal ? "Close" : "Edit"}
+            </Text>
           </View>
+
+          {editingGoal && (
+            <View style={[styles.card, styles.editPanel, shadow.card]}>
+              <Text style={styles.formLabel}>Goal name</Text>
+              <TextInput value={goalNameDraft} onChangeText={setGoalNameDraft} style={styles.editInput} testID="goal-name-input" />
+              <Text style={[styles.formLabel, styles.formLabelSpaced]}>Target amount</Text>
+              <TextInput
+                value={goalTargetDraft}
+                onChangeText={setGoalTargetDraft}
+                keyboardType="decimal-pad"
+                style={styles.editInput}
+                testID="goal-target-input"
+              />
+              <Text style={[styles.formLabel, styles.formLabelSpaced]}>Saved so far</Text>
+              <TextInput
+                value={goalSavedDraft}
+                onChangeText={setGoalSavedDraft}
+                keyboardType="decimal-pad"
+                style={styles.editInput}
+                testID="goal-saved-input"
+              />
+              <Pressable style={[styles.saveButton, styles.editPanelSaveButton]} onPress={saveGoal} testID="save-goal">
+                <Text style={styles.saveButtonText}>Save</Text>
+              </Pressable>
+            </View>
+          )}
 
           <View style={[styles.card, shadow.card]}>
             <View style={styles.headerRow}>
@@ -313,6 +410,19 @@ const styles = StyleSheet.create({
   headerMeta: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.base, color: colors.ink50 },
   editAllButton: { borderWidth: 1, borderColor: colors.ink14, borderRadius: radii.chip, paddingVertical: 6, paddingHorizontal: 14 },
   editAllButtonText: { fontFamily: typography.fontFamily.sansMedium, fontSize: typography.size.sm5, color: colors.ink },
+  linkText: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.sm5, color: colors.successText },
+  editPanel: { marginTop: 4, marginBottom: 20 },
+  editPanelSaveButton: { alignItems: "center" },
+  formLabel: {
+    fontFamily: typography.fontFamily.mono,
+    fontSize: typography.size.xs5,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: colors.ink42,
+    marginBottom: 8,
+  },
+  formLabelSpaced: { marginTop: 10 },
+  goalEditLink: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.sm5, color: colors.onDark60 },
   budgetLine: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 },
   catName: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.md },
   catAmount: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.base, color: colors.ink70 },

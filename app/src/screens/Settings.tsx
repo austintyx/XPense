@@ -2,7 +2,7 @@ import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
 import { useNavigation } from "@react-navigation/native";
 import { useMemo, useState } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 
 import { CURRENT_USER_ID, buildAuthUrl, syncTransactions, type Provider } from "../api/client";
 import { SyncBackfillSheet } from "../components/SyncBackfillSheet";
@@ -11,7 +11,7 @@ import { useAuth } from "../store/AuthProvider";
 import { useAppData } from "../store/TransactionsProvider";
 import { colors, radii, shadow, spacing, typography } from "../theme/tokens";
 import { confirmDestructive } from "../utils/confirm";
-import { currentMonthTransactions, formatMoney, initialsOf } from "../utils/derive";
+import { currentMonthTransactions, initialsOf } from "../utils/derive";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -22,19 +22,7 @@ const PROVIDER_LABELS: Record<Provider, string> = {
 
 export default function Settings() {
   const navigation = useNavigation<any>();
-  const {
-    user,
-    accounts,
-    budget,
-    goal,
-    transactions,
-    updateName,
-    updateBudget,
-    updateGoal,
-    refetch,
-    removeAccount,
-    loading,
-  } = useAppData();
+  const { user, accounts, goal, transactions, updateName, refetch, removeAccount, loading } = useAppData();
   const { showToast } = useToast();
   const { logout } = useAuth();
 
@@ -42,14 +30,6 @@ export default function Settings() {
   const [nameDraft, setNameDraft] = useState("");
   const [connecting, setConnecting] = useState<Provider | null>(null);
   const [backfillProvider, setBackfillProvider] = useState<Provider | null>(null);
-
-  const [editingBudget, setEditingBudget] = useState(false);
-  const [budgetDraft, setBudgetDraft] = useState("");
-
-  const [editingGoal, setEditingGoal] = useState(false);
-  const [goalNameDraft, setGoalNameDraft] = useState("");
-  const [goalTargetDraft, setGoalTargetDraft] = useState("");
-  const [goalSavedDraft, setGoalSavedDraft] = useState("");
 
   const [prefs, setPrefs] = useState({ auto: true, digest: true, roundup: false, alerts: true });
 
@@ -118,34 +98,19 @@ export default function Settings() {
     showToast("Name updated");
   };
 
-  const saveBudget = async () => {
-    if (!budgetDraft.trim()) return;
-    await updateBudget(budgetDraft.trim());
-    setEditingBudget(false);
-    showToast("Budget updated");
-  };
-
-  const saveGoal = async () => {
-    if (!goalNameDraft.trim() || !goalTargetDraft.trim() || !goalSavedDraft.trim()) return;
-    await updateGoal({ name: goalNameDraft.trim(), target_amount: goalTargetDraft.trim(), saved_amount: goalSavedDraft.trim() });
-    setEditingGoal(false);
-    showToast("Goal updated");
-  };
-
-  if (loading || !budget || !goal) {
+  if (loading || !goal) {
     return <View style={styles.container} testID="settings-screen" />;
   }
 
   const linkedProviders = new Set(accounts.map((a) => a.provider));
   const unlinkedProviders = (["google", "microsoft"] as Provider[]).filter((p) => !linkedProviders.has(p));
 
-  // Each section defined once, then composed in a different order for native (single stacked
-  // column, original order) vs web (two columns, matching the mockup's grouping) below -- so
-  // moving Preferences into the left column on web doesn't silently reorder native's layout too.
+  // Each section defined once, then composed into the single stacked column below.
   const profileSection = (
-    // A View, not a fragment -- see the comment on budgetGoalsSection below for why: this section
-    // can render two top-level pieces (the card, the edit panel), and it's a direct child of the
-    // gapped `column` View.
+    // A View, not a fragment -- this section can render two top-level pieces (the card, the edit
+    // panel), and it's a direct child of the gapped `column` View, where a fragment would let
+    // flexbox `gap` apply *between* those pieces too, not just between this section and its
+    // neighbors.
     <View>
       <View style={[styles.card, styles.profileCard, shadow.card]}>
         <View style={styles.avatar}>
@@ -246,102 +211,6 @@ export default function Settings() {
     </>
   );
 
-  const budgetGoalsSection = (
-    // A single wrapping View (not a fragment) -- this section can render more than one top-level
-    // piece (the card, the web-only "Manage budgets" link, either edit panel), and since it's
-    // composed as a direct child of the gapped `column` View, a fragment would let flexbox `gap`
-    // apply *between* those pieces too, not just between this section and its neighbors.
-    <View>
-      <View style={[styles.card, styles.group, shadow.card]}>
-        <Text style={styles.groupLabelInline}>BUDGET & GOALS</Text>
-        <View style={styles.sourceRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.sourceLabel}>Monthly budget</Text>
-            <Text style={styles.sourceMeta}>{formatMoney(budget.monthly_target, false)} / month</Text>
-          </View>
-          <Text
-            style={styles.linkText}
-            onPress={() => {
-              setBudgetDraft(budget.monthly_target);
-              setEditingBudget(!editingBudget);
-            }}
-            testID="edit-budget-toggle"
-          >
-            {editingBudget ? "Close" : "Edit"}
-          </Text>
-        </View>
-        <View style={[styles.sourceRow, styles.sourceRowLast]}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.sourceLabel}>Savings goal</Text>
-            <Text style={styles.sourceMeta}>
-              {goal.name} · {formatMoney(goal.saved_amount, false)} of {formatMoney(goal.target_amount, false)}
-            </Text>
-          </View>
-          <Text
-            style={styles.linkText}
-            onPress={() => {
-              setGoalNameDraft(goal.name);
-              setGoalTargetDraft(goal.target_amount);
-              setGoalSavedDraft(goal.saved_amount);
-              setEditingGoal(!editingGoal);
-            }}
-            testID="edit-goal-toggle"
-          >
-            {editingGoal ? "Close" : "Edit"}
-          </Text>
-        </View>
-      </View>
-
-      {Platform.OS === "web" && (
-        <Text style={styles.manageBudgetsLink} onPress={() => navigation.navigate("Budgets")} testID="manage-budgets-link">
-          Manage budgets →
-        </Text>
-      )}
-
-      {editingBudget && (
-        <View style={[styles.card, styles.editPanel, shadow.card]}>
-          <Text style={styles.label}>Monthly budget</Text>
-          <TextInput
-            value={budgetDraft}
-            onChangeText={setBudgetDraft}
-            keyboardType="decimal-pad"
-            style={styles.input}
-            testID="budget-input"
-          />
-          <Pressable style={styles.saveButton} onPress={saveBudget} testID="save-budget">
-            <Text style={styles.saveButtonText}>Save</Text>
-          </Pressable>
-        </View>
-      )}
-
-      {editingGoal && (
-        <View style={[styles.card, styles.editPanel, shadow.card]}>
-          <Text style={styles.label}>Goal name</Text>
-          <TextInput value={goalNameDraft} onChangeText={setGoalNameDraft} style={styles.input} testID="goal-name-input" />
-          <Text style={styles.label}>Target amount</Text>
-          <TextInput
-            value={goalTargetDraft}
-            onChangeText={setGoalTargetDraft}
-            keyboardType="decimal-pad"
-            style={styles.input}
-            testID="goal-target-input"
-          />
-          <Text style={styles.label}>Saved so far</Text>
-          <TextInput
-            value={goalSavedDraft}
-            onChangeText={setGoalSavedDraft}
-            keyboardType="decimal-pad"
-            style={styles.input}
-            testID="goal-saved-input"
-          />
-          <Pressable style={styles.saveButton} onPress={saveGoal} testID="save-goal">
-            <Text style={styles.saveButtonText}>Save</Text>
-          </Pressable>
-        </View>
-      )}
-    </View>
-  );
-
   const manageCategoriesSection = (
     <Pressable style={styles.manageCategoriesCard} onPress={() => navigation.navigate("ManageCategories")} testID="manage-categories-entry">
       <View style={styles.manageCategoriesDot} />
@@ -379,31 +248,14 @@ export default function Settings() {
       <ScrollView style={styles.container} contentContainerStyle={styles.content} testID="settings-screen">
         <Text style={styles.title}>Settings</Text>
 
-        {Platform.OS === "web" ? (
-          <View style={styles.columns}>
-            <View style={styles.column}>
-              {profileSection}
-              {accountsSection}
-              {preferencesSection}
-            </View>
-            <View style={styles.column}>
-              {budgetGoalsSection}
-              {manageCategoriesSection}
-              {circleSection}
-              {signOutSection}
-            </View>
-          </View>
-        ) : (
-          <View style={styles.column}>
-            {profileSection}
-            {accountsSection}
-            {budgetGoalsSection}
-            {preferencesSection}
-            {manageCategoriesSection}
-            {circleSection}
-            {signOutSection}
-          </View>
-        )}
+        <View style={styles.column}>
+          {profileSection}
+          {accountsSection}
+          {preferencesSection}
+          {manageCategoriesSection}
+          {circleSection}
+          {signOutSection}
+        </View>
       </ScrollView>
       <SyncBackfillSheet
         visible={backfillProvider !== null}
@@ -421,12 +273,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.screenH,
     paddingTop: spacing.screenTop,
     paddingBottom: spacing.screenBottom,
-    ...(Platform.OS === "web" ? { maxWidth: 1100, width: "100%" as const, alignSelf: "center" as const } : null),
+    maxWidth: 640,
+    width: "100%" as const,
+    alignSelf: "center" as const,
   },
   title: { fontFamily: typography.fontFamily.serif, fontSize: typography.size.heading, marginBottom: 20, color: colors.ink },
-  columns: Platform.OS === "web" ? { flexDirection: "row", gap: 16, alignItems: "flex-start" } : {},
-  column: { gap: spacing.lg, ...(Platform.OS === "web" ? { flex: 1 } : {}) },
-  manageBudgetsLink: { marginTop: 10, fontFamily: typography.fontFamily.sans, fontSize: typography.size.sm5, color: colors.successText },
+  column: { gap: spacing.lg },
   card: { backgroundColor: colors.surface, borderRadius: radii.hero },
   profileCard: { padding: 20, flexDirection: "row", alignItems: "center", gap: 16 },
   avatar: { width: 54, height: 54, borderRadius: 27, backgroundColor: colors.successAvatarBg, alignItems: "center", justifyContent: "center" },

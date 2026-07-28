@@ -1921,3 +1921,35 @@ subscriptions` that the table and `frequency_enum` type exist as designed.
 
 **Manual steps for the human:** this migration also needs to run wherever the deployed Render
 backend's database lives, whenever convenient before/during the next deploy.
+
+## Moved Budget & Goals editing from Settings to Budgets; simplified Settings to a single centered column
+
+**Budget & Goals moved off Settings.** The "BUDGET & GOALS" card (edit monthly budget target, edit
+savings goal name/target/saved) previously lived in `Settings.tsx`, entirely separate from the
+read-only budget/goal displays already on `Budgets.tsx` (the MONTHLY BUDGETS card's total and the
+SAVINGS GOAL ring card). Moved the editing UI onto `Budgets.tsx` instead of duplicating a
+navigation link between the two: the MONTHLY BUDGETS card now has an "Edit target" link (next to
+the existing per-category-limits "Edit" button -- two distinct edit affordances, since editing the
+overall monthly target and editing individual category limits are different actions that happened
+to share one button's name in the old Settings copy) that reveals an inline edit panel; the goal
+ring card gained a small "Edit" link that reveals a name/target/saved-so-far edit panel below it.
+Both reuse the already-existing `updateBudget`/`updateGoal` actions from `TransactionsProvider` --
+no backend or provider changes needed, this was purely moving UI. Settings' now-empty
+`budgetGoalsSection`, its state (`editingBudget`/`budgetDraft`/`editingGoal`/`goalNameDraft`/
+`goalTargetDraft`/`goalSavedDraft`), `saveBudget`/`saveGoal`, and the "Manage budgets →" link were
+all deleted -- the sidebar already has a direct "Budgets" nav entry, so no navigation gap was left.
+
+**Settings layout simplified to one centered column.** Settings previously branched into a
+two-column layout on web (`Platform.OS === "web"` check) vs. a single stacked column on native, with
+the removed budget/goals card driving part of that column split. Replaced both branches with a
+single column always, centered via `maxWidth: 640` + `alignSelf: "center"` on the content
+container (was `maxWidth: 1100` sized for two ~540-wide columns) -- same pattern used elsewhere for
+centered-narrow-column screens (e.g. `Login.tsx`'s `maxWidth: 420`). Removed the now-unused
+`columns` style and the `Platform` import (no longer branched on anywhere in this file).
+
+**Tested:** frontend `jest --runInBand` -- 95 passed across 15 suites (unchanged count: the two
+budget/goal-edit tests moved from `Settings.test.tsx` to `Budgets.test.tsx` verbatim, same
+assertions, since the behavior itself didn't change -- only which screen renders the UI). Backend
+suite untouched by this change, reconfirmed still 189 passed.
+
+**Manual steps for the human:** none -- purely a frontend UI relocation, no schema or API changes.
