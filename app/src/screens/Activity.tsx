@@ -4,11 +4,12 @@ import { FlatList, Platform, Pressable, RefreshControl, StyleSheet, Text, View }
 
 import { AddTransactionSheet } from "./AddTransactionSheet";
 import { CategorizeSheet } from "./CategorizeSheet";
+import { useToast } from "../components/Toast";
 import { useSearch } from "../store/SearchProvider";
 import { useAppData } from "../store/TransactionsProvider";
 import { categoryColor, colors, radii, shadow, spacing, typography, type CategoryId } from "../theme/tokens";
 import { allCategories, deriveSource, formatMoney, groupByDay, uncategorized } from "../utils/derive";
-import type { Transaction } from "../api/client";
+import { categorizePending, type Transaction } from "../api/client";
 
 type Filter = "all" | "needs" | string;
 
@@ -18,15 +19,34 @@ export default function Activity() {
   // with no filter) -- used directly for the "All" filter, no separate fetch needed.
   const { transactions, customCategories, loading, refetch } = useAppData();
   const { search } = useSearch();
+  const { showToast } = useToast();
   const [filter, setFilter] = useState<Filter>("all");
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<Transaction | null>(null);
   const [addVisible, setAddVisible] = useState(false);
+  const [autoCategorizing, setAutoCategorizing] = useState(false);
 
   const onRefresh = async () => {
     setRefreshing(true);
     await refetch();
     setRefreshing(false);
+  };
+
+  const autoCategorize = async () => {
+    setAutoCategorizing(true);
+    try {
+      const result = await categorizePending();
+      showToast(
+        result.categorized > 0
+          ? `Categorized ${result.categorized}, ${result.remaining} left for Quick Sort`
+          : "Nothing new to categorize",
+      );
+      await refetch();
+    } catch {
+      showToast("Couldn't auto-categorize right now");
+    } finally {
+      setAutoCategorizing(false);
+    }
   };
 
   const uncat = useMemo(() => uncategorized(transactions), [transactions]);
@@ -95,20 +115,32 @@ export default function Activity() {
             </View>
 
             {filter === "needs" && uncat.length > 0 && (
-              <Pressable
-                style={styles.qsBanner}
-                onPress={() => navigation.navigate("QuickSort")}
-                testID="quick-sort-banner"
-              >
-                <View style={styles.qsBadge}>
-                  <Text style={styles.qsBadgeText}>{uncat.length}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.qsTitle}>Quick sort</Text>
-                  <Text style={styles.qsSub}>Clear them all in one pass</Text>
-                </View>
-                <Text style={styles.chevron}>›</Text>
-              </Pressable>
+              <>
+                <Pressable
+                  style={styles.qsBanner}
+                  onPress={() => navigation.navigate("QuickSort")}
+                  testID="quick-sort-banner"
+                >
+                  <View style={styles.qsBadge}>
+                    <Text style={styles.qsBadgeText}>{uncat.length}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.qsTitle}>Quick sort</Text>
+                    <Text style={styles.qsSub}>Clear them all in one pass</Text>
+                  </View>
+                  <Text style={styles.chevron}>›</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.autoCatLink}
+                  onPress={autoCategorize}
+                  disabled={autoCategorizing}
+                  testID="auto-categorize-button"
+                >
+                  <Text style={styles.autoCatLinkText}>
+                    {autoCategorizing ? "Auto-categorizing…" : "Try auto-categorize first"}
+                  </Text>
+                </Pressable>
+              </>
             )}
 
             {visible.length === 0 && (
@@ -206,7 +238,7 @@ const styles = StyleSheet.create({
   pillBadge: { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 4, backgroundColor: colors.warnSolid, alignItems: "center", justifyContent: "center" },
   pillBadgeText: { fontFamily: typography.fontFamily.sansMedium, fontSize: typography.size.xs, color: colors.surface },
   qsBanner: {
-    marginBottom: spacing.xl,
+    marginBottom: 10,
     backgroundColor: colors.warnBg,
     borderWidth: 1,
     borderColor: colors.warnBorder,
@@ -222,6 +254,8 @@ const styles = StyleSheet.create({
   qsTitle: { fontFamily: typography.fontFamily.sansMedium, fontSize: typography.size.base5 },
   qsSub: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.sm, color: colors.ink52, marginTop: 2 },
   chevron: { fontSize: 18, color: colors.ink40 },
+  autoCatLink: { marginBottom: spacing.xl, alignSelf: "center" },
+  autoCatLinkText: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.sm5, color: colors.successText },
   emptyCard: { backgroundColor: colors.surface, borderRadius: radii.hero, paddingVertical: 44, paddingHorizontal: 26, alignItems: "center" },
   emptyCircle: { width: 52, height: 52, borderRadius: 26, backgroundColor: colors.successEmptyCircle, marginBottom: 16 },
   emptyTitle: { fontFamily: typography.fontFamily.serif, fontSize: typography.size.displayLg, marginBottom: 8, color: colors.ink },

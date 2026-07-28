@@ -24,6 +24,8 @@ import {
   isSameMonth,
   startOfWeek,
   subcategoryTotals,
+  uncategorized,
+  UNCATEGORIZED_LABEL,
   yearRangeTransactions,
 } from "../utils/derive";
 import type { Transaction } from "../api/client";
@@ -81,12 +83,19 @@ export default function Summary() {
   }, [transactions, sumPeriod, viewAnchor]);
 
   const totals = useMemo(() => categoryTotals(periodTransactions), [periodTransactions]);
+  const uncategorizedTotal = useMemo(
+    () => uncategorized(periodTransactions).reduce((sum, t) => sum + Number(t.amount), 0),
+    [periodTransactions],
+  );
   const isCurrentRealMonth = sumPeriod === "month" && isSameMonth(viewAnchor, now);
   const grand = isCurrentRealMonth && summary ? Number(summary.total) : expenseTotal(periodTransactions);
-  const sortedCats = useMemo(
-    () => Object.entries(totals).sort((a, b) => b[1] - a[1]) as [CategoryId, number][],
-    [totals],
-  );
+  // Uncategorized spend is folded in as its own slice/row (rather than left out) so the chart's
+  // wedges and the category rows' percentages actually tally to `grand`.
+  const sortedCats = useMemo(() => {
+    const entries = Object.entries(totals) as [CategoryId, number][];
+    if (uncategorizedTotal > 0) entries.push([UNCATEGORIZED_LABEL as CategoryId, uncategorizedTotal]);
+    return entries.sort((a, b) => b[1] - a[1]);
+  }, [totals, uncategorizedTotal]);
 
   const periodLabel = useMemo(() => {
     if (sumPeriod === "day") return viewAnchor.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });

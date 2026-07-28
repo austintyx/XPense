@@ -1953,3 +1953,136 @@ assertions, since the behavior itself didn't change -- only which screen renders
 suite untouched by this change, reconfirmed still 189 passed.
 
 **Manual steps for the human:** none -- purely a frontend UI relocation, no schema or API changes.
+
+## Pie charts now show an Uncategorized slice so their percentages actually tally
+
+**The bug:** the Summary donut and the Home page's "Where it went" donut are both built from
+`categoryTotals()`, which silently excludes any transaction with `category === null`. After last
+round's fix made the *headline total* (`grand`) correctly include uncategorized spend, this made
+the mismatch more visible, not less: the wedges/rows (categorized-only) now summed to noticeably
+less than the number shown in the middle of the donut, and each category row's `%` no longer added
+up to 100% across the whole breakdown.
+
+**Fix:** in `Summary.tsx`, `Summary.web.tsx`, and `Home.web.tsx` (the three places with an actual
+pie/donut chart -- `Home.tsx`'s native "Where it went" is a plain bar list, not a pie, so it has no
+"slices don't tally" failure mode and was left alone), fold the period's uncategorized total into
+the same `sortedCats` array that feeds both the `Donut` segments and the category-row list, instead
+of leaving it out. Added `UNCATEGORIZED_LABEL = "Uncategorized"` (`derive.ts`) as the shared sentinel
+category name, and taught `categoryTransactions()` to route to `uncategorized()` when it's asked for
+that label, so Summary's existing row-expand-to-see-transactions behavior works for the new row with
+zero special-casing in the screen files themselves.
+
+**Uncategorized needed its own color**, not a random hashed hue (`categoryColor()`'s fallback for
+any unrecognized id) that could coincidentally look like a real category. `categoryColor`/
+`categoryColorChip`/`categoryColorBar` (`theme/tokens.ts`) now special-case `"Uncategorized"` to a
+fixed neutral gray (same lightness as normal, chroma forced to 0) rather than hashing it like a
+custom category name would be.
+
+**Tested:** frontend `jest --runInBand` -- 96 passed across 15 suites (+1: `Summary.test.tsx` now
+asserts an `Uncategorized` row appears with the correct amount/percentage and expands to show its
+transactions). `Home.web.tsx`/`Summary.web.tsx` aren't reachable by this project's Jest config at
+all (confirmed: Jest has no `.web.tsx` platform resolution configured, so `import Summary from
+'../src/screens/Summary'` in any test always resolves to the plain `.tsx` file, never the `.web.tsx`
+one -- this predates this change) -- verified instead via `npx expo export -p web`, which compiled
+cleanly (678 modules, no errors). Backend untouched, reconfirmed 189 passed.
+
+**Manual steps for the human:** open Summary (year/month/week) and Home in a browser and confirm
+an "Uncategorized" gray slice/row now appears whenever there's uncategorized spend in the period,
+and that the category percentages sum to 100%.
+
+## Free (Gemini) AI auto-categorization, with a merchant->category cache
+
+**The user had a lot of uncategorized transactions and asked for a free LLM to auto-categorize
+them.** Turned out auto-categorization already existed (`hardcoded_category()` regex rules, then
+an AI fallback) but the AI step called **Anthropic Claude Haiku**, gated on `LLM_API_KEY` -- which
+almost certainly was never set locally (Claude has no literal free tier), so nearly everything was
+silently falling through to `None`. Confirmed with the user via `AskUserQuestion`: swap to **Google
+Gemini** (genuinely free tier, no card required) -- a full swap, not "alongside Anthropic": removed
+the `anthropic` dependency (`pip uninstall anthropic` too, not just the pyproject.toml line) and
+`LLM_API_KEY`, replaced with `google-genai` and `GEMINI_API_KEY`.
+
+**Verified the SDK shape by installing it and introspecting the actual package**, not by trusting
+recalled or web-fetched docs -- Gemini's Python API has shifted since this project's knowledge
+cutoff (a newer "Interactions API" now exists alongside the classic one). `inspect.signature()`
+against the installed `google-genai` 2.14.0 confirmed `client.models.generate_content(model=,
+contents=, config=GenerateContentConfig(...))` with a plain `.text` accessor is still fully
+present and stable, so `ai_category()` (`backend/app/services/categorize.py`) now asks Gemini
+(`gemini-2.5-flash-lite`, `thinking_config=ThinkingConfig(thinking_budget=0)` to keep classification
+calls fast/cheap) for **plain text** (just the category name), matched case-insensitively against
+the 8 known categories -- deliberately simpler than replicating Anthropic's structured-output/
+Pydantic-schema approach, since the answer space here is tiny.
+
+**The actual efficiency ask: a merchant->category cache, not per-transaction AI calls.** New
+`MerchantCategoryCache` table (`merchant_key` unique index, `category`) -- deliberately **not**
+user-scoped, since "STARBUCKS is Food" is a fact independent of whose account synced it, so a
+global cache maximizes hits across every user. `categorize_transaction()` now checks this cache
+between the hardcoded-rules step and the AI step; a hit skips Gemini entirely. **Also caches manual
+corrections**, not just AI results (the user's explicit second ask): `remember_category()`
+upserts by merchant, called from `update_category` (every QuickSort/CategorizeSheet recategorize)
+and `create_manual_transaction` (manual add with a category picked) as well as from a successful AI
+classification -- so a user's correction permanently overwrites any prior (possibly wrong) guess
+for that merchant, and every future transaction from it is categorized instantly with zero further
+API calls, even for users who never configure a `GEMINI_API_KEY` at all.
+
+**Caught a real bug during testing, not just a hypothetical one**: this project's SQLAlchemy
+sessions are all created with `autoflush=False` (`backend/app/db.py` and `tests/conftest.py`
+both), so my first draft of `remember_category()` silently failed to make a newly-cached row
+visible to a later lookup in the *same* batch/request (e.g. two transactions from the same new
+merchant in one sync run) -- a plain `db.add(...)` isn't enough here. Fixed by adding an explicit
+`db.flush()` inside `remember_category()`; caught by the new caching tests actually failing on the
+first attempt, not by inspection.
+
+**Also added a self-service way to clear the existing backlog**: the backend already had a
+`POST /transactions/categorize-pending` backfill endpoint, but nothing in the frontend called it.
+Added `categorizePending()` to `client.ts` and a "Try auto-categorize first" button next to
+Activity's existing "Quick sort" banner (shown whenever the "Needs a category" filter has rows),
+which calls it, toasts a result, and refetches -- this is what actually clears transactions that
+already exist, separate from the pipeline change that only affects newly-synced ones.
+
+**Tested:** backend `pytest -q` -- 196 passed (was 189; new cases in `test_categorize.py` for the
+Gemini mock swap and the cache write/hit/overwrite behavior, new cases in `test_transactions.py`
+confirming `update_category` and manual-add both write/overwrite the cache and that a subsequent
+transaction from the same merchant is categorized from the cache with `ai_category` mocked to
+raise if called). Frontend `jest --runInBand` -- 98 passed across 15 suites (+2 in
+`Activity.test.tsx` for the new button). Applied the new migration locally and confirmed via
+`\d merchant_category_cache`; ran the full backend suite again after `pip uninstall anthropic` to
+confirm nothing depended on it being present.
+
+**Manual steps for the human:** get a free key at https://aistudio.google.com/apikey (no card
+required) and set `GEMINI_API_KEY` in `backend/.env`; run `alembic upgrade head` on the deployed
+Render database whenever next deployed, same as every prior schema change in this project.
+
+## Live-tested the Gemini key against the real API and fixed two real issues it surfaced
+
+Once the human set a real `GEMINI_API_KEY`, testing `ai_category()` directly against the live API
+(rather than trusting the mocked unit tests alone) surfaced two problems no amount of code review
+would have caught:
+
+1. **`gemini-2.5-flash-lite` is already deprecated for new accounts** -- `404 NOT_FOUND: ... no
+   longer available to new users`. Queried `client.models.list()` against the real key to find
+   what's actually available for this account rather than guessing again, and found
+   `gemini-flash-lite-latest` (an alias Google keeps pointed at their current recommended
+   lightweight model) works -- switched to that alias specifically so this doesn't need another
+   manual fix the next time Google rotates model generations.
+2. **`thinking_config=ThinkingConfig(thinking_budget=0)`** (added to keep classification calls
+   cheap/fast) **caused an outright `400 INVALID_ARGUMENT`** on this model -- it doesn't accept
+   that field. Removed it; the model classifies correctly and fast without it regardless.
+
+Also hit a stale-local-database issue unrelated to the code: `alembic current` showed the dev
+Postgres one revision behind head (the `merchant_category_cache` migration wasn't actually applied
+-- likely the docker container got recreated at some point after the earlier session applied it).
+Re-ran `alembic upgrade head` to fix.
+
+**Also found and fixed a real test-hygiene gap**: once a real key was in `backend/.env`,
+`test_categorize_pending_backfills_hardcoded_matchable_rows` started actually calling the live
+Gemini API for its "unresolvable merchant" fixture and got a real (non-None) category back,
+breaking an assertion that implicitly assumed no AI key would ever be configured locally.
+Monkeypatched `ai_category` to `None` in that test specifically, since it's testing the
+hardcoded-rule/subcategory-backfill path, not AI behavior -- makes the test deterministic
+regardless of what's in whoever's local `.env`.
+
+**Verified end-to-end** with the real key: `ai_category()` correctly classifies real merchant
+names (SAIZERIYA -> Food, DAISO JAPAN -> Shopping, SPOTIFY -> Entertainment, an unrecognizable
+name -> Other), and `categorize_transaction()`'s cache correctly short-circuits a second call for
+the same merchant (confirmed by inspecting the `merchant_category_cache` row directly, not just
+trusting the mocked test). Full backend suite re-confirmed at 196 passed after these fixes.

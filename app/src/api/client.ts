@@ -137,6 +137,21 @@ export async function deleteTransaction(transactionId: number, userId: number = 
   }
 }
 
+export interface CategorizePendingResult {
+  categorized: number;
+  remaining: number;
+}
+
+export async function categorizePending(userId: number = CURRENT_USER_ID): Promise<CategorizePendingResult> {
+  const response = await fetch(`${API_BASE_URL}/transactions/categorize-pending?user_id=${userId}`, {
+    method: "POST",
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to auto-categorize transactions (${response.status})`);
+  }
+  return response.json();
+}
+
 export interface TransactionDraft {
   user_id: number;
   amount: string;

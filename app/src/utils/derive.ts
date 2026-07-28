@@ -149,14 +149,18 @@ export function uncategorized(transactions: Transaction[]): Transaction[] {
   return transactions.filter((t) => isExpense(t) && !t.category);
 }
 
+/** Sentinel category label for uncategorized expenses shown alongside real categories (e.g. in a
+ * pie chart's breakdown) -- lets a chart's slices/rows tally to its displayed total instead of
+ * silently omitting whatever hasn't been categorized yet. */
+export const UNCATEGORIZED_LABEL = "Uncategorized";
+
 export function todayRangeTransactions(transactions: Transaction[], now: Date = new Date()): Transaction[] {
   return transactions.filter((t) => isExpense(t) && isSameLocalDay(new Date(t.txn_at), now));
 }
 
 export function categoryTransactions(transactions: Transaction[], category: string): Transaction[] {
-  return transactions
-    .filter((t) => isExpense(t) && t.category === category)
-    .sort((a, b) => new Date(b.txn_at).getTime() - new Date(a.txn_at).getTime());
+  const matches = category === UNCATEGORIZED_LABEL ? uncategorized(transactions) : transactions.filter((t) => isExpense(t) && t.category === category);
+  return matches.sort((a, b) => new Date(b.txn_at).getTime() - new Date(a.txn_at).getTime());
 }
 
 export function weekRangeTransactions(transactions: Transaction[], now: Date = new Date()): Transaction[] {

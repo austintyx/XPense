@@ -3,9 +3,10 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
-from app.models import DirectionEnum, EmailAccount, ProviderEnum, Transaction
+from app.models import DirectionEnum, EmailAccount, MerchantCategoryCache, ProviderEnum, Transaction
 from app.security.crypto import encrypt
 from app.services import gmail
+from app.services.categorize import categorize_transaction
 from app.services.grab_reconcile import GRAB_RECEIPT_SENDER
 
 
@@ -103,6 +104,45 @@ def test_category_update_without_subcategory_clears_it(client, db_session, user)
     assert body["subcategory"] is None
 
 
+def test_category_update_remembers_the_category_for_future_transactions_from_the_same_merchant(
+    monkeypatch, client, db_session, user
+):
+    txn = _make_txn(db_session, user, merchant_raw="Saizeriya - Poiz Centre", category=None)
+
+    response = client.post(f"/transactions/{txn.id}/category", json={"category": "Food"})
+    assert response.status_code == 200
+
+    cached = (
+        db_session.query(MerchantCategoryCache)
+        .filter_by(merchant_key="SAIZERIYA - POIZ CENTRE")
+        .one_or_none()
+    )
+    assert cached is not None
+    assert cached.category == "Food"
+
+    # A brand new transaction from the same merchant is categorized from the cache alone, no AI call.
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("ai_category should not be called once the cache has this merchant")
+
+    monkeypatch.setattr("app.services.categorize.ai_category", fail_if_called)
+    category, _ = categorize_transaction(
+        db_session, "Saizeriya - Poiz Centre", "DBS", datetime.now(timezone.utc)
+    )
+    assert category == "Food"
+
+
+def test_category_update_overwrites_a_previously_cached_category(client, db_session, user):
+    first = _make_txn(db_session, user, merchant_raw="SOME CAFE", category=None)
+    client.post(f"/transactions/{first.id}/category", json={"category": "Other"})
+
+    second = _make_txn(db_session, user, merchant_raw="SOME CAFE", category=None)
+    client.post(f"/transactions/{second.id}/category", json={"category": "Food"})
+
+    rows = db_session.query(MerchantCategoryCache).filter_by(merchant_key="SOME CAFE").all()
+    assert len(rows) == 1
+    assert rows[0].category == "Food"
+
+
 def test_update_transaction_details_persists_merchant_and_amount(client, db_session, user):
     txn = _make_txn(db_session, user, merchant_raw="RAW NAME", merchant_clean="Raw Name", amount=Decimal("10.00"))
 
@@ -178,6 +218,40 @@ def test_manual_add_creates_row(client, user):
     assert any(r["id"] == body["id"] for r in listing.json())
 
 
+def test_manual_add_with_a_category_remembers_it_for_the_merchant(client, db_session, user):
+    payload = {
+        "user_id": user.id,
+        "amount": "19.80",
+        "currency": "SGD",
+        "direction": "debit",
+        "merchant_raw": "Star Western",
+        "category": "Food",
+        "txn_at": datetime.now(timezone.utc).isoformat(),
+        "bank": None,
+    }
+    response = client.post("/transactions", json=payload)
+    assert response.status_code == 201
+
+    cached = db_session.query(MerchantCategoryCache).filter_by(merchant_key="STAR WESTERN").one_or_none()
+    assert cached is not None
+    assert cached.category == "Food"
+
+
+def test_manual_add_without_a_category_does_not_error_or_write_the_cache(client, db_session, user):
+    payload = {
+        "user_id": user.id,
+        "amount": "5.00",
+        "currency": "SGD",
+        "direction": "debit",
+        "merchant_raw": "Unnamed Stall",
+        "txn_at": datetime.now(timezone.utc).isoformat(),
+        "bank": None,
+    }
+    response = client.post("/transactions", json=payload)
+    assert response.status_code == 201
+    assert db_session.query(MerchantCategoryCache).count() == 0
+
+
 def test_manual_add_accepts_food_subcategory(client, user):
     payload = {
         "user_id": user.id,
@@ -195,7 +269,12 @@ def test_manual_add_accepts_food_subcategory(client, user):
     assert response.json()["subcategory"] == "Coffee"
 
 
-def test_categorize_pending_backfills_hardcoded_matchable_rows(client, db_session, user):
+def test_categorize_pending_backfills_hardcoded_matchable_rows(client, db_session, user, monkeypatch):
+    # This test is about the hardcoded-rule/subcategory backfill path specifically, not the AI
+    # step -- pin it off so the test stays deterministic regardless of whether a real
+    # GEMINI_API_KEY happens to be configured in the local/CI environment's .env.
+    monkeypatch.setattr("app.services.categorize.ai_category", lambda merchant, bank: None)
+
     uncategorized = _make_txn(db_session, user, merchant_raw="BUS/MRT", category=None)
     already_done = _make_txn(db_session, user, merchant_raw="SOMETHING", category="Shopping")
     unresolvable = _make_txn(db_session, user, merchant_raw="ZZZZZ UNKNOWN MERCHANT", category=None)

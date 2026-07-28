@@ -104,16 +104,21 @@ function hueFor(id: string): number {
   return CATEGORY_HUES[id as CategoryId] ?? hashHue(id);
 }
 
+// "Uncategorized" isn't a real category -- give it a fixed neutral gray (chroma 0) at each
+// function's usual lightness, rather than a hashed hue that could coincidentally collide with a
+// real category's color and be misread as one.
+const UNCATEGORIZED = "Uncategorized";
+
 export function categoryColor(id: string): string {
-  return oklchToHex(0.72, 0.1, hueFor(id));
+  return id === UNCATEGORIZED ? oklchToHex(0.72, 0, 0) : oklchToHex(0.72, 0.1, hueFor(id));
 }
 
 export function categoryColorChip(id: string): string {
-  return oklchToHex(0.62, 0.11, hueFor(id));
+  return id === UNCATEGORIZED ? oklchToHex(0.62, 0, 0) : oklchToHex(0.62, 0.11, hueFor(id));
 }
 
 export function categoryColorBar(id: string): string {
-  return oklchToHex(0.8, 0.08, hueFor(id));
+  return id === UNCATEGORIZED ? oklchToHex(0.8, 0, 0) : oklchToHex(0.8, 0.08, hueFor(id));
 }
 
 export const friendHues = { green: 158, warm: 78, purple: 300 };

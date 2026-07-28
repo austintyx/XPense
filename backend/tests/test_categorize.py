@@ -4,11 +4,13 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from app.config import settings
+from app.models import MerchantCategoryCache
 from app.services.categorize import (
     ai_category,
     categorize_transaction,
     food_subcategory,
     hardcoded_category,
+    remember_category,
     transport_subcategory,
 )
 
@@ -118,36 +120,33 @@ def test_transport_subcategory(merchant, expected):
 
 
 def test_ai_category_returns_none_when_key_unconfigured(monkeypatch):
-    monkeypatch.setattr(settings, "llm_api_key", None)
+    monkeypatch.setattr(settings, "gemini_api_key", None)
     assert ai_category("SAIZERIYA - POIZ CENTRE", "DBS") is None
 
 
 def test_ai_category_parses_mocked_response(monkeypatch):
-    monkeypatch.setattr(settings, "llm_api_key", "test-key")
-
-    class FakeParsedOutput:
-        category = "Food"
+    monkeypatch.setattr(settings, "gemini_api_key", "test-key")
 
     class FakeResponse:
-        parsed_output = FakeParsedOutput()
+        text = "Food"
 
-    class FakeMessages:
-        def parse(self, **kwargs):
+    class FakeModels:
+        def generate_content(self, **kwargs):
             return FakeResponse()
 
     class FakeClient:
         def __init__(self, api_key):
-            self.messages = FakeMessages()
+            self.models = FakeModels()
 
     import app.services.categorize as categorize_module
 
-    monkeypatch.setattr(categorize_module.anthropic, "Anthropic", FakeClient)
+    monkeypatch.setattr(categorize_module.genai, "Client", FakeClient)
 
     assert ai_category("SAIZERIYA - POIZ CENTRE", "DBS") == "Food"
 
 
 def test_ai_category_returns_none_on_api_failure(monkeypatch):
-    monkeypatch.setattr(settings, "llm_api_key", "test-key")
+    monkeypatch.setattr(settings, "gemini_api_key", "test-key")
 
     class FakeClient:
         def __init__(self, api_key):
@@ -155,27 +154,81 @@ def test_ai_category_returns_none_on_api_failure(monkeypatch):
 
     import app.services.categorize as categorize_module
 
-    monkeypatch.setattr(categorize_module.anthropic, "Anthropic", FakeClient)
+    monkeypatch.setattr(categorize_module.genai, "Client", FakeClient)
 
     assert ai_category("SAIZERIYA - POIZ CENTRE", "DBS") is None
 
 
-def test_categorize_transaction_prefers_hardcoded_and_skips_ai(monkeypatch):
+def test_ai_category_returns_none_when_reply_does_not_match_a_known_category(monkeypatch):
+    monkeypatch.setattr(settings, "gemini_api_key", "test-key")
+
+    class FakeResponse:
+        text = "I'm not sure, maybe Restaurant?"
+
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            return FakeResponse()
+
+    class FakeClient:
+        def __init__(self, api_key):
+            self.models = FakeModels()
+
+    import app.services.categorize as categorize_module
+
+    monkeypatch.setattr(categorize_module.genai, "Client", FakeClient)
+
+    assert ai_category("SAIZERIYA - POIZ CENTRE", "DBS") is None
+
+
+def test_categorize_transaction_prefers_hardcoded_and_skips_ai(monkeypatch, db_session):
     def fail_if_called(*args, **kwargs):
         raise AssertionError("ai_category should not be called when hardcoded rules match")
 
     monkeypatch.setattr("app.services.categorize.ai_category", fail_if_called)
 
-    category, subcategory = categorize_transaction("BUS/MRT", "DBS", datetime(2026, 7, 23, 19, 0, tzinfo=SGT))
+    category, subcategory = categorize_transaction(
+        db_session, "BUS/MRT", "DBS", datetime(2026, 7, 23, 19, 0, tzinfo=SGT)
+    )
     assert category == "Transport"
     assert subcategory == "Public"
+    assert db_session.query(MerchantCategoryCache).count() == 0
 
 
-def test_categorize_transaction_falls_back_to_ai_and_sets_food_subcategory(monkeypatch):
+def test_categorize_transaction_falls_back_to_ai_and_sets_food_subcategory(monkeypatch, db_session):
     monkeypatch.setattr("app.services.categorize.ai_category", lambda merchant, bank: "Food")
 
     category, subcategory = categorize_transaction(
-        "SAIZERIYA - POIZ CENTRE", "DBS", datetime(2026, 7, 23, 19, 0, tzinfo=SGT)
+        db_session, "SAIZERIYA - POIZ CENTRE", "DBS", datetime(2026, 7, 23, 19, 0, tzinfo=SGT)
     )
     assert category == "Food"
     assert subcategory == "Dinner"
+
+
+def test_categorize_transaction_caches_ai_result_and_skips_ai_on_repeat(monkeypatch, db_session):
+    calls = []
+
+    def fake_ai_category(merchant, bank):
+        calls.append(merchant)
+        return "Food"
+
+    monkeypatch.setattr("app.services.categorize.ai_category", fake_ai_category)
+
+    txn_at = datetime(2026, 7, 23, 19, 0, tzinfo=SGT)
+    first = categorize_transaction(db_session, "SAIZERIYA - POIZ CENTRE", "DBS", txn_at)
+    assert first[0] == "Food"
+    assert len(calls) == 1
+    assert db_session.query(MerchantCategoryCache).count() == 1
+
+    # Same merchant again (even with different whitespace/case) -- must hit the cache, not AI.
+    second = categorize_transaction(db_session, "saizeriya -  poiz centre", "DBS", txn_at)
+    assert second[0] == "Food"
+    assert len(calls) == 1
+
+
+def test_remember_category_overwrites_existing_cache_entry(db_session):
+    remember_category(db_session, "SAIZERIYA", "Food")
+    remember_category(db_session, "saizeriya", "Shopping")
+
+    rows = db_session.query(MerchantCategoryCache).all()
+    assert len(rows) == 1
+    assert rows[0].category == "Shopping"

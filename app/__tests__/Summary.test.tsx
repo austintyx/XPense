@@ -1,4 +1,4 @@
-import { fireEvent, screen } from '@testing-library/react-native';
+import { fireEvent, screen, within } from '@testing-library/react-native';
 
 import Summary from '../src/screens/Summary';
 import { makeTxn, mockClientDefaults, renderWithProviders } from '../src/testUtils';
@@ -116,6 +116,26 @@ test('year view total includes uncategorized expenses, not just categorized ones
 
   // 40 (Food) + 25 (uncategorized) -- the 5.00 credit must not be added or subtracted.
   expect(await screen.findByText('S$65')).toBeTruthy();
+});
+
+test('the category breakdown includes an Uncategorized row so its percentages tally to the total', async () => {
+  mockClientDefaults({
+    summary: { user_id: 1, month: '2026-07', categories: [{ category: 'Food', total: '30.00' }], total: '40.00' },
+    transactions: [
+      makeTxn({ id: 1, category: 'Food', amount: '30.00', txn_at: '2026-07-15T10:00:00Z' }),
+      makeTxn({ id: 2, category: null, amount: '10.00', txn_at: '2026-07-15T10:00:00Z', merchant_raw: 'UNCATEGORIZED' }),
+    ],
+  });
+
+  renderWithProviders(<Summary />);
+
+  const uncatRow = await screen.findByTestId('cat-row-Uncategorized');
+  expect(within(uncatRow).getByText('Uncategorized')).toBeTruthy();
+  expect(within(uncatRow).getByText('S$10.00')).toBeTruthy();
+  expect(within(uncatRow).getByText('25%')).toBeTruthy();
+
+  fireEvent.press(uncatRow);
+  expect(await screen.findByText('UNCATEGORIZED')).toBeTruthy();
 });
 
 test('week view uses the Sunday-Saturday calendar week, not a rolling 7-day window', async () => {

@@ -16,7 +16,12 @@ from app.schemas import (
     TransactionDetailsUpdateIn,
     TransactionOut,
 )
-from app.services.categorize import categorize_transaction, food_subcategory, transport_subcategory
+from app.services.categorize import (
+    categorize_transaction,
+    food_subcategory,
+    remember_category,
+    transport_subcategory,
+)
 from app.services.grab_reconcile import is_generic_grab_merchant, reconcile_grab_transaction
 from app.services.sync import MAIL_SERVICES, get_valid_access_token
 
@@ -42,6 +47,10 @@ def update_category(transaction_id: int, body: CategoryUpdateIn, db: Session = D
         raise HTTPException(status_code=404, detail="Transaction not found")
     txn.category = body.category
     txn.subcategory = body.subcategory
+    # A manual (re)categorization is a stronger signal than any prior guess -- remember it so
+    # every future transaction from this merchant is categorized the same way with no AI call.
+    if txn.merchant_raw:
+        remember_category(db, txn.merchant_raw, body.category)
     db.commit()
     db.refresh(txn)
     return txn
@@ -55,7 +64,7 @@ def categorize_pending(user_id: int, db: Session = Depends(get_db)):
 
     categorized = 0
     for txn in pending:
-        category, subcategory = categorize_transaction(txn.merchant_raw or "", txn.bank, txn.txn_at)
+        category, subcategory = categorize_transaction(db, txn.merchant_raw or "", txn.bank, txn.txn_at)
         if category is not None:
             txn.category = category
             txn.subcategory = subcategory
@@ -166,6 +175,8 @@ def create_manual_transaction(body: TransactionCreateIn, db: Session = Depends(g
         bank=body.bank,
     )
     db.add(txn)
+    if body.category and body.merchant_raw:
+        remember_category(db, body.merchant_raw, body.category)
     db.commit()
     db.refresh(txn)
     return txn
