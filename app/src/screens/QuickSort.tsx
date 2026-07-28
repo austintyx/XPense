@@ -1,51 +1,92 @@
 import { useNavigation } from "@react-navigation/native";
-import { useMemo, useState } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { useMemo, useRef, useState } from "react";
+import { Animated, Easing, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { CategoryChip } from "../components/CategoryChip";
 import { useToast } from "../components/Toast";
 import { useAppData } from "../store/TransactionsProvider";
 import { categoryColor, colors, radii, shadow, spacing, typography } from "../theme/tokens";
 import { allCategories, deriveSource, formatDateTime, formatMoney, mergedSubcategories, uncategorized } from "../utils/derive";
+import type { Transaction } from "../api/client";
 
 const REASON_HINT = "We couldn't confidently match this merchant — pick a category to help us learn.";
+const EXIT_DURATION = 260;
+const EXIT_TRANSLATE_X = 480;
+const EXIT_EASING = Easing.out(Easing.ease);
+
+function CardContent({ txn }: { txn: Transaction }) {
+  return (
+    <>
+      <Text style={styles.cardSource}>{deriveSource(txn).toUpperCase()}</Text>
+      <Text style={styles.cardMerchant}>{txn.merchant_clean ?? txn.merchant_raw ?? "Unknown"}</Text>
+      <Text style={styles.cardWhen}>{formatDateTime(txn.txn_at)}</Text>
+      <Text style={styles.cardAmount}>{formatMoney(txn.amount)}</Text>
+      <Text style={styles.cardHint}>{REASON_HINT}</Text>
+    </>
+  );
+}
 
 export default function QuickSort() {
   const navigation = useNavigation<any>();
   const { transactions, categorize, customCategories, customSubcategories } = useAppData();
   const { showToast } = useToast();
   const [skipped, setSkipped] = useState<number[]>([]);
+  // Pushed to immediately on pick, before categorize()'s network round-trip resolves -- lets the
+  // queue advance to the next card the instant the user taps, same technique as `skipped`.
+  const [sortedIds, setSortedIds] = useState<number[]>([]);
   const [pickedCategory, setPickedCategory] = useState<string | null>(null);
   const [sortedCount, setSortedCount] = useState(0);
+  const [exiting, setExiting] = useState<Transaction | null>(null);
+  const exitAnim = useRef(new Animated.Value(0)).current;
 
   const categories = useMemo(() => allCategories(customCategories), [customCategories]);
 
   const queue = useMemo(
-    () => uncategorized(transactions).filter((t) => !skipped.includes(t.id)),
-    [transactions, skipped],
+    () => uncategorized(transactions).filter((t) => !skipped.includes(t.id) && !sortedIds.includes(t.id)),
+    [transactions, skipped, sortedIds],
   );
   const current = queue[0] ?? null;
   const isDone = current === null;
 
   const close = () => navigation.goBack();
 
-  const chooseCategory = async (category: string) => {
+  // Shared by chooseCategory (no-subcategory branch) and chooseSubcategory: snapshots the card
+  // being left, advances the queue optimistically, and slides the snapshot out on top of the
+  // (already-advanced) next card -- Tinder-style. The success toast/sortedCount still wait for
+  // categorize() to actually persist, so a failed save doesn't show a misleading success toast.
+  const advance = (category: string, subcategory: string | null) => {
+    if (!current) return;
+    const leaving = current;
+
+    setSortedIds((ids) => ids.concat(leaving.id));
+    setPickedCategory(null);
+    setExiting(leaving);
+    exitAnim.setValue(0);
+    Animated.timing(exitAnim, {
+      toValue: 1,
+      duration: EXIT_DURATION,
+      easing: EXIT_EASING,
+      useNativeDriver: true,
+    }).start(() => setExiting(null));
+
+    (async () => {
+      await categorize(leaving.id, category, subcategory);
+      setSortedCount((n) => n + 1);
+      showToast(`${leaving.merchant_clean ?? leaving.merchant_raw} → ${category}${subcategory ? " · " + subcategory : ""}`);
+    })();
+  };
+
+  const chooseCategory = (category: string) => {
     if (mergedSubcategories(category, customSubcategories).length > 0) {
       setPickedCategory(category);
       return;
     }
-    if (!current) return;
-    await categorize(current.id, category, null);
-    setSortedCount((n) => n + 1);
-    showToast(`${current.merchant_clean ?? current.merchant_raw} → ${category}`);
+    advance(category, null);
   };
 
-  const chooseSubcategory = async (subcategory: string) => {
-    if (!current || !pickedCategory) return;
-    await categorize(current.id, pickedCategory, subcategory);
-    setSortedCount((n) => n + 1);
-    showToast(`${current.merchant_clean ?? current.merchant_raw} → ${pickedCategory} · ${subcategory}`);
-    setPickedCategory(null);
+  const chooseSubcategory = (subcategory: string) => {
+    if (!pickedCategory) return;
+    advance(pickedCategory, subcategory);
   };
 
   const skip = () => {
@@ -56,84 +97,107 @@ export default function QuickSort() {
 
   return (
     <View style={styles.container} testID="quicksort-screen">
-      <View style={styles.topRow}>
-        <Text style={styles.doneLink} onPress={close} testID="quicksort-done-link">
-          Done
-        </Text>
-        <Text style={styles.counter}>
-          {queue.length > 0 ? `${sortedCount + 1} of ${sortedCount + queue.length}` : `${sortedCount} sorted`}
-        </Text>
-      </View>
-      <Text style={styles.title}>Quick sort</Text>
-      <Text style={styles.subtitle}>A few we couldn't read confidently.</Text>
+      <View style={styles.content}>
+        <View style={styles.topRow}>
+          <Text style={styles.doneLink} onPress={close} testID="quicksort-done-link">
+            Done
+          </Text>
+          <Text style={styles.counter}>
+            {queue.length > 0 ? `${sortedCount + 1} of ${sortedCount + queue.length}` : `${sortedCount} sorted`}
+          </Text>
+        </View>
+        <Text style={styles.title}>Quick sort</Text>
+        <Text style={styles.subtitle}>A few we couldn't read confidently.</Text>
 
-      <View style={styles.stack}>
-        {isDone ? (
-          <View style={[styles.doneCard, shadow.card]}>
-            <View style={styles.doneCircle} />
-            <Text style={styles.doneTitle}>{sortedCount > 0 ? "All sorted" : "Nothing to sort"}</Text>
-            <Text style={styles.doneBody}>
-              {sortedCount > 0
-                ? `You filed ${sortedCount} ${sortedCount === 1 ? "transaction" : "transactions"}. Your summary is accurate again.`
-                : "Everything already has a category. Come back when something new lands."}
-            </Text>
-            <Pressable style={styles.doneButton} onPress={close} testID="quicksort-back-to-spending">
-              <Text style={styles.doneButtonText}>Back to spending</Text>
-            </Pressable>
-          </View>
-        ) : (
+        <View style={styles.stack}>
+          {isDone ? (
+            <View style={[styles.doneCard, shadow.card]}>
+              <View style={styles.doneCircle} />
+              <Text style={styles.doneTitle}>{sortedCount > 0 ? "All sorted" : "Nothing to sort"}</Text>
+              <Text style={styles.doneBody}>
+                {sortedCount > 0
+                  ? `You filed ${sortedCount} ${sortedCount === 1 ? "transaction" : "transactions"}. Your summary is accurate again.`
+                  : "Everything already has a category. Come back when something new lands."}
+              </Text>
+              <Pressable style={styles.doneButton} onPress={close} testID="quicksort-back-to-spending">
+                <Text style={styles.doneButtonText}>Back to spending</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <>
+              <View style={styles.dummyCardFar} />
+              <View style={styles.dummyCardNear} />
+              <View style={[styles.frontCard, shadow.quickSortCard]} testID="quicksort-card">
+                <CardContent txn={current!} />
+              </View>
+            </>
+          )}
+
+          {/* Snapshot of the just-picked card, animating away on top of the (already-advanced)
+              content above -- Tinder-style reveal of the next transaction/done-state underneath. */}
+          {exiting && (
+            <Animated.View
+              style={[
+                styles.frontCard,
+                shadow.quickSortCard,
+                {
+                  transform: [
+                    { translateX: exitAnim.interpolate({ inputRange: [0, 1], outputRange: [0, EXIT_TRANSLATE_X] }) },
+                    { rotate: exitAnim.interpolate({ inputRange: [0, 1], outputRange: ["0deg", "10deg"] }) },
+                  ],
+                  opacity: exitAnim.interpolate({ inputRange: [0, 0.7, 1], outputRange: [1, 1, 0] }),
+                },
+              ]}
+              testID="quicksort-card-exiting"
+            >
+              <CardContent txn={exiting} />
+            </Animated.View>
+          )}
+        </View>
+
+        {!isDone && (
           <>
-            <View style={styles.dummyCardFar} />
-            <View style={styles.dummyCardNear} />
-            <View style={[styles.frontCard, shadow.quickSortCard]} testID="quicksort-card">
-              <Text style={styles.cardSource}>{deriveSource(current!).toUpperCase()}</Text>
-              <Text style={styles.cardMerchant}>{current!.merchant_clean ?? current!.merchant_raw ?? "Unknown"}</Text>
-              <Text style={styles.cardWhen}>{formatDateTime(current!.txn_at)}</Text>
-              <Text style={styles.cardAmount}>{formatMoney(current!.amount)}</Text>
-              <Text style={styles.cardHint}>{REASON_HINT}</Text>
+            <Text style={styles.stepLabel}>{pickedCategory ? `Which kind of ${pickedCategory.toLowerCase()}?` : "Tap a category"}</Text>
+            <View style={styles.chipsRow}>
+              {pickedCategory
+                ? mergedSubcategories(pickedCategory, customSubcategories).map((sub) => (
+                    <CategoryChip key={sub} label={sub} onPress={() => chooseSubcategory(sub)} testID={`qs-sub-${sub}`} />
+                  ))
+                : categories.map((cat) => (
+                    <CategoryChip
+                      key={cat}
+                      label={cat}
+                      leftBorderColor={categoryColor(cat)}
+                      onPress={() => chooseCategory(cat)}
+                      testID={`qs-cat-${cat}`}
+                    />
+                  ))}
+            </View>
+            <View style={styles.footerLinks}>
+              {pickedCategory && (
+                <Text style={styles.footerLink} onPress={() => setPickedCategory(null)} testID="qs-back-to-categories">
+                  ‹ Categories
+                </Text>
+              )}
+              <Text style={styles.footerLink} onPress={skip} testID="qs-skip">
+                Skip for now
+              </Text>
             </View>
           </>
         )}
       </View>
-
-      {!isDone && (
-        <>
-          <Text style={styles.stepLabel}>{pickedCategory ? `Which kind of ${pickedCategory.toLowerCase()}?` : "Tap a category"}</Text>
-          <View style={styles.chipsRow}>
-            {pickedCategory
-              ? mergedSubcategories(pickedCategory, customSubcategories).map((sub) => (
-                  <CategoryChip key={sub} label={sub} onPress={() => chooseSubcategory(sub)} testID={`qs-sub-${sub}`} />
-                ))
-              : categories.map((cat) => (
-                  <CategoryChip
-                    key={cat}
-                    label={cat}
-                    leftBorderColor={categoryColor(cat)}
-                    onPress={() => chooseCategory(cat)}
-                    testID={`qs-cat-${cat}`}
-                  />
-                ))}
-          </View>
-          <View style={styles.footerLinks}>
-            {pickedCategory && (
-              <Text style={styles.footerLink} onPress={() => setPickedCategory(null)} testID="qs-back-to-categories">
-                ‹ Categories
-              </Text>
-            )}
-            <Text style={styles.footerLink} onPress={skip} testID="qs-skip">
-              Skip for now
-            </Text>
-          </View>
-        </>
-      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  // Full-bleed and opaque so this screen fully covers whatever's behind it -- on web,
+  // react-navigation keeps the presenting screen mounted underneath a transparentModal route, so
+  // this can't just be the padded/capped column itself (see `content`) or that mounted screen
+  // shows through the gutters on either side of it.
+  container: { flex: 1, backgroundColor: colors.canvas },
+  content: {
     flex: 1,
-    backgroundColor: colors.canvas,
     paddingTop: spacing.screenTop,
     paddingHorizontal: spacing.screenH,
     paddingBottom: 30,

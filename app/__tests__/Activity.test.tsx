@@ -4,6 +4,7 @@ import { Alert } from 'react-native';
 import Activity from '../src/screens/Activity';
 import * as client from '../src/api/client';
 import { makeTxn, mockClientDefaults, renderWithProviders } from '../src/testUtils';
+import { colors } from '../src/theme/tokens';
 
 const mockNavigate = jest.fn();
 jest.mock('@react-navigation/native', () => ({
@@ -43,6 +44,14 @@ test('the All filter also shows transfer transactions, excluded from the Needs a
   expect(await screen.findByText('CHICKEN RICE')).toBeTruthy();
   expect(await screen.findByText('A/C ending 9249')).toBeTruthy();
   expect(screen.getByTestId('needs-count-badge')).toHaveTextContent('0');
+
+  // The transfer shows with a "+" prefix in green, and subtracts from (rather than adds to) the
+  // day's group total -- both amounts default to 10.00 in makeTxn, so the net total is 0.00.
+  const transferAmount = screen.getByText('+S$10.00');
+  expect(transferAmount.props.style).toEqual(
+    expect.arrayContaining([expect.objectContaining({ color: colors.success })]),
+  );
+  expect(screen.getByText('S$0.00')).toBeTruthy();
 });
 
 test('the Needs a category filter shows only uncategorized rows and the count badge', async () => {

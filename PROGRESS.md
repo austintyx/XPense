@@ -1622,3 +1622,79 @@ fixture was even written.
 
 **Manual steps for the human:** trigger a sync and confirm this and any future "you've received a
 transfer" emails now appear in Activity's "All" filter as transfer-type, credit-direction rows.
+
+## Transfer rows: green "+" prefix, and subtract from the day's total instead of adding
+
+The human asked for transfer rows in Activity to render in green with a "+" before the amount,
+and for the day-group total to subtract transfers rather than add them -- so a day mixing an
+expense and an incoming transfer shows a net-spend total, not an inflated sum of two unrelated
+cash flows.
+
+`groupByDay` (`derive.ts`) now applies a signed amount per transaction (`-amount` for `type ===
+"transfer"`, `+amount` otherwise) when accumulating each day's `total`. This only changes anything
+for Activity's "All" filter, the one place transfer and expense rows are mixed together (per the
+previous entry) -- every other `groupByDay` caller (Summary's calendar drill-down) still only ever
+sees expense-typed input, so the new branch is a no-op there. `Activity.tsx`'s row now renders a
+"+" prefix and `colors.success` (the same green used for "Change"/success links elsewhere) when
+`txn.type === "transfer"`, expense rows unchanged.
+
+Since a day's total can now go negative (an all-transfer day, or transfers outweighing that day's
+spend), fixed `formatMoney` to put the sign before the currency prefix ("-S$5.00", not the
+previous "S$-5.00").
+
+**Tested:** frontend suite -- still 85 passed (extended the existing transfer-visibility test with
+assertions for the "+S$10.00" text, its green color, and the net "S$0.00" day total, rather than
+adding a new test). `npx tsc --noEmit` clean. Web bundle still compiles (200, ~3.7MB).
+
+**Manual steps for the human:** open Activity's "All" filter and confirm transfer rows show green
+with a "+", and that a day mixing both types shows the net total rather than the sum.
+
+## QuickSort: fixed the web Activity-list backdrop leak, added a Tinder-style slide-out
+
+A screenshot showed QuickSort opening as a narrow centered card on web with Activity's full
+transaction list still visible in the gutters on either side, behind it. Root cause (found by
+reading React Navigation's web internals): `QuickSort` is a root-stack route with `presentation:
+"transparentModal"` (`RootNavigator.tsx`) -- on web there's no separate compositing layer, so
+`@react-navigation/native-stack`'s web renderer deliberately keeps the presenting screen
+(`MainTabs`, i.e. all of Activity) mounted and visible for any `transparentModal` route. That's
+harmless as long as the modal's own screen is opaque and full-bleed -- which `Circle.tsx`/
+`ManageCategories.tsx` (the other two `transparentModal` routes) already are, but `QuickSort.tsx`
+wasn't: its `maxWidth: 460, alignSelf: "center"` was applied directly on the `flex:1` root that
+also carried the background color, so that root's box was only 460px wide and nothing painted in
+the gutters beyond it.
+
+**Fix:** split `QuickSort.tsx`'s single `container` style into the same `container` (full-bleed,
+opaque, `flex:1`) / `content` (the padded, web-capped 460px column) two-layer pattern already used
+by `Activity.tsx`/`Settings.tsx`/`Budgets.tsx`. No changes to `RootNavigator.tsx` or the modal
+presentation/native behavior -- purely a QuickSort-local styling fix.
+
+**Tinder-style slide-out:** added a `sortedIds` local-exclusion state (mirroring the existing
+`skipped` pattern) so the queue advances to the next transaction the instant a category is picked,
+instead of waiting on `categorize()`'s real network round-trip (`TransactionsProvider.tsx`, a
+`PATCH` + a `getSummary` call) -- otherwise there'd be a visible stall before anything happened. A
+snapshot of the just-picked transaction then renders in an `Animated.View` on top of the
+already-advanced card underneath, sliding right (`translateX` 0→480) with a slight rotation
+(0→10deg) and a late opacity fade, clearing itself once the animation completes. No new dependency
+-- reused the exact `Animated.timing`/`useNativeDriver: true`/`Easing.out(Easing.ease)` pattern
+already established in `BottomSheet.web.tsx`/`Toast.tsx`/`ProgressBar.tsx`; confirmed via research
+that `react-native-reanimated`/`gesture-handler` aren't installed and aren't needed since this is a
+triggered exit animation, not a drag gesture. Applies on both platforms (no `Platform.OS` gating)
+since QuickSort is used natively too. The success toast and `sortedCount` increment still wait for
+`categorize()` to actually persist, so a failed save doesn't show a misleading success toast --
+only the visual queue advance is optimistic.
+
+Factored the merchant/amount/source/hint markup (previously duplicated) into a shared `CardContent`
+component used by both the current and exiting cards.
+
+**Tested:** frontend suite -- 86 passed (was 85; +1 new test asserting the exiting card and the
+newly-revealed next card coexist immediately after a tap, proving the optimistic advance).
+`npx tsc --noEmit` clean. Web bundle still compiles (200, ~3.7MB). Existing `QuickSort.test.tsx`
+cases needed no changes -- `updateTransactionCategory` is still called synchronously enough after
+`fireEvent.press`, and `findByText` assertions resolve, if anything faster than before since the
+queue no longer waits on the mocked network promise.
+
+**Manual steps for the human:** open QuickSort from Activity's "Quick sort" banner in the browser
+and confirm no Activity content is visible in the background at any viewport width; pick a category
+and confirm the card visibly slides out to the right with a slight rotation while the next
+transaction is revealed underneath. Also worth checking on a physical device via Expo Go, since the
+animation change applies there too.
