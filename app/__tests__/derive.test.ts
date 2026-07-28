@@ -40,7 +40,7 @@ describe('dailyTotalsForRange', () => {
   test('ignores non-expense transactions', () => {
     const start = new Date(2026, 6, 1);
     const end = new Date(2026, 6, 1);
-    const txns = [makeTxn({ id: 1, txn_at: start.toISOString(), amount: '10.00', type: 'income' })];
+    const txns = [makeTxn({ id: 1, txn_at: start.toISOString(), amount: '10.00', direction: 'credit' })];
     expect(dailyTotalsForRange(txns, start, end)).toEqual([0]);
   });
 });

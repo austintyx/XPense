@@ -21,12 +21,6 @@ class DirectionEnum(str, enum.Enum):
     credit = "credit"
 
 
-class TransactionTypeEnum(str, enum.Enum):
-    expense = "expense"
-    transfer = "transfer"
-    income = "income"
-
-
 class User(Base):
     __tablename__ = "users"
 
@@ -70,11 +64,6 @@ class Transaction(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     direction: Mapped[DirectionEnum] = mapped_column(SAEnum(DirectionEnum, name="direction_enum"), nullable=False)
-    type: Mapped[TransactionTypeEnum] = mapped_column(
-        SAEnum(TransactionTypeEnum, name="transaction_type_enum"),
-        nullable=False,
-        server_default=text("'expense'"),
-    )
     merchant_raw: Mapped[str | None] = mapped_column(String, nullable=True)
     merchant_clean: Mapped[str | None] = mapped_column(String, nullable=True)
     category: Mapped[str | None] = mapped_column(String, nullable=True)

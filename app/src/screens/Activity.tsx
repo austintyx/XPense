@@ -1,10 +1,9 @@
 import { useNavigation } from "@react-navigation/native";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { FlatList, Platform, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 
 import { AddTransactionSheet } from "./AddTransactionSheet";
 import { CategorizeSheet } from "./CategorizeSheet";
-import { getTransactions } from "../api/client";
 import { useSearch } from "../store/SearchProvider";
 import { useAppData } from "../store/TransactionsProvider";
 import { categoryColor, colors, radii, shadow, spacing, typography, type CategoryId } from "../theme/tokens";
@@ -15,32 +14,18 @@ type Filter = "all" | "needs" | string;
 
 export default function Activity() {
   const navigation = useNavigation<any>();
+  // `transactions` now holds every transaction regardless of direction (the provider fetches
+  // with no filter) -- used directly for the "All" filter, no separate fetch needed.
   const { transactions, customCategories, loading, refetch } = useAppData();
   const { search } = useSearch();
   const [filter, setFilter] = useState<Filter>("all");
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<Transaction | null>(null);
   const [addVisible, setAddVisible] = useState(false);
-  // Transfers (moving money between your own accounts) and income (money received from someone
-  // else) are excluded from spend totals and budgets everywhere else in the app, but should still
-  // be visible somewhere -- the raw "All" activity feed here, not folded into the expense-only
-  // `transactions` the rest of the app uses.
-  const [transfers, setTransfers] = useState<Transaction[]>([]);
-  const [income, setIncome] = useState<Transaction[]>([]);
-
-  const loadTransfers = () =>
-    Promise.all([
-      getTransactions("transfer").then(setTransfers),
-      getTransactions("income").then(setIncome),
-    ]).catch(() => {});
-
-  useEffect(() => {
-    loadTransfers();
-  }, []);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([refetch(), loadTransfers()]);
+    await refetch();
     setRefreshing(false);
   };
 
@@ -49,16 +34,9 @@ export default function Activity() {
     const present = new Set(transactions.map((t) => t.category).filter(Boolean) as string[]);
     return allCategories(customCategories).filter((c) => present.has(c));
   }, [transactions, customCategories]);
-  const allTransactions = useMemo(
-    () =>
-      [...transactions, ...transfers, ...income].sort(
-        (a, b) => new Date(b.txn_at).getTime() - new Date(a.txn_at).getTime(),
-      ),
-    [transactions, transfers, income],
-  );
 
   const filtered =
-    filter === "needs" ? uncat : filter === "all" ? allTransactions : transactions.filter((t) => t.category === filter);
+    filter === "needs" ? uncat : filter === "all" ? transactions : transactions.filter((t) => t.category === filter);
   // useSearch() defaults to an always-empty, no-op search when no SearchProvider is mounted (the
   // case on native), so this filter is a harmless pass-through there -- only the web shell wires
   // up a real header search input.
@@ -180,8 +158,8 @@ export default function Activity() {
                       </Text>
                     </View>
                     <View style={styles.amountCol}>
-                      <Text style={[styles.amount, txn.type === "income" && styles.amountIncome]}>
-                        {txn.type === "income" ? "+" : ""}
+                      <Text style={[styles.amount, txn.direction === "credit" && styles.amountCredit]}>
+                        {txn.direction === "credit" ? "+" : ""}
                         {formatMoney(txn.amount)}
                       </Text>
                       <Text style={styles.source}>{deriveSource(txn)}</Text>
@@ -264,6 +242,6 @@ const styles = StyleSheet.create({
   subLabelWarn: { fontFamily: typography.fontFamily.sansMedium, fontSize: typography.size.sm5, color: colors.warnText, marginTop: 3 },
   amountCol: { alignItems: "flex-end", flexShrink: 0, marginLeft: 8 },
   amount: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.md5, color: colors.ink },
-  amountIncome: { color: colors.success },
+  amountCredit: { color: colors.success },
   source: { fontFamily: typography.fontFamily.mono, fontSize: typography.size.xs, color: colors.ink35, marginTop: 3 },
 });

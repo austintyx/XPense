@@ -6,7 +6,14 @@ import { getCategoryBudgets, updateCategoryBudget, type CategoryBudget } from ".
 import { useToast } from "../components/Toast";
 import { useAppData } from "../store/TransactionsProvider";
 import { colors, radii, shadow, typography } from "../theme/tokens";
-import { allCategories, categoryTotals, currentMonthTransactions, deriveRecurring, formatMoney } from "../utils/derive";
+import {
+  allCategories,
+  categoryTotals,
+  currentMonthTransactions,
+  deriveRecurring,
+  formatMoney,
+  isExpense,
+} from "../utils/derive";
 
 const GOAL_RING_CIRCUMFERENCE = 2 * Math.PI * 28;
 
@@ -107,7 +114,7 @@ export default function Budgets() {
             <Text style={styles.eyebrow}>MONTHLY BUDGETS</Text>
             <View style={styles.headerRight}>
               <Text style={styles.headerMeta}>
-                {formatMoney(monthTxns.reduce((s, t) => (t.type === "expense" ? s + Number(t.amount) : s), 0), false)} of{" "}
+                {formatMoney(monthTxns.reduce((s, t) => (isExpense(t) ? s + Number(t.amount) : s), 0), false)} of{" "}
                 {formatMoney(budget.monthly_target, false)}
               </Text>
               {!editMode && (

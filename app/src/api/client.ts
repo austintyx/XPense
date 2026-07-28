@@ -64,8 +64,6 @@ export async function deleteEmailAccount(accountId: number, userId: number = CUR
   }
 }
 
-export type TransactionType = "expense" | "transfer" | "income";
-
 export interface Transaction {
   id: number;
   user_id: number;
@@ -74,7 +72,6 @@ export interface Transaction {
   amount: string;
   currency: string;
   direction: "debit" | "credit";
-  type: TransactionType;
   merchant_raw: string | null;
   merchant_clean: string | null;
   category: string | null;
@@ -86,10 +83,11 @@ export interface Transaction {
 }
 
 export async function getTransactions(
-  type: TransactionType = "expense",
+  direction?: "debit" | "credit",
   userId: number = CURRENT_USER_ID,
 ): Promise<Transaction[]> {
-  const params = new URLSearchParams({ user_id: String(userId), type });
+  const params = new URLSearchParams({ user_id: String(userId) });
+  if (direction) params.set("direction", direction);
   const response = await fetch(`${API_BASE_URL}/transactions?${params.toString()}`);
   if (!response.ok) {
     throw new Error(`Failed to fetch transactions (${response.status})`);
@@ -144,7 +142,6 @@ export interface TransactionDraft {
   amount: string;
   currency?: string;
   direction?: "debit" | "credit";
-  type?: TransactionType;
   merchant_raw?: string | null;
   merchant_clean?: string | null;
   category: string;

@@ -1765,3 +1765,112 @@ check the Expense/Income toggle and date field both work and the saved transacti
 trigger a sync and confirm a real "received" PayNow transaction shows green with a "+" under
 `income` in Activity's "All" filter; check Settings' cards now have visible, even spacing on both
 web and (if you can) native.
+
+## Removed `type` entirely -- only `direction` remains; added PayLah! sender; scoped FAST fix
+
+The human asked to remove the `type` field (`expense`/`transfer`/`income`) from the database
+altogether, relying only on `direction` (`debit`/`credit`) to decide whether a transaction adds to
+or subtracts from spend totals. This whole `type` concept had been the source of repeated bugs
+over the last several rounds (allowlist gaps, wrong regexes, a wrong classification just fixed last
+round) -- collapsing to one field removes that entire class of future bugs.
+
+**Confirmed consequence, deliberately accepted:** without `type`, a self-transfer (moving money
+between the user's own accounts) is indistinguishable from a real expense -- both are
+`direction=debit`. I flagged this explicitly before starting (it directly reverses the "exclude
+self-transfers from the day total" behavior from two rounds ago), and the human chose full removal
+with no replacement anyway. Self-transfers now count toward spend totals and budgets like any
+other debit.
+
+**Backend:** `TransactionTypeEnum` and the `type` column are gone from `models.py`
+(`backend/alembic/versions/1b9027170e89_drop_transaction_type.py` drops the column and the
+`transaction_type_enum` Postgres type; downgrade re-adds both). `TransactionCreateIn`/
+`TransactionOut` (`schemas.py`) drop the field. `list_transactions` (`routers/transactions.py`)
+now takes an optional `direction` filter instead of `type` -- omitted means "everything," a
+deliberate simplification enabling the frontend change below. `/summary` filters
+`direction == debit` instead of `type == expense`.
+
+In `parser.py`, `_classify_paynow`/`_RECEIVE_RE` are deleted outright -- their only job was
+computing `type`; `direction` was *already* independently, correctly hardcoded at every call site
+regardless of what that function returned, so nothing else depended on the receive/received
+wording detection once `type` was gone. `_DBS_TABLE_OWN_ACCOUNT_RE`'s branch (inside the generic
+`_DBS_TABLE_RE` handling) became behaviorally identical to the plain fallback case once its only
+distinguishing output (`type=transfer`) disappeared, so that branch and regex were removed too --
+`_DBS_OWN_TRANSFER_RE` and `_DBS_TABLE_PAYNOW_SUFFIX_RE` stay, since both still produce useful
+output (a clean merchant name) independent of `type`.
+
+**Frontend:** `TransactionType` is gone from `client.ts`; `getTransactions` takes an optional
+`direction` instead. `TransactionsProvider` now fetches with no filter at all -- every transaction,
+once -- which let `Activity.tsx` drop its separate `transfers`/`income` fetches and merge logic
+entirely; the "All" filter just uses `transactions` directly now. `derive.ts`'s `isExpense` checks
+`direction === "debit"` (same name, ~11 call sites unchanged); `groupByDay`'s three-way income/
+transfer/expense logic collapsed to the two-way rule the human asked for: debit adds, credit
+subtracts. Activity's green "+" styling moved from checking `type === "income"` to
+`direction === "credit"` (`amountIncome` renamed `amountCredit`). `AddTransactionSheet`'s local
+toggle state renamed `type`→`direction` (UI labels stay "Expense"/"Income" -- still the right words
+to show a user even though only `direction` is stored); its payload no longer sends a redundant
+`type` alongside `direction`. `Home.web.tsx`/`Budgets.tsx`'s remaining `t.type === "expense"`
+checks became `isExpense(t)`/`t.direction === "debit"`.
+
+**Added `paylah.alerts@dbs.com`** to the sender allowlist (`bank_senders.py`) -- a one-line change,
+everything else derives from that list automatically. This only allowlists the sender; it does
+**not** add PayLah! email parsing, since PayLah!'s wallet alerts are almost certainly worded
+differently from the DBS/POSB bank alerts already handled, and every previous attempt to guess an
+unseen format in this project turned out wrong when checked against a real screenshot. Needs a
+real sample email before a parser regex can be written.
+
+**FAST interbank transfers confirmed entirely unhandled** -- none of the existing DBS/UOB regexes
+reference "FAST" or could plausibly match FAST-network wording (`_DBS_OWN_TRANSFER_RE` is
+specifically for the user's own accounts, not a transfer to a different bank/person). No fixture or
+test mentions FAST anywhere. Same conclusion as PayLah!: blocked on a real sample email, not
+implemented this round.
+
+**Tested:** backend `pytest -q` -- 181 passed (unchanged count net: removed the now-meaningless
+synthetic receive-wording test, added a direction-filter test and a credit-row summary-exclusion
+case). Frontend `npx tsc --noEmit` clean, `jest --runInBand` -- 86 passed (updated the Activity
+"All filter" test to use one `transactions` list with mixed `direction` instead of separate
+transfer/income mocks, and to reflect that an uncategorized debit now correctly appears in "Needs a
+category"). Ran `alembic upgrade head` against the local dev Postgres and confirmed via `\d
+transactions`/`\dT` that the `type` column and `transaction_type_enum` type are both actually gone.
+Web bundle still compiles (200, ~3.7MB).
+
+**Manual steps for the human:** this migration also needs to run wherever the deployed Render
+backend's database lives (separate from local dev) -- `alembic upgrade head` there too, whenever
+convenient before/during the next deploy. Send a real PayLah! alert email and a real FAST
+interbank-transfer alert email (screenshots, same as the NETS/PayNow/received-transfer ones
+earlier) so both can get actual parsing support -- guessing the format has failed every time it's
+been tried without evidence in this project.
+
+## PayLah! and FAST transfers: turned out already parseable, just needed proof and a merchant-name fix
+
+The human sent real screenshots of both. Both surprised the plan from last round: neither needed a
+new regex at all. DBS reuses the exact same shared "Date & Time:/Amount:/From:/To:" table template
+(`_DBS_TABLE_RE`, `parser.py`) for PayLah! transfers and FAST interbank transfers alike, just like
+it does for card purchases/NETS/PayNow -- confirmed by running `parse_email` directly against the
+*exact* screenshot text before writing anything. Last round's "FAST is confirmed entirely
+unhandled" conclusion was reasoning from absence (no regex mentions "FAST"), which didn't account
+for the generic table handler not caring about the intro wording at all -- a lesson for next time
+this comes up: test against the real text before assuming a new regex is needed.
+
+**PayLah!** (`dbs_paylah_transfer.txt`, sent from `paylah.alerts@dbs.com`, added to the allowlist
+last round): parsed correctly as-is -- `_DBS_TABLE_PAYNOW_SUFFIX_RE` already strips the "(Mobile
+ending NNNN)" suffix from the "To:" field, giving a clean `merchant_raw="egg"`.
+
+**FAST** (`dbs_fast_transfer.txt`, sent from `ibanking.alert@dbs.com`, already allowlisted):
+parsed correctly too, but with a less clean merchant name -- FAST's "To:" field has no parens
+("Austin A/C ending 2047" vs PayNow's "Austin (Mobile ending 2047)"), so it fell through to the
+generic fallback showing the whole raw string. Added `_DBS_TABLE_ACCOUNT_SUFFIX_RE`
+(`^(?P<name>.+?)\s+A/C ending \d+$`) as a new check alongside the PayNow-suffix one, stripping this
+different suffix style too -- confirmed against the real screenshot to give `merchant_raw="Austin"`.
+
+Also softened the `bank_senders.py` comment on `paylah.alerts@dbs.com`: the screenshot proved the
+*content* parses, but showed the sender's display name ("PayLah! Alerts"), not the raw address, so
+that specific address is still not directly confirmed -- flagged for whoever debugs this next if
+PayLah! mail ever goes missing.
+
+**Tested:** full backend suite -- 183 passed (was 181; +2 new fixture-based test cases,
+`dbs_paylah_transfer`/`dbs_fast_transfer`), both fixtures built from the exact screenshot text and
+verified via a direct `parse_email` call before being committed to a test file.
+
+**Manual steps for the human:** trigger a sync and confirm PayLah! transfers and FAST interbank
+transfers both now show up correctly in Activity (FAST with a clean merchant name, not the raw
+"Name A/C ending NNNN" string).

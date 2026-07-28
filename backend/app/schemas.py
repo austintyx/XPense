@@ -4,7 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
-from app.models import DirectionEnum, ProviderEnum, TransactionTypeEnum
+from app.models import DirectionEnum, ProviderEnum
 
 
 class TransactionOut(BaseModel):
@@ -17,7 +17,6 @@ class TransactionOut(BaseModel):
     amount: Decimal
     currency: str
     direction: DirectionEnum
-    type: TransactionTypeEnum
     merchant_raw: str | None
     merchant_clean: str | None
     category: str | None
@@ -76,7 +75,6 @@ class TransactionCreateIn(BaseModel):
     amount: Decimal
     currency: str = "SGD"
     direction: DirectionEnum = DirectionEnum.debit
-    type: TransactionTypeEnum = TransactionTypeEnum.expense
     merchant_raw: str | None = None
     merchant_clean: str | None = None
     category: str | None = None

@@ -10,7 +10,12 @@ import re
 # source of truth for both "which mail to fetch" and "which mail we're allowed to read the body
 # of" (Phase 10's bank-sender allowlist requirement).
 KNOWN_BANK_SENDERS: dict[str, list[str]] = {
-    "dbs": ["ibanking.alert@dbs.com", "alerts@dbs.com.sg"],
+    # paylah.alerts@dbs.com (DBS PayLah!, the mobile wallet): a real PayLah! transfer screenshot
+    # confirmed the alert wording parses correctly (it reuses the same shared table template as
+    # ibanking.alert@dbs.com -- see parser.py), but that screenshot showed the sender's display
+    # name ("PayLah! Alerts"), not the raw address, so this exact address is still not directly
+    # confirmed -- if PayLah! mail goes missing, check the real From address first.
+    "dbs": ["ibanking.alert@dbs.com", "alerts@dbs.com.sg", "paylah.alerts@dbs.com"],
     "uob": ["unialerts@uobgroup.com", "alerts@uob.com.sg"],
 }
 
