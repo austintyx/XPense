@@ -95,7 +95,7 @@ def ai_category(merchant: str, bank: str | None) -> str | None:
     try:
         client = genai.Client(api_key=settings.gemini_api_key)
         response = client.models.generate_content(
-            model="gemini-2.5-flash-lite",
+            model="gemini-flash-lite-latest",
             contents=(
                 "Classify this Singapore bank transaction merchant into exactly one spending "
                 f"category: {', '.join(CATEGORIES)}. Reply with ONLY the category name, nothing "
@@ -104,7 +104,6 @@ def ai_category(merchant: str, bank: str | None) -> str | None:
             config=types.GenerateContentConfig(
                 max_output_tokens=20,
                 temperature=0,
-                thinking_config=types.ThinkingConfig(thinking_budget=0),
             ),
         )
         reply = (response.text or "").strip()

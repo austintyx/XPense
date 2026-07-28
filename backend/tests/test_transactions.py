@@ -269,7 +269,12 @@ def test_manual_add_accepts_food_subcategory(client, user):
     assert response.json()["subcategory"] == "Coffee"
 
 
-def test_categorize_pending_backfills_hardcoded_matchable_rows(client, db_session, user):
+def test_categorize_pending_backfills_hardcoded_matchable_rows(client, db_session, user, monkeypatch):
+    # This test is about the hardcoded-rule/subcategory backfill path specifically, not the AI
+    # step -- pin it off so the test stays deterministic regardless of whether a real
+    # GEMINI_API_KEY happens to be configured in the local/CI environment's .env.
+    monkeypatch.setattr("app.services.categorize.ai_category", lambda merchant, bank: None)
+
     uncategorized = _make_txn(db_session, user, merchant_raw="BUS/MRT", category=None)
     already_done = _make_txn(db_session, user, merchant_raw="SOMETHING", category="Shopping")
     unresolvable = _make_txn(db_session, user, merchant_raw="ZZZZZ UNKNOWN MERCHANT", category=None)

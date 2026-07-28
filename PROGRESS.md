@@ -2051,3 +2051,38 @@ confirm nothing depended on it being present.
 **Manual steps for the human:** get a free key at https://aistudio.google.com/apikey (no card
 required) and set `GEMINI_API_KEY` in `backend/.env`; run `alembic upgrade head` on the deployed
 Render database whenever next deployed, same as every prior schema change in this project.
+
+## Live-tested the Gemini key against the real API and fixed two real issues it surfaced
+
+Once the human set a real `GEMINI_API_KEY`, testing `ai_category()` directly against the live API
+(rather than trusting the mocked unit tests alone) surfaced two problems no amount of code review
+would have caught:
+
+1. **`gemini-2.5-flash-lite` is already deprecated for new accounts** -- `404 NOT_FOUND: ... no
+   longer available to new users`. Queried `client.models.list()` against the real key to find
+   what's actually available for this account rather than guessing again, and found
+   `gemini-flash-lite-latest` (an alias Google keeps pointed at their current recommended
+   lightweight model) works -- switched to that alias specifically so this doesn't need another
+   manual fix the next time Google rotates model generations.
+2. **`thinking_config=ThinkingConfig(thinking_budget=0)`** (added to keep classification calls
+   cheap/fast) **caused an outright `400 INVALID_ARGUMENT`** on this model -- it doesn't accept
+   that field. Removed it; the model classifies correctly and fast without it regardless.
+
+Also hit a stale-local-database issue unrelated to the code: `alembic current` showed the dev
+Postgres one revision behind head (the `merchant_category_cache` migration wasn't actually applied
+-- likely the docker container got recreated at some point after the earlier session applied it).
+Re-ran `alembic upgrade head` to fix.
+
+**Also found and fixed a real test-hygiene gap**: once a real key was in `backend/.env`,
+`test_categorize_pending_backfills_hardcoded_matchable_rows` started actually calling the live
+Gemini API for its "unresolvable merchant" fixture and got a real (non-None) category back,
+breaking an assertion that implicitly assumed no AI key would ever be configured locally.
+Monkeypatched `ai_category` to `None` in that test specifically, since it's testing the
+hardcoded-rule/subcategory-backfill path, not AI behavior -- makes the test deterministic
+regardless of what's in whoever's local `.env`.
+
+**Verified end-to-end** with the real key: `ai_category()` correctly classifies real merchant
+names (SAIZERIYA -> Food, DAISO JAPAN -> Shopping, SPOTIFY -> Entertainment, an unrecognizable
+name -> Other), and `categorize_transaction()`'s cache correctly short-circuits a second call for
+the same merchant (confirmed by inspecting the `merchant_category_cache` row directly, not just
+trusting the mocked test). Full backend suite re-confirmed at 196 passed after these fixes.
