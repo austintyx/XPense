@@ -9,6 +9,7 @@ import { TransactionsProvider } from './store/TransactionsProvider';
 export function mockClientDefaults(overrides: {
   transactions?: client.Transaction[];
   transfers?: client.Transaction[];
+  income?: client.Transaction[];
   summary?: client.Summary;
   budget?: client.Budget;
   goal?: client.SavingsGoal;
@@ -16,11 +17,11 @@ export function mockClientDefaults(overrides: {
   accounts?: client.EmailAccount[];
   categories?: client.CustomCategories;
 } = {}) {
-  jest
-    .spyOn(client, 'getTransactions')
-    .mockImplementation(async (type = 'expense') =>
-      type === 'transfer' ? (overrides.transfers ?? []) : (overrides.transactions ?? []),
-    );
+  jest.spyOn(client, 'getTransactions').mockImplementation(async (type = 'expense') => {
+    if (type === 'transfer') return overrides.transfers ?? [];
+    if (type === 'income') return overrides.income ?? [];
+    return overrides.transactions ?? [];
+  });
   jest.spyOn(client, 'getSummary').mockResolvedValue(
     overrides.summary ?? { user_id: 1, month: '2026-07', categories: [], total: '0' },
   );

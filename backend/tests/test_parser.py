@@ -64,7 +64,7 @@ CASES = [
             currency="SGD",
             merchant_raw="LOU SIM TENG",
             direction=DirectionEnum.credit,
-            type=TransactionTypeEnum.transfer,
+            type=TransactionTypeEnum.income,
             bank="DBS",
         ),
         dict(day=23, month=7, hour=22, minute=31, year=2026),
@@ -147,10 +147,10 @@ def test_parses_expected_fields(fixture, sender, expected, expected_dt):
         assert result.txn_at.year == expected_dt["year"]
 
 
-def test_dbs_paynow_wording_containing_received_classifies_as_transfer():
+def test_dbs_paynow_wording_containing_received_classifies_as_income():
     # Synthetic text (not a verified real DBS wording, unlike the fixtures above) exercising the
     # receive/received boundary directly: money coming *into* the account isn't spending, so it
-    # should be a transfer even though the "To:" field still carries a PayNow id suffix.
+    # should be income even though the "To:" field still carries a PayNow id suffix.
     text = (
         "Dear Customer, You have received a PayNow payment. Date & Time: 23 Jul 09:15 (SGT) "
         "Amount: SGD50.00 From: JANE TAN To: JANE TAN (MOBILE ending 1234) If unauthorised, "
@@ -158,7 +158,7 @@ def test_dbs_paynow_wording_containing_received_classifies_as_transfer():
     )
     result = parse_email(text, "ibanking.alert@dbs.com")
     assert result is not None
-    assert result.type == TransactionTypeEnum.transfer
+    assert result.type == TransactionTypeEnum.income
 
 
 def test_unparseable_email_returns_none():

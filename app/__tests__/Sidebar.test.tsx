@@ -75,7 +75,7 @@ test('shows an empty state when no accounts are linked', () => {
   expect(screen.getByText('No accounts linked')).toBeTruthy();
 });
 
-test('calls onAddExpense when the Add expense button is pressed', () => {
+test('calls onAddExpense when the Add transaction button is pressed', () => {
   const onAddExpense = jest.fn();
   renderSidebar({ onAddExpense });
 

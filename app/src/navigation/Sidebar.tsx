@@ -78,7 +78,7 @@ export function Sidebar({ activeRoute, onNavigate, reviewCount, accounts, onAddE
       </View>
 
       <Pressable style={styles.addButton} onPress={onAddExpense} testID="sidebar-add-expense">
-        <Text style={styles.addButtonText}>Add expense</Text>
+        <Text style={styles.addButtonText}>Add transaction</Text>
       </Pressable>
     </View>
   );

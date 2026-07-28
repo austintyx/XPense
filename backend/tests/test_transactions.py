@@ -300,7 +300,7 @@ def test_delete_transaction_404s_for_another_users_row(client, db_session, user)
     assert response.status_code == 404
 
 
-def test_summary_sums_categories_and_excludes_transfers(client, db_session, user):
+def test_summary_sums_categories_and_excludes_transfers_and_income(client, db_session, user):
     now = datetime.now(timezone.utc)
     _make_txn(db_session, user, category="Food", amount=Decimal("10.00"), txn_at=now)
     _make_txn(db_session, user, category="Food", amount=Decimal("5.00"), txn_at=now)
@@ -311,6 +311,16 @@ def test_summary_sums_categories_and_excludes_transfers(client, db_session, user
         category=None,
         amount=Decimal("200.00"),
         type=TransactionTypeEnum.transfer,
+        txn_at=now,
+    )
+    # received PayNow money - should be excluded from the spend summary, same as transfers
+    _make_txn(
+        db_session,
+        user,
+        category=None,
+        amount=Decimal("50.00"),
+        type=TransactionTypeEnum.income,
+        direction=DirectionEnum.credit,
         txn_at=now,
     )
     # outside the current month - should be excluded from the summary

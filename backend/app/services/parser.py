@@ -50,11 +50,12 @@ def _classify_paynow(text: str) -> TransactionTypeEnum:
     # Whether the payee is a business (UEN) or a person (mobile/NRIC) doesn't reliably say
     # whether this was really spending -- e.g. plenty of hawker stalls take PayNow on a personal
     # mobile number, not a UEN, and would be wrongly excluded from spend totals. What the email
-    # actually says is more reliable: money coming into the account ("you have received...")
-    # isn't spending -> transfer; everything else (paying a shop or a person) is money going out
-    # -> expense.
+    # actually says is more reliable: money coming into the account ("you have received...") is
+    # income, not spending; everything else (paying a shop or a person) is money going out ->
+    # expense. Note this is distinct from `transfer`, which is reserved for moving money between
+    # the user's own accounts (see _DBS_OWN_TRANSFER_RE / _DBS_TABLE_OWN_ACCOUNT_RE below).
     if _RECEIVE_RE.search(text):
-        return TransactionTypeEnum.transfer
+        return TransactionTypeEnum.income
     return TransactionTypeEnum.expense
 
 

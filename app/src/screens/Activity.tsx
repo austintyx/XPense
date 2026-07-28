@@ -21,12 +21,18 @@ export default function Activity() {
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<Transaction | null>(null);
   const [addVisible, setAddVisible] = useState(false);
-  // Transfers (e.g. moving money between your own accounts) are excluded from spend totals and
-  // budgets everywhere else in the app, but should still be visible somewhere -- the raw "All"
-  // activity feed here, not folded into the expense-only `transactions` the rest of the app uses.
+  // Transfers (moving money between your own accounts) and income (money received from someone
+  // else) are excluded from spend totals and budgets everywhere else in the app, but should still
+  // be visible somewhere -- the raw "All" activity feed here, not folded into the expense-only
+  // `transactions` the rest of the app uses.
   const [transfers, setTransfers] = useState<Transaction[]>([]);
+  const [income, setIncome] = useState<Transaction[]>([]);
 
-  const loadTransfers = () => getTransactions("transfer").then(setTransfers).catch(() => {});
+  const loadTransfers = () =>
+    Promise.all([
+      getTransactions("transfer").then(setTransfers),
+      getTransactions("income").then(setIncome),
+    ]).catch(() => {});
 
   useEffect(() => {
     loadTransfers();
@@ -44,8 +50,11 @@ export default function Activity() {
     return allCategories(customCategories).filter((c) => present.has(c));
   }, [transactions, customCategories]);
   const allTransactions = useMemo(
-    () => [...transactions, ...transfers].sort((a, b) => new Date(b.txn_at).getTime() - new Date(a.txn_at).getTime()),
-    [transactions, transfers],
+    () =>
+      [...transactions, ...transfers, ...income].sort(
+        (a, b) => new Date(b.txn_at).getTime() - new Date(a.txn_at).getTime(),
+      ),
+    [transactions, transfers, income],
   );
 
   const filtered =
@@ -171,8 +180,8 @@ export default function Activity() {
                       </Text>
                     </View>
                     <View style={styles.amountCol}>
-                      <Text style={[styles.amount, txn.type === "transfer" && styles.amountTransfer]}>
-                        {txn.type === "transfer" ? "+" : ""}
+                      <Text style={[styles.amount, txn.type === "income" && styles.amountIncome]}>
+                        {txn.type === "income" ? "+" : ""}
                         {formatMoney(txn.amount)}
                       </Text>
                       <Text style={styles.source}>{deriveSource(txn)}</Text>
@@ -255,6 +264,6 @@ const styles = StyleSheet.create({
   subLabelWarn: { fontFamily: typography.fontFamily.sansMedium, fontSize: typography.size.sm5, color: colors.warnText, marginTop: 3 },
   amountCol: { alignItems: "flex-end", flexShrink: 0, marginLeft: 8 },
   amount: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.md5, color: colors.ink },
-  amountTransfer: { color: colors.success },
+  amountIncome: { color: colors.success },
   source: { fontFamily: typography.fontFamily.mono, fontSize: typography.size.xs, color: colors.ink35, marginTop: 3 },
 });
