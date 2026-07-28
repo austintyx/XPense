@@ -46,7 +46,10 @@ export default function Home() {
     if (period === "week") return weekRangeTransactions(transactions);
     return currentMonthTransactions(transactions);
   }, [transactions, period]);
-  const top4 = useMemo(() => topCategories(periodTransactions, 4), [periodTransactions]);
+  // "Where it went" always reflects the current month regardless of the Today/Week/Month toggle
+  // above (which only controls the hero "Spent this X" card) -- so it doesn't need `period`.
+  const monthTransactions = useMemo(() => currentMonthTransactions(transactions), [transactions]);
+  const top4 = useMemo(() => topCategories(monthTransactions, 4), [monthTransactions]);
   const maxTop = top4[0]?.total ?? 1;
 
   const todayLabel = new Date()

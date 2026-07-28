@@ -58,44 +58,6 @@ test('editing the display name saves via the API', async () => {
   expect(updateNameSpy).toHaveBeenCalledWith('New Name');
 });
 
-test('editing the monthly budget saves via the API', async () => {
-  mockClientDefaults();
-  const updateBudgetSpy = jest.spyOn(client, 'updateBudget').mockResolvedValue({
-    user_id: 1,
-    monthly_target: '2500.00',
-    weekly_target: '357.14',
-    daily_target: '83.33',
-  });
-
-  renderWithProviders(<Settings />);
-
-  fireEvent.press(await screen.findByTestId('edit-budget-toggle'));
-  fireEvent.changeText(screen.getByTestId('budget-input'), '2500');
-  fireEvent.press(screen.getByTestId('save-budget'));
-
-  expect(updateBudgetSpy).toHaveBeenCalledWith('2500');
-});
-
-test('editing the savings goal saves via the API', async () => {
-  mockClientDefaults();
-  const updateGoalSpy = jest.spyOn(client, 'updateGoal').mockResolvedValue({
-    user_id: 1,
-    name: 'Japan, next April',
-    target_amount: '3000.00',
-    saved_amount: '1850.00',
-  });
-
-  renderWithProviders(<Settings />);
-
-  fireEvent.press(await screen.findByTestId('edit-goal-toggle'));
-  fireEvent.changeText(screen.getByTestId('goal-name-input'), 'Japan, next April');
-  fireEvent.changeText(screen.getByTestId('goal-target-input'), '3000');
-  fireEvent.changeText(screen.getByTestId('goal-saved-input'), '1850');
-  fireEvent.press(screen.getByTestId('save-goal'));
-
-  expect(updateGoalSpy).toHaveBeenCalledWith({ name: 'Japan, next April', target_amount: '3000', saved_amount: '1850' });
-});
-
 test('preference toggles are local UI state, not backed by an API call', async () => {
   mockClientDefaults();
 

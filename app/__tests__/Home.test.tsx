@@ -57,13 +57,13 @@ test('switching to the Today segment shows today-scoped spend', async () => {
   expect(await screen.findByTestId('period-amount')).toHaveTextContent('S$8.40');
 });
 
-test('"Where it went" respects the selected period, not just all-time totals', async () => {
-  const threeWeeksAgo = new Date();
-  threeWeeksAgo.setDate(threeWeeksAgo.getDate() - 21);
+test('"Where it went" always shows current-month totals regardless of the selected period', async () => {
+  const earlierThisMonth = new Date();
+  earlierThisMonth.setDate(1);
 
   mockClientDefaults({
     transactions: [
-      makeTxn({ id: 1, category: 'Food', amount: '50.00', txn_at: threeWeeksAgo.toISOString() }),
+      makeTxn({ id: 1, category: 'Food', amount: '50.00', txn_at: earlierThisMonth.toISOString() }),
       makeTxn({ id: 2, category: 'Transport', amount: '5.00', txn_at: new Date().toISOString() }),
     ],
   });
@@ -71,8 +71,12 @@ test('"Where it went" respects the selected period, not just all-time totals', a
   renderWithProviders(<Home />);
 
   await screen.findByTestId('home-screen');
+  expect(await screen.findByText('Food')).toBeTruthy();
+  expect(screen.getByText('Transport')).toBeTruthy();
+
+  // Switching the hero card's period to "Today" must not narrow the category breakdown below it.
   fireEvent.press(screen.getByTestId('period-today'));
 
-  expect(await screen.findByText('Transport')).toBeTruthy();
-  expect(screen.queryByText('Food')).toBeNull();
+  expect(screen.getByText('Food')).toBeTruthy();
+  expect(screen.getByText('Transport')).toBeTruthy();
 });

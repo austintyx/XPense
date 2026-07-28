@@ -1874,3 +1874,82 @@ verified via a direct `parse_email` call before being committed to a test file.
 **Manual steps for the human:** trigger a sync and confirm PayLah! transfers and FAST interbank
 transfers both now show up correctly in Activity (FAST with a clean merchant name, not the raw
 "Name A/C ending NNNN" string).
+
+## Four UI/data fixes: Summary year-total bug, QuickSort merchant edit, Home chart lock, manual subscriptions
+
+**Summary's year (and week/day) total silently undercounted spend.** The headline total (`grand`)
+fell back to `Object.values(categoryTotals(periodTransactions))`, but `categoryTotals` skips any
+transaction with `category === null` -- so any uncategorized expense vanished from the total. Month
+view never showed this because a bypass swaps in the server's accurate `summary.total` for the
+current real month; year/week/day have no such bypass. Fixed by adding a category-agnostic
+`expenseTotal()` helper (`derive.ts`) and using it for the non-month fallback in both `Summary.tsx`
+and `Summary.web.tsx` -- this incidentally also fixes the same latent bug for week and day, not just
+year.
+
+**QuickSort now supports editing the merchant name**, mirroring the existing edit pattern already
+built for `CategorizeSheet.tsx` (an `editing` boolean + `TextInput` swapped in for the merchant
+`<Text>`, Save/Cancel, persisted via the already-existing `editTransaction` action). Scoped to the
+merchant name only -- amount wasn't part of this request.
+
+**Home's "Where it went" card was accidentally coupled to the Today/Week/Month toggle** on mobile
+(`Home.tsx`) -- switching to "Today" or "Week" also narrowed the category breakdown list, which
+should always reflect the current month regardless. (`Home.web.tsx` was already correct -- it never
+had this coupling.) Fixed by sourcing `top4` from `currentMonthTransactions` unconditionally instead
+of the period-dependent `periodTransactions`. This directly reverses a behavior an existing test
+(`Home.test.tsx`) previously asserted on purpose -- that test was rewritten to assert the new,
+requested behavior instead.
+
+**Budgets' Subscriptions card now supports manually-added subscriptions** alongside the existing
+auto-detected recurring charges. Added a new `Subscription` model/table (name, amount, a new
+`FrequencyEnum` of weekly/monthly/quarterly/yearly, next_due) with a `subscriptions` CRUD router
+(GET/POST/DELETE), mirroring the existing `CategoryBudget` pattern exactly (per-user table, simple
+REST router, no update endpoint needed). Frontend: `TransactionsProvider` now fetches
+`subscriptions` alongside everything else and exposes `addSubscription`/`removeSubscription`;
+`Budgets.tsx` merges `deriveRecurring(transactions)` (auto-detected, undeletable) with manually-added
+ones (deletable) into one list, normalizing non-monthly frequencies to a monthly-equivalent amount
+(yearly/12, quarterly/3, weekly*52/12) so the "$X a month across N services" caption stays
+meaningful across mixed frequencies. New `AddSubscriptionSheet.tsx` (name/amount/frequency
+chips/next-due date, reusing `BottomSheet`/`CategoryChip`/`DateField`) opened via an "Add" button on
+the card.
+
+**Tested:** backend `pytest -q` -- 189 passed (+6 new `test_subscriptions.py` cases: create, list
+ordering, delete, 404 on missing, per-user scoping). Frontend `jest --runInBand` -- 95 passed across
+15 suites (+2 `expenseTotal` cases in `derive.test.ts`, +1 year-view case in `Summary.test.tsx`, +2
+merchant-edit cases in `QuickSort.test.tsx`, 1 rewritten case in `Home.test.tsx`, +4 cases in new
+`Budgets.test.tsx`). Ran `alembic upgrade head` against local dev Postgres and confirmed via `\d
+subscriptions` that the table and `frequency_enum` type exist as designed.
+
+**Manual steps for the human:** this migration also needs to run wherever the deployed Render
+backend's database lives, whenever convenient before/during the next deploy.
+
+## Moved Budget & Goals editing from Settings to Budgets; simplified Settings to a single centered column
+
+**Budget & Goals moved off Settings.** The "BUDGET & GOALS" card (edit monthly budget target, edit
+savings goal name/target/saved) previously lived in `Settings.tsx`, entirely separate from the
+read-only budget/goal displays already on `Budgets.tsx` (the MONTHLY BUDGETS card's total and the
+SAVINGS GOAL ring card). Moved the editing UI onto `Budgets.tsx` instead of duplicating a
+navigation link between the two: the MONTHLY BUDGETS card now has an "Edit target" link (next to
+the existing per-category-limits "Edit" button -- two distinct edit affordances, since editing the
+overall monthly target and editing individual category limits are different actions that happened
+to share one button's name in the old Settings copy) that reveals an inline edit panel; the goal
+ring card gained a small "Edit" link that reveals a name/target/saved-so-far edit panel below it.
+Both reuse the already-existing `updateBudget`/`updateGoal` actions from `TransactionsProvider` --
+no backend or provider changes needed, this was purely moving UI. Settings' now-empty
+`budgetGoalsSection`, its state (`editingBudget`/`budgetDraft`/`editingGoal`/`goalNameDraft`/
+`goalTargetDraft`/`goalSavedDraft`), `saveBudget`/`saveGoal`, and the "Manage budgets →" link were
+all deleted -- the sidebar already has a direct "Budgets" nav entry, so no navigation gap was left.
+
+**Settings layout simplified to one centered column.** Settings previously branched into a
+two-column layout on web (`Platform.OS === "web"` check) vs. a single stacked column on native, with
+the removed budget/goals card driving part of that column split. Replaced both branches with a
+single column always, centered via `maxWidth: 640` + `alignSelf: "center"` on the content
+container (was `maxWidth: 1100` sized for two ~540-wide columns) -- same pattern used elsewhere for
+centered-narrow-column screens (e.g. `Login.tsx`'s `maxWidth: 420`). Removed the now-unused
+`columns` style and the `Platform` import (no longer branched on anywhere in this file).
+
+**Tested:** frontend `jest --runInBand` -- 95 passed across 15 suites (unchanged count: the two
+budget/goal-edit tests moved from `Settings.test.tsx` to `Budgets.test.tsx` verbatim, same
+assertions, since the behavior itself didn't change -- only which screen renders the UI). Backend
+suite untouched by this change, reconfirmed still 189 passed.
+
+**Manual steps for the human:** none -- purely a frontend UI relocation, no schema or API changes.

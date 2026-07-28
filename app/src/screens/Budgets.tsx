@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 
-import { getCategoryBudgets, updateCategoryBudget, type CategoryBudget } from "../api/client";
+import { getCategoryBudgets, updateCategoryBudget, type CategoryBudget, type Frequency } from "../api/client";
+import { AddSubscriptionSheet } from "./AddSubscriptionSheet";
 import { useToast } from "../components/Toast";
 import { useAppData } from "../store/TransactionsProvider";
 import { colors, radii, shadow, typography } from "../theme/tokens";
+import { confirmDestructive } from "../utils/confirm";
 import {
   allCategories,
   categoryTotals,
@@ -14,6 +16,24 @@ import {
   formatMoney,
   isExpense,
 } from "../utils/derive";
+
+interface SubscriptionRow {
+  key: string;
+  name: string;
+  amount: number;
+  source: "derived" | "manual";
+  id?: number;
+}
+
+// Normalizes a subscription's amount to a monthly-equivalent so mixed-frequency subscriptions
+// (weekly/quarterly/yearly) can be summed into one meaningful "a month" caption alongside the
+// auto-detected ones, which are already effectively monthly.
+function monthlyEquivalent(amount: number, frequency: Frequency): number {
+  if (frequency === "weekly") return amount * (52 / 12);
+  if (frequency === "quarterly") return amount / 3;
+  if (frequency === "yearly") return amount / 12;
+  return amount;
+}
 
 const GOAL_RING_CIRCUMFERENCE = 2 * Math.PI * 28;
 
@@ -37,12 +57,31 @@ const SUGGESTED_CATEGORY_SHARE: Record<string, number> = {
 };
 
 export default function Budgets() {
-  const { transactions, budget, goal, customCategories, loading } = useAppData();
+  const {
+    transactions,
+    budget,
+    goal,
+    customCategories,
+    subscriptions,
+    removeSubscription,
+    updateBudget,
+    updateGoal,
+    loading,
+  } = useAppData();
   const { showToast } = useToast();
   const [limits, setLimits] = useState<CategoryBudget[]>([]);
   const [limitsLoading, setLimitsLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [addSubscriptionVisible, setAddSubscriptionVisible] = useState(false);
+
+  const [editingBudget, setEditingBudget] = useState(false);
+  const [budgetDraft, setBudgetDraft] = useState("");
+
+  const [editingGoal, setEditingGoal] = useState(false);
+  const [goalNameDraft, setGoalNameDraft] = useState("");
+  const [goalTargetDraft, setGoalTargetDraft] = useState("");
+  const [goalSavedDraft, setGoalSavedDraft] = useState("");
 
   useEffect(() => {
     getCategoryBudgets()
@@ -59,7 +98,32 @@ export default function Budgets() {
     (cat) => (totals[cat] ?? 0) > 0 || limits.some((l) => l.category === cat),
   );
   const recurring = useMemo(() => deriveRecurring(transactions).slice(0, 5), [transactions]);
-  const monthlySubTotal = recurring.reduce((sum, r) => sum + r.amount, 0);
+  const subscriptionRows = useMemo<SubscriptionRow[]>(
+    () => [
+      ...recurring.map((r) => ({ key: `derived-${r.merchant}`, name: r.merchant, amount: r.amount, source: "derived" as const })),
+      ...subscriptions.map((s) => ({
+        key: `manual-${s.id}`,
+        name: s.name,
+        amount: monthlyEquivalent(Number(s.amount), s.frequency),
+        source: "manual" as const,
+        id: s.id,
+      })),
+    ],
+    [recurring, subscriptions],
+  );
+  const monthlySubTotal = subscriptionRows.reduce((sum, r) => sum + r.amount, 0);
+
+  const confirmDeleteSubscription = (id: number, name: string) => {
+    confirmDestructive({
+      title: "Delete subscription?",
+      message: `Delete ${name}? This can't be undone.`,
+      confirmLabel: "Delete",
+      onConfirm: async () => {
+        await removeSubscription(id);
+        showToast("Subscription deleted");
+      },
+    });
+  };
 
   const startEditAll = () => {
     const next: Record<string, string> = {};
@@ -99,6 +163,20 @@ export default function Budgets() {
     setEditMode(false);
   };
 
+  const saveBudget = async () => {
+    if (!budgetDraft.trim()) return;
+    await updateBudget(budgetDraft.trim());
+    setEditingBudget(false);
+    showToast("Budget updated");
+  };
+
+  const saveGoal = async () => {
+    if (!goalNameDraft.trim() || !goalTargetDraft.trim() || !goalSavedDraft.trim()) return;
+    await updateGoal({ name: goalNameDraft.trim(), target_amount: goalTargetDraft.trim(), saved_amount: goalSavedDraft.trim() });
+    setEditingGoal(false);
+    showToast("Goal updated");
+  };
+
   const goalPct = goal && Number(goal.target_amount) > 0 ? Number(goal.saved_amount) / Number(goal.target_amount) : 0;
   const goalPctClamped = Math.min(1, Math.max(0, goalPct));
 
@@ -118,12 +196,39 @@ export default function Budgets() {
                 {formatMoney(budget.monthly_target, false)}
               </Text>
               {!editMode && (
-                <Pressable style={styles.editAllButton} onPress={startEditAll} testID="edit-all-limits">
-                  <Text style={styles.editAllButtonText}>Edit</Text>
-                </Pressable>
+                <>
+                  <Text
+                    style={styles.linkText}
+                    onPress={() => {
+                      setBudgetDraft(budget.monthly_target);
+                      setEditingBudget(!editingBudget);
+                    }}
+                    testID="edit-budget-toggle"
+                  >
+                    {editingBudget ? "Close" : "Edit target"}
+                  </Text>
+                  <Pressable style={styles.editAllButton} onPress={startEditAll} testID="edit-all-limits">
+                    <Text style={styles.editAllButtonText}>Edit</Text>
+                  </Pressable>
+                </>
               )}
             </View>
           </View>
+          {editingBudget && (
+            <View style={styles.editPanel}>
+              <Text style={styles.formLabel}>Monthly budget</Text>
+              <TextInput
+                value={budgetDraft}
+                onChangeText={setBudgetDraft}
+                keyboardType="decimal-pad"
+                style={styles.editInput}
+                testID="budget-input"
+              />
+              <Pressable style={[styles.saveButton, styles.editPanelSaveButton]} onPress={saveBudget} testID="save-budget">
+                <Text style={styles.saveButtonText}>Save</Text>
+              </Pressable>
+            </View>
+          )}
           <View style={{ gap: 18 }}>
             {editMode
               ? categories.map((cat) => (
@@ -218,28 +323,78 @@ export default function Budgets() {
                 {formatMoney(goal.saved_amount, false)} of {formatMoney(goal.target_amount, false)}
               </Text>
             </View>
+            <Text
+              style={styles.goalEditLink}
+              onPress={() => {
+                setGoalNameDraft(goal.name);
+                setGoalTargetDraft(goal.target_amount);
+                setGoalSavedDraft(goal.saved_amount);
+                setEditingGoal(!editingGoal);
+              }}
+              testID="edit-goal-toggle"
+            >
+              {editingGoal ? "Close" : "Edit"}
+            </Text>
           </View>
 
+          {editingGoal && (
+            <View style={[styles.card, styles.editPanel, shadow.card]}>
+              <Text style={styles.formLabel}>Goal name</Text>
+              <TextInput value={goalNameDraft} onChangeText={setGoalNameDraft} style={styles.editInput} testID="goal-name-input" />
+              <Text style={[styles.formLabel, styles.formLabelSpaced]}>Target amount</Text>
+              <TextInput
+                value={goalTargetDraft}
+                onChangeText={setGoalTargetDraft}
+                keyboardType="decimal-pad"
+                style={styles.editInput}
+                testID="goal-target-input"
+              />
+              <Text style={[styles.formLabel, styles.formLabelSpaced]}>Saved so far</Text>
+              <TextInput
+                value={goalSavedDraft}
+                onChangeText={setGoalSavedDraft}
+                keyboardType="decimal-pad"
+                style={styles.editInput}
+                testID="goal-saved-input"
+              />
+              <Pressable style={[styles.saveButton, styles.editPanelSaveButton]} onPress={saveGoal} testID="save-goal">
+                <Text style={styles.saveButtonText}>Save</Text>
+              </Pressable>
+            </View>
+          )}
+
           <View style={[styles.card, shadow.card]}>
-            <Text style={styles.eyebrow}>SUBSCRIPTIONS</Text>
+            <View style={styles.headerRow}>
+              <Text style={styles.eyebrow}>SUBSCRIPTIONS</Text>
+              <Pressable style={styles.editAllButton} onPress={() => setAddSubscriptionVisible(true)} testID="add-subscription">
+                <Text style={styles.editAllButtonText}>Add</Text>
+              </Pressable>
+            </View>
             <Text style={styles.subCaption}>
-              {formatMoney(monthlySubTotal, false)} a month across {recurring.length} {recurring.length === 1 ? "service" : "services"}
+              {formatMoney(monthlySubTotal, false)} a month across {subscriptionRows.length}{" "}
+              {subscriptionRows.length === 1 ? "service" : "services"}
             </Text>
-            {recurring.length === 0 ? (
+            {subscriptionRows.length === 0 ? (
               <Text style={styles.emptyText}>Nothing recurring detected yet.</Text>
             ) : (
-              recurring.map((r) => (
-                <View key={r.merchant} style={styles.subRow}>
+              subscriptionRows.map((r) => (
+                <View key={r.key} style={styles.subRow} testID={`sub-row-${r.key}`}>
                   <Text style={styles.subName} numberOfLines={1}>
-                    {r.merchant}
+                    {r.name}
                   </Text>
                   <Text style={styles.subAmount}>{formatMoney(r.amount)}</Text>
+                  {r.source === "manual" && r.id !== undefined && (
+                    <Pressable onPress={() => confirmDeleteSubscription(r.id!, r.name)} testID={`delete-sub-${r.id}`}>
+                      <Text style={styles.subDelete}>×</Text>
+                    </Pressable>
+                  )}
                 </View>
               ))
             )}
           </View>
         </View>
       </View>
+      <AddSubscriptionSheet visible={addSubscriptionVisible} onClose={() => setAddSubscriptionVisible(false)} />
     </ScrollView>
   );
 }
@@ -255,6 +410,19 @@ const styles = StyleSheet.create({
   headerMeta: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.base, color: colors.ink50 },
   editAllButton: { borderWidth: 1, borderColor: colors.ink14, borderRadius: radii.chip, paddingVertical: 6, paddingHorizontal: 14 },
   editAllButtonText: { fontFamily: typography.fontFamily.sansMedium, fontSize: typography.size.sm5, color: colors.ink },
+  linkText: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.sm5, color: colors.successText },
+  editPanel: { marginTop: 4, marginBottom: 20 },
+  editPanelSaveButton: { alignItems: "center" },
+  formLabel: {
+    fontFamily: typography.fontFamily.mono,
+    fontSize: typography.size.xs5,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    color: colors.ink42,
+    marginBottom: 8,
+  },
+  formLabelSpaced: { marginTop: 10 },
+  goalEditLink: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.sm5, color: colors.onDark60 },
   budgetLine: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 },
   catName: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.md },
   catAmount: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.base, color: colors.ink70 },
@@ -279,4 +447,5 @@ const styles = StyleSheet.create({
   subRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10, paddingVertical: 11, borderTopWidth: 1, borderTopColor: colors.ink06 },
   subName: { flex: 1, fontFamily: typography.fontFamily.sans, fontSize: typography.size.base5 },
   subAmount: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.base5 },
+  subDelete: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.lg, color: colors.ink38, marginLeft: 4 },
 });

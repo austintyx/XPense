@@ -1,6 +1,7 @@
 import {
   dailyTotalsForRange,
   deriveRecurring,
+  expenseTotal,
   initialsOf,
   previousMonthTransactions,
   relativeTime,
@@ -42,6 +43,21 @@ describe('dailyTotalsForRange', () => {
     const end = new Date(2026, 6, 1);
     const txns = [makeTxn({ id: 1, txn_at: start.toISOString(), amount: '10.00', direction: 'credit' })];
     expect(dailyTotalsForRange(txns, start, end)).toEqual([0]);
+  });
+});
+
+describe('expenseTotal', () => {
+  test('sums expenses including uncategorized ones, excluding credits', () => {
+    const txns = [
+      makeTxn({ id: 1, amount: '10.00', category: 'Food' }),
+      makeTxn({ id: 2, amount: '5.00', category: null }), // uncategorized -- still counts
+      makeTxn({ id: 3, amount: '3.00', direction: 'credit' }), // credit -- excluded
+    ];
+    expect(expenseTotal(txns)).toBe(15);
+  });
+
+  test('returns 0 for an empty list', () => {
+    expect(expenseTotal([])).toBe(0);
   });
 });
 

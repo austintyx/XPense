@@ -6,22 +6,27 @@ import {
   type CustomCategory,
   type CustomSubcategory,
   type EmailAccount,
+  type Frequency,
   type SavingsGoal,
+  type Subscription,
   type Summary,
   type Transaction,
   type TransactionDraft,
   CURRENT_USER_ID,
   createCategory,
   createSubcategory,
+  createSubscription,
   createTransaction,
   deleteCategory,
   deleteEmailAccount,
   deleteSubcategory,
+  deleteSubscription,
   deleteTransaction,
   getBudget,
   getCategories,
   getGoal,
   getLinkedAccounts,
+  getSubscriptions,
   getSummary,
   getTransactions,
   getUser,
@@ -42,6 +47,7 @@ interface AppDataState {
   accounts: EmailAccount[];
   customCategories: CustomCategory[];
   customSubcategories: CustomSubcategory[];
+  subscriptions: Subscription[];
   loading: boolean;
   error: string | null;
 }
@@ -60,6 +66,8 @@ interface AppDataActions {
   removeCategory: (categoryId: number) => Promise<void>;
   addSubcategory: (category: string, name: string) => Promise<void>;
   removeSubcategory: (subcategoryId: number) => Promise<void>;
+  addSubscription: (name: string, amount: string, frequency: Frequency, nextDue: string) => Promise<void>;
+  removeSubscription: (subscriptionId: number) => Promise<void>;
 }
 
 type AppDataContextValue = AppDataState & AppDataActions;
@@ -84,6 +92,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     accounts: [],
     customCategories: [],
     customSubcategories: [],
+    subscriptions: [],
     loading: true,
     error: null,
   });
@@ -91,7 +100,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
   const refetch = useCallback(async () => {
     try {
       setState((s) => ({ ...s, error: null }));
-      const [transactions, summary, budget, goal, user, accounts, categoriesData] = await Promise.all([
+      const [transactions, summary, budget, goal, user, accounts, categoriesData, subscriptions] = await Promise.all([
         getTransactions(),
         getSummary(),
         getBudget(),
@@ -99,6 +108,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
         getUser(),
         getLinkedAccounts(),
         getCategories(),
+        getSubscriptions(),
       ]);
       setState((s) => ({
         ...s,
@@ -110,6 +120,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
         accounts,
         customCategories: categoriesData.categories,
         customSubcategories: categoriesData.subcategories,
+        subscriptions,
         loading: false,
       }));
     } catch (err) {
@@ -221,6 +232,19 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     }));
   }, []);
 
+  const addSubscription = useCallback(async (name: string, amount: string, frequency: Frequency, nextDue: string) => {
+    const subscription = await createSubscription(name, amount, frequency, nextDue);
+    setState((s) => ({ ...s, subscriptions: [...s.subscriptions, subscription] }));
+  }, []);
+
+  const removeSubscription = useCallback(async (subscriptionId: number) => {
+    await deleteSubscription(subscriptionId);
+    setState((s) => ({
+      ...s,
+      subscriptions: s.subscriptions.filter((sub) => sub.id !== subscriptionId),
+    }));
+  }, []);
+
   const value = useMemo<AppDataContextValue>(
     () => ({
       ...state,
@@ -237,6 +261,8 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       removeCategory,
       addSubcategory,
       removeSubcategory,
+      addSubscription,
+      removeSubscription,
     }),
     [
       state,
@@ -253,6 +279,8 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       removeCategory,
       addSubcategory,
       removeSubcategory,
+      addSubscription,
+      removeSubscription,
     ],
   );
 

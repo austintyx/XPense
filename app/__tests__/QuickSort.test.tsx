@@ -120,6 +120,44 @@ test('skip removes the card from this session without categorizing it', async ()
   expect(updateSpy).not.toHaveBeenCalled();
 });
 
+test('editing the merchant name saves the new name via editTransaction and keeps the amount unchanged', async () => {
+  mockClientDefaults({
+    transactions: [makeTxn({ id: 1, merchant_raw: 'GRAB', amount: '12.50', category: null })],
+  });
+  const detailsSpy = jest
+    .spyOn(client, 'updateTransactionDetails')
+    .mockResolvedValue(makeTxn({ id: 1, merchant_raw: 'GRAB SG', amount: '12.50', category: null }));
+
+  renderWithProviders(<QuickSort />);
+
+  await screen.findByText('GRAB');
+  fireEvent.press(screen.getByTestId('qs-edit-merchant-link'));
+
+  const input = screen.getByTestId('qs-edit-merchant');
+  fireEvent.changeText(input, 'GRAB SG');
+  fireEvent.press(screen.getByTestId('qs-edit-save'));
+
+  expect(detailsSpy).toHaveBeenCalledWith(1, 'GRAB SG', '12.50');
+  expect(await screen.findByText('GRAB SG')).toBeTruthy();
+});
+
+test('cancelling a merchant-name edit discards the change', async () => {
+  mockClientDefaults({
+    transactions: [makeTxn({ id: 1, merchant_raw: 'GRAB', category: null })],
+  });
+  const detailsSpy = jest.spyOn(client, 'updateTransactionDetails');
+
+  renderWithProviders(<QuickSort />);
+
+  await screen.findByText('GRAB');
+  fireEvent.press(screen.getByTestId('qs-edit-merchant-link'));
+  fireEvent.changeText(screen.getByTestId('qs-edit-merchant'), 'SOMETHING ELSE');
+  fireEvent.press(screen.getByTestId('qs-edit-cancel'));
+
+  expect(screen.getByText('GRAB')).toBeTruthy();
+  expect(detailsSpy).not.toHaveBeenCalled();
+});
+
 test('shows the done state once the queue is empty and "Back to spending" closes the flow', async () => {
   mockClientDefaults({ transactions: [makeTxn({ id: 1, merchant_raw: 'SHOPEE', category: null })] });
   jest.spyOn(client, 'updateTransactionCategory').mockResolvedValue(makeTxn({ id: 1, category: 'Shopping' }));

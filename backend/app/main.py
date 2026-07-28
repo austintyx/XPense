@@ -12,6 +12,7 @@ from app.routers import (
     email_accounts,
     goals,
     health,
+    subscriptions,
     sync,
     transactions,
     users,
@@ -47,3 +48,4 @@ app.include_router(goals.router)
 app.include_router(users.router)
 app.include_router(categories.router)
 app.include_router(category_budgets.router)
+app.include_router(subscriptions.router)

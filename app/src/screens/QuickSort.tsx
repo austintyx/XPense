@@ -1,6 +1,6 @@
 import { useNavigation } from "@react-navigation/native";
-import { useMemo, useRef, useState } from "react";
-import { Animated, Easing, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Animated, Easing, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { CategoryChip } from "../components/CategoryChip";
 import { useToast } from "../components/Toast";
@@ -14,11 +14,48 @@ const EXIT_DURATION = 260;
 const EXIT_TRANSLATE_X = 480;
 const EXIT_EASING = Easing.out(Easing.ease);
 
-function CardContent({ txn }: { txn: Transaction }) {
+interface CardContentProps {
+  txn: Transaction;
+  editing?: boolean;
+  editValue?: string;
+  onStartEdit?: () => void;
+  onChangeEdit?: (value: string) => void;
+  onSaveEdit?: () => void;
+  onCancelEdit?: () => void;
+}
+
+function CardContent({ txn, editing, editValue, onStartEdit, onChangeEdit, onSaveEdit, onCancelEdit }: CardContentProps) {
   return (
     <>
       <Text style={styles.cardSource}>{deriveSource(txn).toUpperCase()}</Text>
-      <Text style={styles.cardMerchant}>{txn.merchant_clean ?? txn.merchant_raw ?? "Unknown"}</Text>
+      {editing ? (
+        <View style={styles.editMerchantRow}>
+          <TextInput
+            value={editValue}
+            onChangeText={onChangeEdit}
+            style={styles.editMerchantInput}
+            autoFocus
+            testID="qs-edit-merchant"
+          />
+          <Text style={styles.editMerchantAction} onPress={onSaveEdit} testID="qs-edit-save">
+            Save
+          </Text>
+          <Text style={[styles.editMerchantAction, styles.editMerchantCancel]} onPress={onCancelEdit} testID="qs-edit-cancel">
+            Cancel
+          </Text>
+        </View>
+      ) : (
+        <View style={styles.merchantRow}>
+          <Text style={styles.cardMerchant} numberOfLines={1}>
+            {txn.merchant_clean ?? txn.merchant_raw ?? "Unknown"}
+          </Text>
+          {onStartEdit && (
+            <Text style={styles.editLink} onPress={onStartEdit} testID="qs-edit-merchant-link">
+              Edit
+            </Text>
+          )}
+        </View>
+      )}
       <Text style={styles.cardWhen}>{formatDateTime(txn.txn_at)}</Text>
       <Text style={styles.cardAmount}>{formatMoney(txn.amount)}</Text>
       <Text style={styles.cardHint}>{REASON_HINT}</Text>
@@ -28,7 +65,7 @@ function CardContent({ txn }: { txn: Transaction }) {
 
 export default function QuickSort() {
   const navigation = useNavigation<any>();
-  const { transactions, categorize, customCategories, customSubcategories } = useAppData();
+  const { transactions, categorize, editTransaction, customCategories, customSubcategories } = useAppData();
   const { showToast } = useToast();
   const [skipped, setSkipped] = useState<number[]>([]);
   // Pushed to immediately on pick, before categorize()'s network round-trip resolves -- lets the
@@ -38,6 +75,8 @@ export default function QuickSort() {
   const [sortedCount, setSortedCount] = useState(0);
   const [exiting, setExiting] = useState<Transaction | null>(null);
   const exitAnim = useRef(new Animated.Value(0)).current;
+  const [editingMerchant, setEditingMerchant] = useState(false);
+  const [editMerchantValue, setEditMerchantValue] = useState("");
 
   const categories = useMemo(() => allCategories(customCategories), [customCategories]);
 
@@ -48,7 +87,26 @@ export default function QuickSort() {
   const current = queue[0] ?? null;
   const isDone = current === null;
 
+  // A new card taking the front position should never inherit the previous card's edit state.
+  useEffect(() => {
+    setEditingMerchant(false);
+  }, [current?.id]);
+
   const close = () => navigation.goBack();
+
+  const startEditMerchant = () => {
+    if (!current) return;
+    setEditMerchantValue(current.merchant_clean ?? current.merchant_raw ?? "");
+    setEditingMerchant(true);
+  };
+
+  const cancelEditMerchant = () => setEditingMerchant(false);
+
+  const saveEditMerchant = async () => {
+    if (!current || !editMerchantValue.trim()) return;
+    await editTransaction(current.id, editMerchantValue.trim(), current.amount);
+    setEditingMerchant(false);
+  };
 
   // Shared by chooseCategory (no-subcategory branch) and chooseSubcategory: snapshots the card
   // being left, advances the queue optimistically, and slides the snapshot out on top of the
@@ -128,7 +186,15 @@ export default function QuickSort() {
               <View style={styles.dummyCardFar} />
               <View style={styles.dummyCardNear} />
               <View style={[styles.frontCard, shadow.quickSortCard]} testID="quicksort-card">
-                <CardContent txn={current!} />
+                <CardContent
+                  txn={current!}
+                  editing={editingMerchant}
+                  editValue={editMerchantValue}
+                  onStartEdit={startEditMerchant}
+                  onChangeEdit={setEditMerchantValue}
+                  onSaveEdit={saveEditMerchant}
+                  onCancelEdit={cancelEditMerchant}
+                />
               </View>
             </>
           )}
@@ -220,7 +286,23 @@ const styles = StyleSheet.create({
     color: colors.ink42,
     marginBottom: 14,
   },
-  cardMerchant: { fontFamily: typography.fontFamily.serif, fontSize: typography.size.heading, marginBottom: 6, color: colors.ink },
+  merchantRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 6 },
+  cardMerchant: { flexShrink: 1, fontFamily: typography.fontFamily.serif, fontSize: typography.size.heading, color: colors.ink },
+  editLink: { fontFamily: typography.fontFamily.sansMedium, fontSize: typography.size.sm, color: colors.ink55 },
+  editMerchantRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 6 },
+  editMerchantInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.ink14,
+    borderRadius: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    fontFamily: typography.fontFamily.serif,
+    fontSize: typography.size.heading,
+    color: colors.ink,
+  },
+  editMerchantAction: { fontFamily: typography.fontFamily.sansMedium, fontSize: typography.size.sm, color: colors.ink },
+  editMerchantCancel: { color: colors.ink45 },
   cardWhen: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.base, color: colors.ink50, marginBottom: 20 },
   cardAmount: { fontFamily: typography.fontFamily.serif, fontSize: typography.size.numberXl, color: colors.ink },
   cardHint: { marginTop: "auto", fontFamily: typography.fontFamily.sans, fontSize: typography.size.sm5, color: colors.ink42 },
