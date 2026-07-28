@@ -92,6 +92,32 @@ CASES = [
         id="dbs_card_transaction_alert",
     ),
     pytest.param(
+        "dbs_paylah_transfer.txt",
+        "paylah.alerts@dbs.com",
+        dict(
+            amount=Decimal("20.00"),
+            currency="SGD",
+            merchant_raw="egg",
+            direction=DirectionEnum.debit,
+            bank="DBS",
+        ),
+        dict(day=20, month=7, hour=2, minute=52),
+        id="dbs_paylah_transfer",
+    ),
+    pytest.param(
+        "dbs_fast_transfer.txt",
+        "ibanking.alert@dbs.com",
+        dict(
+            amount=Decimal("500.00"),
+            currency="SGD",
+            merchant_raw="Austin",
+            direction=DirectionEnum.debit,
+            bank="DBS",
+        ),
+        dict(day=23, month=7, hour=11, minute=4),
+        id="dbs_fast_transfer",
+    ),
+    pytest.param(
         "uob_paynow.txt",
         "alerts@uob.com.sg",
         dict(

@@ -83,6 +83,11 @@ _DBS_TABLE_RE = re.compile(
 # UEN vs. a person's mobile/NRIC); a plain card purchase or NETS Scan & Pay merchant name doesn't.
 _DBS_TABLE_PAYNOW_SUFFIX_RE = re.compile(rf"^(?P<name>.+?)\s*\((?P<idtype>{_ID_SUFFIX})\)$", re.IGNORECASE)
 
+# A FAST interbank transfer's "To:" field names the recipient followed by their account, with no
+# parens (unlike PayNow's "(... ending NNNN)") -- e.g. "Austin A/C ending 2047" -- confirmed
+# against a real screenshot. Strip it for a clean merchant name.
+_DBS_TABLE_ACCOUNT_SUFFIX_RE = re.compile(r"^(?P<name>.+?)\s+A/C ending \d+$", re.IGNORECASE)
+
 
 def _parse_dbs(text: str) -> ParsedTxn | None:
     if match := _DBS_OWN_TRANSFER_RE.search(text):
@@ -118,6 +123,17 @@ def _parse_dbs(text: str) -> ParsedTxn | None:
                 amount=_parse_amount(match["amount"]),
                 currency="SGD",
                 merchant_raw=id_match["name"].strip(),
+                direction=DirectionEnum.debit,
+                bank="DBS",
+                txn_at=txn_at,
+                raw_parsed=match.groupdict(),
+            )
+
+        if acct_match := _DBS_TABLE_ACCOUNT_SUFFIX_RE.match(merchant_field):
+            return ParsedTxn(
+                amount=_parse_amount(match["amount"]),
+                currency="SGD",
+                merchant_raw=acct_match["name"].strip(),
                 direction=DirectionEnum.debit,
                 bank="DBS",
                 txn_at=txn_at,

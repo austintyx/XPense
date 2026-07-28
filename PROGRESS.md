@@ -1839,3 +1839,38 @@ convenient before/during the next deploy. Send a real PayLah! alert email and a 
 interbank-transfer alert email (screenshots, same as the NETS/PayNow/received-transfer ones
 earlier) so both can get actual parsing support -- guessing the format has failed every time it's
 been tried without evidence in this project.
+
+## PayLah! and FAST transfers: turned out already parseable, just needed proof and a merchant-name fix
+
+The human sent real screenshots of both. Both surprised the plan from last round: neither needed a
+new regex at all. DBS reuses the exact same shared "Date & Time:/Amount:/From:/To:" table template
+(`_DBS_TABLE_RE`, `parser.py`) for PayLah! transfers and FAST interbank transfers alike, just like
+it does for card purchases/NETS/PayNow -- confirmed by running `parse_email` directly against the
+*exact* screenshot text before writing anything. Last round's "FAST is confirmed entirely
+unhandled" conclusion was reasoning from absence (no regex mentions "FAST"), which didn't account
+for the generic table handler not caring about the intro wording at all -- a lesson for next time
+this comes up: test against the real text before assuming a new regex is needed.
+
+**PayLah!** (`dbs_paylah_transfer.txt`, sent from `paylah.alerts@dbs.com`, added to the allowlist
+last round): parsed correctly as-is -- `_DBS_TABLE_PAYNOW_SUFFIX_RE` already strips the "(Mobile
+ending NNNN)" suffix from the "To:" field, giving a clean `merchant_raw="egg"`.
+
+**FAST** (`dbs_fast_transfer.txt`, sent from `ibanking.alert@dbs.com`, already allowlisted):
+parsed correctly too, but with a less clean merchant name -- FAST's "To:" field has no parens
+("Austin A/C ending 2047" vs PayNow's "Austin (Mobile ending 2047)"), so it fell through to the
+generic fallback showing the whole raw string. Added `_DBS_TABLE_ACCOUNT_SUFFIX_RE`
+(`^(?P<name>.+?)\s+A/C ending \d+$`) as a new check alongside the PayNow-suffix one, stripping this
+different suffix style too -- confirmed against the real screenshot to give `merchant_raw="Austin"`.
+
+Also softened the `bank_senders.py` comment on `paylah.alerts@dbs.com`: the screenshot proved the
+*content* parses, but showed the sender's display name ("PayLah! Alerts"), not the raw address, so
+that specific address is still not directly confirmed -- flagged for whoever debugs this next if
+PayLah! mail ever goes missing.
+
+**Tested:** full backend suite -- 183 passed (was 181; +2 new fixture-based test cases,
+`dbs_paylah_transfer`/`dbs_fast_transfer`), both fixtures built from the exact screenshot text and
+verified via a direct `parse_email` call before being committed to a test file.
+
+**Manual steps for the human:** trigger a sync and confirm PayLah! transfers and FAST interbank
+transfers both now show up correctly in Activity (FAST with a clean merchant name, not the raw
+"Name A/C ending NNNN" string).
