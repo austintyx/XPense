@@ -139,6 +139,62 @@ test('categorizing a transaction as Transport requires a second subcategory step
   expect(updateSpy).toHaveBeenCalledWith(1, 'Transport', 'Public');
 });
 
+test('the detail sheet for a credit transaction shows credit categories, not expense ones', async () => {
+  mockClientDefaults({
+    transactions: [makeTxn({ id: 1, merchant_raw: 'LOU SIM TENG', direction: 'credit', category: null })],
+  });
+
+  renderWithProviders(<Activity />);
+
+  fireEvent.press(await screen.findByTestId('transaction-1'));
+
+  expect(await screen.findByTestId('cat-chip-Salary')).toBeTruthy();
+  expect(screen.getByTestId('cat-chip-Transfer Received')).toBeTruthy();
+  expect(screen.queryByTestId('cat-chip-Food')).toBeNull();
+  expect(screen.queryByTestId('cat-chip-Groceries')).toBeNull();
+});
+
+test('the detail sheet for a debit transaction still shows the expense categories', async () => {
+  mockClientDefaults({
+    transactions: [makeTxn({ id: 1, merchant_raw: 'SHOPEE', direction: 'debit', category: null })],
+  });
+
+  renderWithProviders(<Activity />);
+
+  fireEvent.press(await screen.findByTestId('transaction-1'));
+
+  expect(await screen.findByTestId('cat-chip-Food')).toBeTruthy();
+  expect(screen.queryByTestId('cat-chip-Salary')).toBeNull();
+});
+
+test('categorizing a credit transaction picks from the credit category list', async () => {
+  mockClientDefaults({
+    transactions: [makeTxn({ id: 1, merchant_raw: 'LOU SIM TENG', direction: 'credit', category: null })],
+  });
+  const updateSpy = jest
+    .spyOn(client, 'updateTransactionCategory')
+    .mockResolvedValue(makeTxn({ id: 1, merchant_raw: 'LOU SIM TENG', direction: 'credit', category: 'Transfer Received' }));
+
+  renderWithProviders(<Activity />);
+
+  fireEvent.press(await screen.findByTestId('transaction-1'));
+  fireEvent.press(await screen.findByTestId('cat-chip-Transfer Received'));
+
+  expect(updateSpy).toHaveBeenCalledWith(1, 'Transfer Received', null);
+});
+
+test('the detail sheet shows the transaction time, not just the date', async () => {
+  mockClientDefaults({
+    transactions: [makeTxn({ id: 1, merchant_raw: 'CHICKEN RICE', txn_at: '2026-07-23T10:30:00Z' })],
+  });
+
+  renderWithProviders(<Activity />);
+
+  fireEvent.press(await screen.findByTestId('transaction-1'));
+
+  expect(await screen.findByText(/\d{1,2}:\d{2}\s?(AM|PM)/i)).toBeTruthy();
+});
+
 test('deleting a transaction confirms, then removes it from the list', async () => {
   mockClientDefaults({
     transactions: [makeTxn({ id: 1, merchant_raw: 'CHICKEN RICE', category: 'Food', subcategory: 'Lunch' })],
@@ -199,6 +255,23 @@ test('add transaction sheet requires amount, merchant and category before Save i
   expect(createSpy).toHaveBeenCalledWith(
     expect.objectContaining({ amount: '19.80', merchant_raw: 'Star Western', category: 'Food' }),
   );
+});
+
+test('toggling Add Transaction to Income swaps the category list and clears a previous pick', async () => {
+  mockClientDefaults({ transactions: [] });
+
+  renderWithProviders(<Activity />);
+
+  fireEvent.press(await screen.findByTestId('add-transaction-button'));
+  fireEvent.press(await screen.findByTestId('draft-cat-Food'));
+  expect(screen.getByTestId('draft-cat-Food')).toBeTruthy();
+
+  fireEvent.press(screen.getByTestId('draft-type-credit'));
+
+  expect(screen.queryByTestId('draft-cat-Food')).toBeNull();
+  expect(await screen.findByTestId('draft-cat-Salary')).toBeTruthy();
+  // Save must be disabled again since the picked category didn't carry over.
+  expect(screen.getByTestId('save-draft').props.accessibilityState?.disabled).toBeTruthy();
 });
 
 test('auto-categorize calls the backfill endpoint and refetches, showing a result toast', async () => {

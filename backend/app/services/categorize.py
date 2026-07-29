@@ -6,10 +6,24 @@ from google.genai import types
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models import MerchantCategoryCache
+from app.models import DirectionEnum, MerchantCategoryCache
 from app.services.parser import SGT
 
 CATEGORIES = ["Food", "Groceries", "Transport", "Shopping", "Bills", "Entertainment", "Health", "Other"]
+
+# Money coming in needs its own taxonomy -- kept in sync by hand with app/src/theme/tokens.ts's
+# CREDIT_CATEGORIES (no shared-constants infrastructure exists between frontend/backend, same as
+# the debit CATEGORIES list above already being duplicated independently on both sides).
+CREDIT_CATEGORIES = [
+    "Salary",
+    "Transfer Received",
+    "Refund",
+    "Reimbursement",
+    "Interest",
+    "Gift",
+    "Investment",
+    "Other Income",
+]
 
 # Public-transit and ride-hailing merchant keywords are split into named patterns so both the
 # top-level category rule and the Transport subcategory rule can reuse them without duplicating
@@ -83,13 +97,14 @@ def transport_subcategory(merchant: str) -> str:
     return "Others"
 
 
-def ai_category(merchant: str, bank: str | None) -> str | None:
+def ai_category(merchant: str, bank: str | None, categories: list[str] = CATEGORIES) -> str | None:
     """Ask Gemini (free tier) to classify a merchant name the hardcoded rules couldn't resolve.
     Never raises -- returns None on any failure (unset key, network error, unparseable reply,
     etc.) so this is a pure enrichment step that can never block a sync. Plain-text classification
-    (not a structured-output schema) is deliberate: the answer space is just the 8 category names,
-    so matching the reply against that list is simpler and more robust than depending on a
-    schema-validation API surface."""
+    (not a structured-output schema) is deliberate: the answer space is just the category names in
+    `categories`, so matching the reply against that list is simpler and more robust than
+    depending on a schema-validation API surface. `categories` defaults to the debit/expense list;
+    pass CREDIT_CATEGORIES for a credit-direction transaction."""
     if not settings.gemini_api_key:
         return None
     try:
@@ -97,8 +112,8 @@ def ai_category(merchant: str, bank: str | None) -> str | None:
         response = client.models.generate_content(
             model="gemini-flash-lite-latest",
             contents=(
-                "Classify this Singapore bank transaction merchant into exactly one spending "
-                f"category: {', '.join(CATEGORIES)}. Reply with ONLY the category name, nothing "
+                "Classify this Singapore bank transaction merchant into exactly one "
+                f"category: {', '.join(categories)}. Reply with ONLY the category name, nothing "
                 f"else. Merchant: \"{merchant}\". Bank: {bank or 'unknown'}."
             ),
             config=types.GenerateContentConfig(
@@ -107,7 +122,7 @@ def ai_category(merchant: str, bank: str | None) -> str | None:
             ),
         )
         reply = (response.text or "").strip()
-        for category in CATEGORIES:
+        for category in categories:
             if reply.lower() == category.lower():
                 return category
         return None
@@ -123,27 +138,32 @@ def subcategory_for(category: str | None, merchant: str, txn_at: datetime) -> st
     return None
 
 
-def _normalize_merchant_key(merchant: str) -> str:
-    return re.sub(r"\s+", " ", merchant).strip().upper()
+def _normalize_merchant_key(merchant: str, direction: DirectionEnum) -> str:
+    # Scoped by direction so a debit and credit transaction that happen to share a merchant
+    # string (e.g. a person's name via both a card refund and a PayNow transfer) never share one
+    # cached category across two unrelated taxonomies.
+    return f"{direction.value}:{re.sub(r'\s+', ' ', merchant).strip().upper()}"
 
 
-def _get_cached_category(db: Session, merchant: str) -> str | None:
+def _get_cached_category(db: Session, merchant: str, direction: DirectionEnum) -> str | None:
     row = (
         db.query(MerchantCategoryCache)
-        .filter_by(merchant_key=_normalize_merchant_key(merchant))
+        .filter_by(merchant_key=_normalize_merchant_key(merchant, direction))
         .one_or_none()
     )
     return row.category if row is not None else None
 
 
-def remember_category(db: Session, merchant: str, category: str) -> None:
+def remember_category(
+    db: Session, merchant: str, category: str, direction: DirectionEnum = DirectionEnum.debit
+) -> None:
     """Upserts the merchant->category cache, overwriting any existing entry -- called both after
     a successful AI classification and whenever a user manually (re)categorizes a transaction, so
     a user's correction always wins over a prior guess and sticks for every future transaction
     from that merchant. Flushes (but doesn't commit) so the change is visible to a subsequent
     _get_cached_category call later in the same request/batch -- this project's sessions are
     created with autoflush=False, so that visibility isn't automatic."""
-    key = _normalize_merchant_key(merchant)
+    key = _normalize_merchant_key(merchant, direction)
     row = db.query(MerchantCategoryCache).filter_by(merchant_key=key).one_or_none()
     if row is None:
         db.add(MerchantCategoryCache(merchant_key=key, category=category))
@@ -153,14 +173,27 @@ def remember_category(db: Session, merchant: str, category: str) -> None:
 
 
 def categorize_transaction(
-    db: Session, merchant: str, bank: str | None, txn_at: datetime
+    db: Session,
+    merchant: str,
+    bank: str | None,
+    txn_at: datetime,
+    direction: DirectionEnum = DirectionEnum.debit,
 ) -> tuple[str | None, str | None]:
-    category = hardcoded_category(merchant)
-    if category is None:
-        category = _get_cached_category(db, merchant)
+    if direction == DirectionEnum.credit:
+        # None of the hardcoded rules (NTUC, Grab, Starbucks, ...) are meaningful for money
+        # coming in -- skip straight to the credit-scoped cache/AI classification.
+        category = _get_cached_category(db, merchant, direction)
         if category is None:
-            category = ai_category(merchant, bank)
+            category = ai_category(merchant, bank, CREDIT_CATEGORIES)
             if category is not None:
-                remember_category(db, merchant, category)
+                remember_category(db, merchant, category, direction)
+    else:
+        category = hardcoded_category(merchant)
+        if category is None:
+            category = _get_cached_category(db, merchant, direction)
+            if category is None:
+                category = ai_category(merchant, bank, CATEGORIES)
+                if category is not None:
+                    remember_category(db, merchant, category, direction)
     subcategory = subcategory_for(category, merchant, txn_at)
     return category, subcategory

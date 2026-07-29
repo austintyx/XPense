@@ -81,6 +81,31 @@ export const CATEGORIES: CategoryId[] = [
   "Other",
 ];
 
+// Money coming in needs its own taxonomy -- "Groceries"/"Transport" etc. don't mean anything for
+// a salary deposit or a PayNow transfer received. "Transfer Received" specifically covers the
+// PayNow-received bank alerts this app already parses.
+export const CREDIT_CATEGORIES: string[] = [
+  "Salary",
+  "Transfer Received",
+  "Refund",
+  "Reimbursement",
+  "Interest",
+  "Gift",
+  "Investment",
+  "Other Income",
+];
+
+const CREDIT_CATEGORY_HUES: Record<string, number> = {
+  Salary: 150,
+  "Transfer Received": 170,
+  Refund: 190,
+  Reimbursement: 130,
+  Interest: 200,
+  Gift: 320,
+  Investment: 210,
+  "Other Income": 100,
+};
+
 export const FOOD_SUBCATEGORIES = ["Breakfast", "Lunch", "Dinner", "Beverage", "Others"] as const;
 export const TRANSPORT_SUBCATEGORIES = ["Public", "Private", "Others"] as const;
 
@@ -101,7 +126,7 @@ function hashHue(id: string): number {
 }
 
 function hueFor(id: string): number {
-  return CATEGORY_HUES[id as CategoryId] ?? hashHue(id);
+  return CATEGORY_HUES[id as CategoryId] ?? CREDIT_CATEGORY_HUES[id] ?? hashHue(id);
 }
 
 // "Uncategorized" isn't a real category -- give it a fixed neutral gray (chroma 0) at each

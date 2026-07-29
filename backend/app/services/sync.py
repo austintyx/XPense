@@ -91,7 +91,7 @@ def sync_email_account(db: Session, account: EmailAccount, since: datetime | Non
                     parsed.merchant_raw = grab_merchant
             else:
                 parsed.category, parsed.subcategory = categorize_transaction(
-                    db, parsed.merchant_raw, parsed.bank, parsed.txn_at
+                    db, parsed.merchant_raw, parsed.bank, parsed.txn_at, parsed.direction
                 )
         elif parsed.subcategory is None:
             # The parser already hardcoded a category (e.g. SimplyGo transit -> Transport) --

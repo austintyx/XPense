@@ -1,4 +1,5 @@
 import {
+  allCategories,
   dailyTotalsForRange,
   deriveRecurring,
   expenseTotal,
@@ -6,7 +7,25 @@ import {
   previousMonthTransactions,
   relativeTime,
 } from '../src/utils/derive';
+import { CATEGORIES, CREDIT_CATEGORIES } from '../src/theme/tokens';
 import { makeTxn } from '../src/testUtils';
+
+describe('allCategories', () => {
+  test('defaults to the debit list plus any custom categories', () => {
+    const result = allCategories([{ id: 1, name: 'Side Hustle' }]);
+    expect(result).toEqual([...CATEGORIES, 'Side Hustle']);
+  });
+
+  test('direction "credit" returns the fixed credit list, ignoring custom categories', () => {
+    const result = allCategories([{ id: 1, name: 'Side Hustle' }], 'credit');
+    expect(result).toEqual(CREDIT_CATEGORIES);
+    expect(result).not.toContain('Side Hustle');
+  });
+
+  test('direction "debit" is equivalent to the default', () => {
+    expect(allCategories([], 'debit')).toEqual(allCategories([]));
+  });
+});
 
 describe('previousMonthTransactions', () => {
   test('returns only transactions from the calendar month before now', () => {
