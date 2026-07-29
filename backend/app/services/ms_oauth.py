@@ -15,12 +15,16 @@ SCOPES = " ".join(["offline_access", "User.Read", "Mail.Read"])
 
 
 def build_authorization_url(state: str) -> str:
+    # No `prompt=consent` -- forcing that shows Microsoft's full permissions screen on every
+    # single connect, even a repeat one for an already-authorized account. Without it, a repeat
+    # authorization is a quick silent re-auth instead. Unlike Google, Microsoft's v2.0 endpoint
+    # still returns a refresh_token on every exchange as long as `offline_access` is in scope, so
+    # there's no equivalent "only issued once" nuance to handle here.
     params = {
         "client_id": settings.ms_client_id,
         "redirect_uri": settings.ms_redirect_uri,
         "response_type": "code",
         "scope": SCOPES,
-        "prompt": "consent",
         "state": state,
     }
     return f"{AUTH_URL}?{urlencode(params)}"

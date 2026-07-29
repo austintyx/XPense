@@ -21,13 +21,19 @@ SCOPES = " ".join(
 
 
 def build_authorization_url(state: str) -> str:
+    # No `prompt=consent` -- forcing that shows Google's full consent screen on every single
+    # connect, even a repeat one for an already-authorized account. Without it, a repeat
+    # authorization is a quick silent re-auth instead. This does mean a repeat grant's token
+    # response won't include a new refresh_token (Google only issues one on the first consent per
+    # user+client+scope) -- _upsert_email_account in routers/auth.py already handles that
+    # correctly by only overwriting the stored refresh token when the response actually includes
+    # one, so the existing one is kept rather than being wiped.
     params = {
         "client_id": settings.google_client_id,
         "redirect_uri": settings.google_redirect_uri,
         "response_type": "code",
         "scope": SCOPES,
         "access_type": "offline",
-        "prompt": "consent",
         "state": state,
     }
     return f"{AUTH_URL}?{urlencode(params)}"
