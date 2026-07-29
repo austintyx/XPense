@@ -29,7 +29,7 @@ export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetPro
   const [category, setCategory] = useState<string | null>(null);
   const [subcategory, setSubcategory] = useState<string | null>(null);
 
-  const categories = useMemo(() => allCategories(customCategories), [customCategories]);
+  const categories = useMemo(() => allCategories(customCategories, direction), [customCategories, direction]);
   const subcategories = category ? mergedSubcategories(category, customSubcategories) : [];
 
   const reset = () => {
@@ -75,7 +75,13 @@ export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetPro
         {DIRECTION_OPTIONS.map((opt) => (
           <Pressable
             key={opt.value}
-            onPress={() => setDirection(opt.value)}
+            onPress={() => {
+              // The category lists differ by direction -- a category picked under the old
+              // direction may not exist in the new one, so don't carry it over.
+              setDirection(opt.value);
+              setCategory(null);
+              setSubcategory(null);
+            }}
             style={[styles.typeOption, direction === opt.value && styles.typeOptionActive]}
             testID={`draft-type-${opt.value}`}
           >

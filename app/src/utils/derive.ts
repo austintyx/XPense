@@ -1,5 +1,5 @@
 import type { CustomCategory, CustomSubcategory, Transaction } from "../api/client";
-import { CATEGORIES, subcategoriesFor, type CategoryId } from "../theme/tokens";
+import { CATEGORIES, CREDIT_CATEGORIES, subcategoriesFor, type CategoryId } from "../theme/tokens";
 
 export function formatMoney(amount: number | string, decimals = true): string {
   const value = typeof amount === "string" ? Number(amount) : amount;
@@ -309,8 +309,14 @@ export function calendarWeekTransactions(transactions: Transaction[], anchor: Da
  * React Native has no CSS grid, and a flat `flexWrap` row of `width: '${100/7}%'` cells drops a
  * column (visually) because 100/7 is a repeating decimal that rounds over 100% across 7 siblings
  * -- chunking into fixed rows of `flex: 1` cells sidesteps that entirely. */
-/** Built-in category names plus any custom ones the user added, in that order. */
-export function allCategories(customCategories: CustomCategory[]): string[] {
+/** Built-in category names plus any custom ones the user added, in that order. Credit
+ * transactions (money in) get their own fixed taxonomy instead -- custom categories aren't merged
+ * in for "credit" since there's no direction concept in Settings' Manage Categories UI yet. */
+export function allCategories(
+  customCategories: CustomCategory[],
+  direction: "debit" | "credit" = "debit",
+): string[] {
+  if (direction === "credit") return [...CREDIT_CATEGORIES];
   return [...CATEGORIES, ...customCategories.map((c) => c.name)];
 }
 

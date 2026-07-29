@@ -7,7 +7,7 @@ import { useToast } from "../components/Toast";
 import { useAppData } from "../store/TransactionsProvider";
 import { categoryColorChip, colors, typography } from "../theme/tokens";
 import { confirmDestructive } from "../utils/confirm";
-import { allCategories, deriveSource, formatMoney, mergedSubcategories } from "../utils/derive";
+import { allCategories, deriveSource, formatDateTime, formatMoney, mergedSubcategories } from "../utils/derive";
 import type { Transaction } from "../api/client";
 
 interface CategorizeSheetProps {
@@ -23,7 +23,10 @@ export function CategorizeSheet({ transaction, onClose }: CategorizeSheetProps) 
   const [editMerchant, setEditMerchant] = useState("");
   const [editAmount, setEditAmount] = useState("");
 
-  const categories = useMemo(() => allCategories(customCategories), [customCategories]);
+  const categories = useMemo(
+    () => allCategories(customCategories, transaction?.direction ?? "debit"),
+    [customCategories, transaction?.direction],
+  );
 
   useEffect(() => {
     if (transaction) {
@@ -142,7 +145,7 @@ export function CategorizeSheet({ transaction, onClose }: CategorizeSheetProps) 
       )}
       <View style={styles.metaRow}>
         <Text style={styles.meta}>
-          {new Date(transaction.txn_at).toLocaleDateString()} · read from {deriveSource(transaction)}
+          {formatDateTime(transaction.txn_at)} · read from {deriveSource(transaction)}
         </Text>
         {!editing && (
           <Text style={styles.editLink} onPress={startEdit} testID="edit-transaction">

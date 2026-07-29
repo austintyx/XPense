@@ -4,8 +4,9 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from app.config import settings
-from app.models import MerchantCategoryCache
+from app.models import DirectionEnum, MerchantCategoryCache
 from app.services.categorize import (
+    CREDIT_CATEGORIES,
     ai_category,
     categorize_transaction,
     food_subcategory,
@@ -195,7 +196,7 @@ def test_categorize_transaction_prefers_hardcoded_and_skips_ai(monkeypatch, db_s
 
 
 def test_categorize_transaction_falls_back_to_ai_and_sets_food_subcategory(monkeypatch, db_session):
-    monkeypatch.setattr("app.services.categorize.ai_category", lambda merchant, bank: "Food")
+    monkeypatch.setattr("app.services.categorize.ai_category", lambda merchant, bank, categories=None: "Food")
 
     category, subcategory = categorize_transaction(
         db_session, "SAIZERIYA - POIZ CENTRE", "DBS", datetime(2026, 7, 23, 19, 0, tzinfo=SGT)
@@ -207,7 +208,7 @@ def test_categorize_transaction_falls_back_to_ai_and_sets_food_subcategory(monke
 def test_categorize_transaction_caches_ai_result_and_skips_ai_on_repeat(monkeypatch, db_session):
     calls = []
 
-    def fake_ai_category(merchant, bank):
+    def fake_ai_category(merchant, bank, categories=None):
         calls.append(merchant)
         return "Food"
 
@@ -232,3 +233,50 @@ def test_remember_category_overwrites_existing_cache_entry(db_session):
     rows = db_session.query(MerchantCategoryCache).all()
     assert len(rows) == 1
     assert rows[0].category == "Shopping"
+
+
+def test_categorize_transaction_credit_skips_hardcoded_rules_and_uses_credit_categories(monkeypatch, db_session):
+    # "LOU SIM TENG" would never match a hardcoded rule anyway, but the point is that credit
+    # transactions never even consult hardcoded_category (all expense-merchant patterns) -- go
+    # straight to AI with the credit category list.
+    seen_categories = []
+
+    def fake_ai_category(merchant, bank, categories=None):
+        seen_categories.append(categories)
+        return "Transfer Received"
+
+    monkeypatch.setattr("app.services.categorize.ai_category", fake_ai_category)
+
+    category, subcategory = categorize_transaction(
+        db_session, "LOU SIM TENG", "DBS", datetime(2026, 7, 23, 19, 0, tzinfo=SGT), DirectionEnum.credit
+    )
+    assert category == "Transfer Received"
+    assert subcategory is None  # no subcategory concept for credit categories
+    assert seen_categories == [CREDIT_CATEGORIES]
+
+
+def test_categorize_transaction_debit_hardcoded_rule_is_never_consulted_for_credit(monkeypatch, db_session):
+    # "BUS/MRT" hardcoded-matches Transport for a debit transaction -- for a credit transaction
+    # with the exact same merchant string, that rule must not apply at all.
+    monkeypatch.setattr("app.services.categorize.ai_category", lambda merchant, bank, categories=None: "Other Income")
+
+    category, _ = categorize_transaction(
+        db_session, "BUS/MRT", "DBS", datetime(2026, 7, 23, 19, 0, tzinfo=SGT), DirectionEnum.credit
+    )
+    assert category == "Other Income"
+
+
+def test_merchant_cache_is_scoped_by_direction(monkeypatch, db_session):
+    # The exact same merchant string, once as a debit and once as a credit transaction, must not
+    # share a cached category between the two unrelated taxonomies.
+    monkeypatch.setattr("app.services.categorize.ai_category", lambda merchant, bank, categories=None: (
+        "Food" if categories is not CREDIT_CATEGORIES else "Gift"
+    ))
+
+    txn_at = datetime(2026, 7, 23, 19, 0, tzinfo=SGT)
+    debit_category, _ = categorize_transaction(db_session, "SAME NAME", "DBS", txn_at, DirectionEnum.debit)
+    credit_category, _ = categorize_transaction(db_session, "SAME NAME", "DBS", txn_at, DirectionEnum.credit)
+
+    assert debit_category == "Food"
+    assert credit_category == "Gift"
+    assert db_session.query(MerchantCategoryCache).count() == 2

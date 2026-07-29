@@ -2228,3 +2228,74 @@ not a confirmed logout -- that distinction is the entire point of the fix).
 diagnosing the discovery above (confirmed via `alembic current` -> head) -- no separate step
 needed unless a different environment/database is used for deployment. Register a test account
 through the app, close and reopen it, confirm it goes straight to Home with no OAuth prompt.
+
+## Also removed hardcoded prompt=consent from Google/Microsoft OAuth
+
+Small follow-up once the user asked *why* Microsoft always re-asked for mail permission: two
+separate things were going on. `Mail.Read`/`gmail.readonly` is genuinely required (that's the
+whole feature) and isn't going anywhere -- but `prompt=consent` was also hardcoded on every single
+authorization request in both `google_oauth.py` and `ms_oauth.py`, forcing the *full* consent
+screen even on a repeat connect for an already-authorized account. Removed it from both. Google's
+refresh_token is only issued on the very first consent per user+client+scope once this is removed,
+but `_upsert_email_account` (`routers/auth.py`) already only overwrites the stored refresh token
+when the response actually includes one, so a repeat grant correctly keeps the existing token
+instead of losing it -- verified this by reading the code, not assumed. `pytest -q` -- 203 passed,
+unaffected (no test asserted on `prompt` being present).
+
+## Transaction detail sheet now shows time; credit transactions get their own category list
+
+Two related gaps, found by tracing the code rather than assumed:
+
+1. **QuickSort showed date+time; Activity's tap-to-open detail sheet (`CategorizeSheet.tsx`) only
+   showed a bare date** -- it called `new Date(...).toLocaleDateString()` directly instead of the
+   shared `formatDateTime` helper `QuickSort.tsx` already used. Fixed by switching to the same
+   helper, so both screens now show the identical "23 Jul, 3:45 PM" format.
+
+2. **Every category picker showed the same fixed 8 expense categories (Food, Groceries, Transport,
+   ...) regardless of whether the transaction was a debit or a credit** -- confirmed
+   `allCategories()` had no direction concept at all, and `AddTransactionSheet.tsx`, despite
+   already having its own Expense/Income toggle, didn't use it to change the category list. A
+   salary deposit had to be filed under something like "Groceries." `QuickSort.tsx` needed no
+   change -- its queue only ever contains debit transactions by construction (`uncategorized()`
+   filters on `isExpense`).
+
+**New preloaded credit-category list** (`app/src/theme/tokens.ts`'s `CREDIT_CATEGORIES`, mirrored
+in `backend/app/services/categorize.py`'s `CREDIT_CATEGORIES` -- same independent-duplication
+pattern the debit `CATEGORIES` list already has between frontend/backend, no shared-constants
+infra exists to dedupe it): `Salary`, `Transfer Received`, `Refund`, `Reimbursement`, `Interest`,
+`Gift`, `Investment`, `Other Income`. `Transfer Received` specifically covers the PayNow-received
+alerts this app already parses. Each got a curated hue in a new `CREDIT_CATEGORY_HUES` map, same
+"designed, not random" treatment the 8 expense categories already get -- `hueFor()` now checks
+`CATEGORY_HUES ?? CREDIT_CATEGORY_HUES ?? hashHue(id)`, so every existing color call site needed no
+changes itself.
+
+**Frontend**: `allCategories(customCategories, direction = "debit")` -- `"credit"` returns the new
+list untouched (custom categories stay debit-only for now; Settings' Manage Categories UI has no
+direction concept, and adding one is a bigger feature not asked for here). Wired into
+`CategorizeSheet.tsx` (`transaction?.direction`) and `AddTransactionSheet.tsx` (its existing
+`direction` state) -- the latter also now resets `category`/`subcategory` when the Expense/Income
+toggle is pressed, since a category picked under one direction may not exist in the other's list.
+
+**Backend auto-categorization got the same fix, not just the manual picker** -- otherwise every
+sync would keep reintroducing wrong categories on auto-parsed credit alerts (e.g. PayNow received).
+`categorize_transaction()` gained a `direction` param: credit transactions skip
+`hardcoded_category()` entirely (its regex rules -- NTUC, Grab, Starbucks -- are all
+expense-merchant patterns) and go straight to a credit-scoped cache/AI classification;
+`ai_category()` gained a `categories` param so one function serves either list instead of
+duplicating the Gemini-calling logic. **Also fixed a real latent bug while doing this**: the
+merchant->category cache key wasn't scoped by direction at all, so a debit and credit transaction
+that happened to share a merchant string would have silently shared one cached category across two
+unrelated taxonomies -- now the cache key is `f"{direction.value}:{merchant}"`, no migration
+needed since `merchant_key` was already a plain string column.
+
+**Tested:** backend `pytest -q` -- 206 passed (+3 new cases: credit transactions skip hardcoded
+rules and classify against `CREDIT_CATEGORIES`; a merchant string shared between a debit and
+credit transaction gets independently cached categories, not a shared one; existing cache-key
+assertions in `test_transactions.py` updated for the new `"debit:..."`-prefixed key format).
+Frontend `jest --runInBand` -- 130 passed across 21 suites (+7: `derive.test.ts` cases for
+`allCategories`'s new direction param; `Activity.test.tsx` cases for credit-category chips
+appearing/not-appearing correctly by direction, categorizing a credit transaction end-to-end, the
+detail sheet showing a time, and the Add Transaction Income toggle swapping categories and clearing
+a stale pick).
+
+**Manual steps for the human:** none -- purely additive, no schema changes.

@@ -50,7 +50,7 @@ def update_category(transaction_id: int, body: CategoryUpdateIn, db: Session = D
     # A manual (re)categorization is a stronger signal than any prior guess -- remember it so
     # every future transaction from this merchant is categorized the same way with no AI call.
     if txn.merchant_raw:
-        remember_category(db, txn.merchant_raw, body.category)
+        remember_category(db, txn.merchant_raw, body.category, txn.direction)
     db.commit()
     db.refresh(txn)
     return txn
@@ -64,7 +64,7 @@ def categorize_pending(user_id: int, db: Session = Depends(get_db)):
 
     categorized = 0
     for txn in pending:
-        category, subcategory = categorize_transaction(db, txn.merchant_raw or "", txn.bank, txn.txn_at)
+        category, subcategory = categorize_transaction(db, txn.merchant_raw or "", txn.bank, txn.txn_at, txn.direction)
         if category is not None:
             txn.category = category
             txn.subcategory = subcategory
@@ -176,7 +176,7 @@ def create_manual_transaction(body: TransactionCreateIn, db: Session = Depends(g
     )
     db.add(txn)
     if body.category and body.merchant_raw:
-        remember_category(db, body.merchant_raw, body.category)
+        remember_category(db, body.merchant_raw, body.category, body.direction)
     db.commit()
     db.refresh(txn)
     return txn
