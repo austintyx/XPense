@@ -83,15 +83,35 @@ test('shows the Login screen instead of the tab bar when no user is stored', asy
   expect(screen.queryByTestId('tab-Home')).toBeNull();
 });
 
-test('a stored user id that the backend no longer recognizes falls back to the Login screen', async () => {
-  // Simulates the exact bug this feature fixes: a device logged in against a database that
-  // was since wiped/redeployed (e.g. a fresh Render/Supabase instance) still has an old id
-  // sitting in storage.
+test('a stored user id the backend confirms no longer exists (a real 404) falls back to the Login screen', async () => {
+  // Simulates a device logged in against a database that was since wiped/redeployed (e.g. a
+  // fresh Render/Supabase instance) still has an old id sitting in storage -- a *confirmed* 404,
+  // not just a request that failed to complete (see the network-error test below, which must NOT
+  // clear storage the same way).
   await AsyncStorage.setItem('xpense.userId', '999');
-  jest.spyOn(client, 'getUser').mockRejectedValue(new Error('404'));
+  jest.spyOn(client, 'getUser').mockRejectedValue(new client.ApiError('User not found', 404));
 
   render(<App />);
 
   expect(await screen.findByTestId('login-screen')).toBeTruthy();
   expect(await AsyncStorage.getItem('xpense.userId')).toBeNull();
+});
+
+test('a stored user id that fails to verify due to a network/timeout error is kept, not treated as a logout', async () => {
+  // This is the actual bug the fix targets: a Render cold-start timeout must never look
+  // indistinguishable from "this user doesn't exist" -- the session should be preserved and
+  // retried, not silently wiped.
+  jest.useFakeTimers();
+  await AsyncStorage.setItem('xpense.userId', '42');
+  jest.spyOn(client, 'getUser').mockRejectedValue(new TypeError('Network request failed'));
+
+  render(<App />);
+  await jest.advanceTimersByTimeAsync(0);
+  await jest.advanceTimersByTimeAsync(3000);
+  await jest.advanceTimersByTimeAsync(7000);
+
+  expect(await screen.findByTestId('session-error')).toBeTruthy();
+  expect(screen.queryByTestId('login-screen')).toBeNull();
+  expect(await AsyncStorage.getItem('xpense.userId')).toBe('42');
+  jest.useRealTimers();
 });

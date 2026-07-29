@@ -1,9 +1,9 @@
 import * as AuthSession from "expo-auth-session";
 import * as WebBrowser from "expo-web-browser";
 import { useState } from "react";
-import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { buildAuthUrl, syncTransactions, type Provider } from "../api/client";
+import { ApiError, buildAuthUrl, loginWithPassword, registerAccount, syncTransactions, type Provider } from "../api/client";
 import { SyncBackfillSheet } from "../components/SyncBackfillSheet";
 import { useToast } from "../components/Toast";
 import { useAuth } from "../store/AuthProvider";
@@ -16,11 +16,41 @@ const PROVIDER_LABELS: Record<Provider, string> = {
   microsoft: "Continue with Outlook",
 };
 
+type FormMode = "signin" | "register";
+
 export default function Login() {
   const { login } = useAuth();
   const { showToast } = useToast();
   const [connecting, setConnecting] = useState<Provider | null>(null);
   const [backfillPrompt, setBackfillPrompt] = useState<{ userId: number; provider: Provider } | null>(null);
+
+  const [mode, setMode] = useState<FormMode>("signin");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const canSubmitForm = email.trim().length > 0 && password.length > 0;
+
+  const submitForm = async () => {
+    if (!canSubmitForm) return;
+    setSubmitting(true);
+    try {
+      const user =
+        mode === "signin"
+          ? await loginWithPassword(email.trim(), password)
+          : await registerAccount(email.trim(), password, name.trim() || undefined);
+      await login(user.id);
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : "Something went wrong -- try again");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const toggleMode = () => {
+    setMode((m) => (m === "signin" ? "register" : "signin"));
+  };
 
   const connect = async (provider: Provider) => {
     setConnecting(provider);
@@ -83,8 +113,58 @@ export default function Login() {
       <View style={styles.content}>
         <Text style={styles.title}>XPense</Text>
         <Text style={styles.subtitle}>
-          Connect your email and we'll turn your bank alerts into a spending picture automatically.
+          {mode === "signin" ? "Sign in to your account." : "Create an account -- you can connect an email for automatic tracking anytime after."}
         </Text>
+
+        <View style={styles.form}>
+          <TextInput
+            value={email}
+            onChangeText={setEmail}
+            placeholder="Email"
+            autoCapitalize="none"
+            keyboardType="email-address"
+            style={styles.input}
+            testID="login-email"
+          />
+          {mode === "register" && (
+            <TextInput
+              value={name}
+              onChangeText={setName}
+              placeholder="Name (optional)"
+              style={styles.input}
+              testID="login-name"
+            />
+          )}
+          <TextInput
+            value={password}
+            onChangeText={setPassword}
+            placeholder="Password"
+            secureTextEntry
+            style={styles.input}
+            testID="login-password"
+          />
+          <Pressable
+            style={[styles.connectButton, !canSubmitForm && styles.connectButtonDisabled]}
+            onPress={submitForm}
+            disabled={!canSubmitForm || submitting}
+            testID="login-submit"
+          >
+            {submitting ? (
+              <ActivityIndicator color={colors.onDark} />
+            ) : (
+              <Text style={styles.connectButtonText}>{mode === "signin" ? "Sign in" : "Create account"}</Text>
+            )}
+          </Pressable>
+          <Text style={styles.toggleLink} onPress={toggleMode} testID="login-toggle-mode">
+            {mode === "signin" ? "Create an account" : "Sign in instead"}
+          </Text>
+        </View>
+
+        <View style={styles.dividerRow}>
+          <View style={styles.dividerLine} />
+          <Text style={styles.dividerText}>or</Text>
+          <View style={styles.dividerLine} />
+        </View>
 
         <View style={styles.buttons}>
           {(["google", "microsoft"] as Provider[]).map((provider) => (
@@ -134,6 +214,28 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: spacing.xxl,
   },
+  form: { gap: 10, marginBottom: spacing.lg },
+  input: {
+    borderWidth: 1,
+    borderColor: colors.ink14,
+    borderRadius: radii.card - 2,
+    paddingVertical: 13,
+    paddingHorizontal: 15,
+    fontFamily: typography.fontFamily.sans,
+    fontSize: typography.size.base5,
+    color: colors.ink,
+    backgroundColor: colors.surface,
+  },
+  toggleLink: {
+    fontFamily: typography.fontFamily.sans,
+    fontSize: typography.size.sm5,
+    color: colors.ink55,
+    textAlign: "center",
+    marginTop: 2,
+  },
+  dividerRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: spacing.lg },
+  dividerLine: { flex: 1, height: 1, backgroundColor: colors.ink14 },
+  dividerText: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.sm5, color: colors.ink45 },
   buttons: { gap: 12 },
   connectButton: {
     backgroundColor: colors.ink,
@@ -143,5 +245,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     minHeight: 52,
   },
+  connectButtonDisabled: { backgroundColor: colors.ink16 },
   connectButtonText: { fontFamily: typography.fontFamily.sansMedium, fontSize: typography.size.lg, color: colors.onDark },
 });

@@ -9,6 +9,19 @@ export function setCurrentUserId(id: number): void {
   CURRENT_USER_ID = id;
 }
 
+// Thrown on a non-ok HTTP response (as opposed to a plain network/timeout failure, which throws a
+// bare Error/TypeError from fetch itself) -- lets callers tell "the server responded and said no"
+// apart from "the request never got a response at all" (e.g. a Render cold start).
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 export type Provider = "google" | "microsoft";
 
 export interface EmailAccount {
@@ -347,7 +360,33 @@ export interface AppUser {
 export async function getUser(userId: number = CURRENT_USER_ID): Promise<AppUser> {
   const response = await fetch(`${API_BASE_URL}/user?user_id=${userId}`);
   if (!response.ok) {
-    throw new Error(`Failed to fetch user (${response.status})`);
+    throw new ApiError(`Failed to fetch user (${response.status})`, response.status);
+  }
+  return response.json();
+}
+
+export async function registerAccount(email: string, password: string, name?: string): Promise<AppUser> {
+  const response = await fetch(`${API_BASE_URL}/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password, name: name ?? null }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new ApiError(body?.detail ?? `Failed to register (${response.status})`, response.status);
+  }
+  return response.json();
+}
+
+export async function loginWithPassword(email: string, password: string): Promise<AppUser> {
+  const response = await fetch(`${API_BASE_URL}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new ApiError(body?.detail ?? `Failed to log in (${response.status})`, response.status);
   }
   return response.json();
 }
