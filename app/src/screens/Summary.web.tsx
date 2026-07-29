@@ -2,8 +2,9 @@ import { useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { Donut } from "../components/Donut";
+import { useIsMobileWeb } from "../hooks/useIsMobileWeb";
 import { useAppData } from "../store/TransactionsProvider";
-import { categoryColor, categoryColorBar, colors, radii, shadow, typography, type CategoryId } from "../theme/tokens";
+import { categoryColor, categoryColorBar, colors, radii, shadow, spacing, typography, type CategoryId } from "../theme/tokens";
 import { oklchToHex } from "../theme/oklch";
 import {
   calendarDailyTotals,
@@ -58,6 +59,10 @@ export default function Summary() {
   const [openCat, setOpenCat] = useState<CategoryId | null>(null);
   const now = useMemo(() => new Date(), []);
   const [viewAnchor, setViewAnchor] = useState<Date>(now);
+  const isMobile = useIsMobileWeb();
+  // Applies a row-only flex ratio -- omitted entirely on mobile so a stacked (column) card takes
+  // its own natural full width instead of stretching by a ratio that only makes sense in a row.
+  const rowFlex = (n: number) => (isMobile ? undefined : { flex: n });
 
   // Pill clicks zoom in/out around wherever `viewAnchor` currently is (from drilling or paging)
   // rather than resetting to today -- e.g. drilled into a week in March, clicking "Month" shows
@@ -178,7 +183,11 @@ export default function Summary() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content} testID="summary-screen">
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[styles.content, isMobile && styles.contentMobile]}
+      testID="summary-screen"
+    >
       <View style={styles.pillsRow}>
         {(["day", "week", "month", "year"] as SumPeriod[]).map((p) => (
           <Pressable
@@ -201,8 +210,8 @@ export default function Summary() {
       </View>
 
       {sumView === "chart" ? (
-        <View style={styles.row}>
-          <View style={[styles.card, { flex: 7 }, shadow.card]}>
+        <View style={[styles.row, isMobile && styles.rowStacked]} testID="summary-chart-row">
+          <View style={[styles.card, rowFlex(7), shadow.card]}>
             <View style={styles.navRow}>
               <Pressable onPress={() => pageViewAnchor(-1)} style={styles.navChevron} testID="chart-prev">
                 <Text style={styles.navChevronText}>‹</Text>
@@ -278,7 +287,7 @@ export default function Summary() {
             </View>
           </View>
 
-          <View style={{ flex: 5, gap: 16 }}>
+          <View style={{ ...rowFlex(5), gap: 16 }}>
             <View style={[styles.card, shadow.card]}>
               <Text style={styles.eyebrow}>SIX MONTH TREND</Text>
               <View style={styles.trendRow}>
@@ -312,8 +321,8 @@ export default function Summary() {
           </View>
         </View>
       ) : (
-        <View style={styles.row}>
-          <View style={[styles.card, styles.calendarCard, { flex: 7 }, shadow.card]}>
+        <View style={[styles.row, isMobile && styles.rowStacked]} testID="summary-calendar-row">
+          <View style={[styles.card, styles.calendarCard, rowFlex(7), shadow.card]}>
             <View style={styles.calendarHeaderRow}>
               <View style={styles.calNavGroup}>
                 <Pressable onPress={() => pageViewAnchor(-1)} style={styles.navChevron} testID="cal-prev">
@@ -438,7 +447,7 @@ export default function Summary() {
             </View>
           </View>
 
-          <View style={[styles.card, styles.txListCard, { flex: 5 }, shadow.card]}>
+          <View style={[styles.card, styles.txListCard, rowFlex(5), shadow.card]}>
             <View style={styles.dayDetailHeader}>
               <Text style={styles.eyebrow}>TRANSACTIONS</Text>
               <Text style={styles.dayTotal} testID="period-transactions-total">{formatMoney(grand)}</Text>
@@ -476,6 +485,7 @@ export default function Summary() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.canvas },
   content: { paddingHorizontal: 34, paddingBottom: 56, maxWidth: 1360, width: "100%" },
+  contentMobile: { paddingHorizontal: spacing.screenH, paddingBottom: spacing.screenBottom },
   pillsRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 16 },
   pill: { paddingVertical: 7, paddingHorizontal: 14, borderRadius: radii.pill },
   pillActive: { backgroundColor: colors.ink },
@@ -485,6 +495,7 @@ const styles = StyleSheet.create({
   toggleButton: { paddingVertical: 7, paddingHorizontal: 12, borderRadius: radii.pill, borderWidth: 1, borderColor: colors.ink14, backgroundColor: colors.surface },
   toggleButtonText: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.sm5, color: colors.ink },
   row: { flexDirection: "row", gap: 16, alignItems: "flex-start" },
+  rowStacked: { flexDirection: "column" },
   card: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.ink06, borderRadius: radii.hero, padding: 24 },
   eyebrow: { fontFamily: typography.fontFamily.mono, fontSize: typography.size.xs5, letterSpacing: 1.4, textTransform: "uppercase", color: colors.ink45 },
   navRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 22 },

@@ -5,8 +5,12 @@ import Budgets from '../src/screens/Budgets';
 import * as client from '../src/api/client';
 import { makeSubscription, makeTxn, mockClientDefaults, renderWithProviders } from '../src/testUtils';
 
+jest.mock('../src/hooks/useIsMobileWeb', () => ({ useIsMobileWeb: jest.fn(() => false) }));
+import { useIsMobileWeb } from '../src/hooks/useIsMobileWeb';
+
 beforeEach(() => {
   jest.spyOn(client, 'getCategoryBudgets').mockResolvedValue([]);
+  (useIsMobileWeb as jest.Mock).mockReturnValue(false);
 });
 
 afterEach(() => {
@@ -113,4 +117,27 @@ test('editing the savings goal saves via the API', async () => {
   fireEvent.press(screen.getByTestId('save-goal'));
 
   expect(updateGoalSpy).toHaveBeenCalledWith({ name: 'Japan, next April', target_amount: '3000', saved_amount: '1850' });
+});
+
+test('desktop: the budgets/goal section lays out in a row', async () => {
+  mockClientDefaults();
+
+  renderWithProviders(<Budgets />);
+
+  const row = await screen.findByTestId('budgets-row');
+  expect(row.props.style).toEqual(
+    expect.arrayContaining([expect.objectContaining({ flexDirection: 'row' })]),
+  );
+});
+
+test('mobile: the budgets/goal section stacks into a column', async () => {
+  (useIsMobileWeb as jest.Mock).mockReturnValue(true);
+  mockClientDefaults();
+
+  renderWithProviders(<Budgets />);
+
+  const row = await screen.findByTestId('budgets-row');
+  expect(row.props.style).toEqual(
+    expect.arrayContaining([expect.objectContaining({ flexDirection: 'column' })]),
+  );
 });
