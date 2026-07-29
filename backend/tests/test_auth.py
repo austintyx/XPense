@@ -4,6 +4,7 @@ import pytest
 
 from app.config import settings
 from app.models import EmailAccount, ProviderEnum, User
+from app.security.passwords import hash_password
 from app.services import google_oauth
 from app.services.oauth_state import decode_state, encode_state
 
@@ -206,3 +207,73 @@ def test_google_callback_does_not_overwrite_existing_user_name(client, db_sessio
 
     db_session.refresh(user)
     assert user.name == "Already Set"
+
+
+def test_register_creates_a_user_with_a_hashed_password(client, db_session):
+    response = client.post(
+        "/auth/register",
+        json={"email": "new-person@example.com", "password": "correct-horse-battery-staple", "name": "New Person"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["email"] == "new-person@example.com"
+    assert body["name"] == "New Person"
+    assert "password" not in body
+    assert "password_hash" not in body
+
+    created = db_session.query(User).filter_by(email="new-person@example.com").one()
+    assert created.password_hash is not None
+    assert created.password_hash != "correct-horse-battery-staple"  # never stored in plain text
+
+
+def test_register_twice_with_a_password_already_set_conflicts(client):
+    payload = {"email": "dup@example.com", "password": "first-password"}
+    first = client.post("/auth/register", json=payload)
+    assert first.status_code == 200
+
+    second = client.post("/auth/register", json={**payload, "password": "second-password"})
+    assert second.status_code == 409
+
+
+def test_register_on_an_existing_oauth_only_account_attaches_a_password(client, db_session, user):
+    # `user` fixture is a password-less account (email OAuth-linked, e.g. Gmail) -- registering
+    # with that same email should claim it, not create a second account.
+    assert user.password_hash is None
+
+    response = client.post("/auth/register", json={"email": user.email, "password": "new-password-123"})
+    assert response.status_code == 200
+    assert response.json()["id"] == user.id
+
+    db_session.refresh(user)
+    assert user.password_hash is not None
+
+    assert db_session.query(User).filter_by(email=user.email).count() == 1
+
+
+def test_login_succeeds_with_the_right_password(client, db_session, user):
+    user.password_hash = hash_password("s3cret-password")
+    db_session.commit()
+
+    response = client.post("/auth/login", json={"email": user.email, "password": "s3cret-password"})
+    assert response.status_code == 200
+    assert response.json()["id"] == user.id
+
+
+def test_login_fails_with_the_wrong_password(client, db_session, user):
+    user.password_hash = hash_password("s3cret-password")
+    db_session.commit()
+
+    response = client.post("/auth/login", json={"email": user.email, "password": "wrong-password"})
+    assert response.status_code == 401
+
+
+def test_login_fails_for_an_oauth_only_account_with_no_password_set(client, user):
+    assert user.password_hash is None
+
+    response = client.post("/auth/login", json={"email": user.email, "password": "anything"})
+    assert response.status_code == 401
+
+
+def test_login_fails_for_an_unknown_email(client):
+    response = client.post("/auth/login", json={"email": "nobody@example.com", "password": "anything"})
+    assert response.status_code == 401

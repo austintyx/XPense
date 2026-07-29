@@ -34,6 +34,9 @@ class User(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
     name: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Nullable -- accounts created purely via Gmail/Outlook OAuth never set one; password login is
+    # opt-in on top of that, either at registration or by later "claiming" a password-less account.
+    password_hash: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     email_accounts: Mapped[list["EmailAccount"]] = relationship(back_populates="user")

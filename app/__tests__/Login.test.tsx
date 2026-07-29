@@ -133,3 +133,87 @@ test('a failed backfill sync still logs the person in instead of stranding them'
     expect(await AsyncStorage.getItem('xpense.userId')).toBe('7');
   });
 });
+
+test('signing in with a password logs in without any OAuth flow', async () => {
+  const loginSpy = jest.spyOn(client, 'loginWithPassword').mockResolvedValue({
+    id: 9,
+    email: 'weiling@example.com',
+    name: 'Wei Ling',
+    created_at: '2026-01-01T00:00:00Z',
+  });
+
+  renderLogin();
+
+  fireEvent.changeText(screen.getByTestId('login-email'), 'weiling@example.com');
+  fireEvent.changeText(screen.getByTestId('login-password'), 'correct-password');
+  fireEvent.press(screen.getByTestId('login-submit'));
+
+  await waitFor(() => expect(loginSpy).toHaveBeenCalledWith('weiling@example.com', 'correct-password'));
+  await waitFor(async () => {
+    expect(await AsyncStorage.getItem('xpense.userId')).toBe('9');
+  });
+});
+
+test('a wrong password shows the backend error and does not log in', async () => {
+  jest.spyOn(client, 'loginWithPassword').mockRejectedValue(new client.ApiError('Invalid email or password', 401));
+
+  renderLogin();
+
+  fireEvent.changeText(screen.getByTestId('login-email'), 'weiling@example.com');
+  fireEvent.changeText(screen.getByTestId('login-password'), 'wrong-password');
+  fireEvent.press(screen.getByTestId('login-submit'));
+
+  expect(await screen.findByText('Invalid email or password')).toBeTruthy();
+  expect(await AsyncStorage.getItem('xpense.userId')).toBeNull();
+});
+
+test('switching to Create account and registering logs in with the new account', async () => {
+  const registerSpy = jest.spyOn(client, 'registerAccount').mockResolvedValue({
+    id: 11,
+    email: 'new@example.com',
+    name: 'New Person',
+    created_at: '2026-01-01T00:00:00Z',
+  });
+
+  renderLogin();
+
+  fireEvent.press(screen.getByTestId('login-toggle-mode'));
+  fireEvent.changeText(screen.getByTestId('login-email'), 'new@example.com');
+  fireEvent.changeText(screen.getByTestId('login-name'), 'New Person');
+  fireEvent.changeText(screen.getByTestId('login-password'), 'a-new-password');
+  fireEvent.press(screen.getByTestId('login-submit'));
+
+  await waitFor(() => expect(registerSpy).toHaveBeenCalledWith('new@example.com', 'a-new-password', 'New Person'));
+  await waitFor(async () => {
+    expect(await AsyncStorage.getItem('xpense.userId')).toBe('11');
+  });
+});
+
+test('registering with an email that already has a password shows the conflict error', async () => {
+  jest.spyOn(client, 'registerAccount').mockRejectedValue(
+    new client.ApiError('An account with this email already exists.', 409),
+  );
+
+  renderLogin();
+
+  fireEvent.press(screen.getByTestId('login-toggle-mode'));
+  fireEvent.changeText(screen.getByTestId('login-email'), 'dup@example.com');
+  fireEvent.changeText(screen.getByTestId('login-password'), 'whatever');
+  fireEvent.press(screen.getByTestId('login-submit'));
+
+  expect(await screen.findByText('An account with this email already exists.')).toBeTruthy();
+  expect(await AsyncStorage.getItem('xpense.userId')).toBeNull();
+});
+
+test('the submit button is disabled until both email and password are filled in', async () => {
+  renderLogin();
+
+  const submit = await screen.findByTestId('login-submit');
+  expect(submit.props.accessibilityState?.disabled ?? submit.props.disabled).toBeTruthy();
+
+  fireEvent.changeText(screen.getByTestId('login-email'), 'weiling@example.com');
+  expect(submit.props.accessibilityState?.disabled ?? submit.props.disabled).toBeTruthy();
+
+  fireEvent.changeText(screen.getByTestId('login-password'), 'something');
+  expect(submit.props.accessibilityState?.disabled).toBeFalsy();
+});

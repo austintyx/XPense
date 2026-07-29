@@ -163,3 +163,14 @@ class UserOut(BaseModel):
 
 class UserUpdateIn(BaseModel):
     name: str
+
+
+class RegisterIn(BaseModel):
+    email: str
+    password: str
+    name: str | None = None
+
+
+class LoginIn(BaseModel):
+    email: str
+    password: str

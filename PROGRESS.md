@@ -2153,3 +2153,78 @@ functional, scrolling to the bottom of any screen doesn't hide content behind th
 `Summary`'s year-view month tiles are legible at the smallest widths (fallback if not: an
 `isMobile && { width: "48%" }` override for 2-across instead of 3, same pattern as the other gated
 styles). Also spot-check desktop web (>640px) still looks pixel-identical to before.
+
+## Password-based account registration/login, decoupled from email OAuth linking
+
+**The user's complaint**: they always had to redo the full Gmail/Outlook OAuth "link an email"
+flow to get back into the app. Root-caused (not assumed): `AuthProvider.tsx`'s launch-time session
+check (`getUser(storedId)`) treated *any* failure -- including a plain network/timeout error from
+Render's free-tier backend still cold-starting -- identically to "this user id doesn't exist,"
+wiping the locally stored session and dropping the user onto `Login.tsx`, whose only affordance was
+OAuth (hardcoded to `prompt=consent`, forcing a full re-consent screen every time, not a quick
+re-auth). Confirmed with the user via `AskUserQuestion`: fix that bug **and** still add a
+decoupled password-based registration/login on top, so signing back in never depends on OAuth (or
+cold-start timing) at all -- email linking becomes purely a Settings-level action for the
+bank-alert-parsing feature (already supported there, unchanged), not the login mechanism.
+
+**Mid-implementation discovery, surfaced before continuing rather than silently working around
+it**: applying the new migration revealed `backend/.env`'s `DATABASE_URL` now points at a
+**Supabase-hosted Postgres**, which has its own separate, full-featured built-in `auth.users`
+table (Supabase Auth/GoTrue -- real sessions, email verification, password reset) completely
+independent of this app's own `public.users` table. This meant a genuinely better foundation
+(real tokens instead of hand-rolled hashing) was available for the taking -- flagged it via
+`AskUserQuestion` rather than silently either using it or ignoring it. User chose to stick with the
+already-approved hand-rolled approach for now (smaller, self-contained, ships faster); switching to
+Supabase Auth was explicitly deferred, not rejected, as a bigger separate effort (new dependency,
+JWT verification in FastAPI, rethinking the whole API's `user_id`-trust model).
+
+**1. The actual bug fix** (`app/src/store/AuthProvider.tsx`, `app/src/api/client.ts`): added
+`ApiError` (carries the HTTP status) so a confirmed `404` can be told apart from a network/timeout
+failure, which throws a plain `Error`/`TypeError` instead. The launch check now only clears
+`AsyncStorage` on a real 404; anything else retries up to 3 times with backoff (0s, +3s, +7s --
+covers most Render cold-starts with zero user action), and only after all retries fail does it
+surface a new `sessionError` state (`App.tsx`'s new `SessionErrorScreen`, "Couldn't reach the
+server -- Retry") instead of silently treating a slow backend as a logout.
+
+**2. Backend password support** (`backend/app/models.py`, new Alembic migration, new
+`backend/app/security/passwords.py`, `backend/app/routers/auth.py`): added a nullable
+`password_hash` column to `User` (nullable since OAuth-only accounts never set one). Hashing uses
+stdlib `hashlib.pbkdf2_hmac` with a random salt (600k iterations) -- no new dependency, avoided
+since `cryptography` (already a dependency) is used for a different concern (OAuth token
+encryption) and stdlib PBKDF2 is a well-established, sufficient choice here. New
+`POST /auth/register` (creates a new account, or -- if the email already exists from a prior OAuth
+link with no password set -- **attaches** a password to that same identity instead of fragmenting
+into two accounts; 409s only if a password is already set) and `POST /auth/login` (a single
+generic 401 "Invalid email or password" for wrong-password/unknown-email/OAuth-only-no-password
+alike, standard practice, no extra cost to do correctly).
+
+**3. Frontend** (`app/src/screens/Login.tsx`): added an email/password form (Sign in / Create
+account toggle) above the existing, unchanged OAuth buttons -- both paths remain fully valid.
+Reuses the existing `login(user.id)` action from `AuthProvider` unchanged. Confirmed
+`Settings.tsx`'s existing "connect an additional mailbox" flow already supports linking Gmail/
+Outlook to an *already logged-in* user with zero changes needed -- it just had no reason to be used
+before, since OAuth was also the only way to log in in the first place.
+
+**Explicitly out of scope, stated plainly rather than silently decided**: this does not add real
+session tokens across the API. Every endpoint still trusts a client-supplied `user_id` with no
+verification (documented in `client.ts` as "one device logged into one user") -- a password *gate
+at login* doesn't change that trust model, and retrofitting bearer-token auth everywhere is a much
+larger, separate change.
+
+**Tested:** backend `pytest -q` -- 203 passed (+15 in `test_auth.py`: register creates a hashed,
+never-plaintext, never-returned password; duplicate registration on a password-having account
+409s; registering on an existing password-less OAuth account attaches a password instead of
+erroring; login succeeds/401s correctly for right password, wrong password, OAuth-only account, and
+unknown email). Frontend `jest --runInBand` -- 122 passed across 21 suites (+15: new
+`AuthProvider.test.tsx` covering the 404-vs-network-error distinction and retry-then-recover via
+`retryAuth()`, using fake timers wrapped in `act()` -- needed after discovering bare
+`jest.advanceTimersByTimeAsync()` calls don't reliably flush a promise-driven state update into the
+rendered tree without it; new cases in `Login.test.tsx` for register/sign-in success and 401/409
+handling; one existing `App.test.tsx` case updated from a generic mocked `Error('404')` to a real
+`ApiError(404)`, since a bare Error is now correctly treated as a retryable connectivity failure,
+not a confirmed logout -- that distinction is the entire point of the fix).
+
+**Manual steps for the human:** this migration already ran against the live Supabase database while
+diagnosing the discovery above (confirmed via `alembic current` -> head) -- no separate step
+needed unless a different environment/database is used for deployment. Register a test account
+through the app, close and reopen it, confirm it goes straight to Home with no OAuth prompt.

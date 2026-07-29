@@ -8,7 +8,9 @@ from starlette.responses import RedirectResponse
 from app.config import settings
 from app.db import get_db
 from app.models import EmailAccount, ProviderEnum, User
+from app.schemas import LoginIn, RegisterIn, UserOut
 from app.security.crypto import encrypt
+from app.security.passwords import hash_password, verify_password
 from app.services import google_oauth, ms_oauth
 from app.services.oauth_state import decode_state, encode_state
 
@@ -172,3 +174,39 @@ def microsoft_auth_callback(code: str, state: str, db: Session = Depends(get_db)
             is_new_account="true" if is_new_account else "false",
         )
     )
+
+
+@router.post("/auth/register", response_model=UserOut)
+def register(body: RegisterIn, db: Session = Depends(get_db)):
+    user = db.query(User).filter_by(email=body.email).first()
+    if user is not None and user.password_hash is not None:
+        raise HTTPException(status_code=409, detail="An account with this email already exists.")
+
+    if user is None:
+        # Brand-new email -- create the account outright.
+        user = User(email=body.email, name=body.name, password_hash=hash_password(body.password))
+        db.add(user)
+    else:
+        # An existing OAuth-only account (e.g. from linking Gmail/Outlook) with no password yet --
+        # attach one to the same identity instead of fragmenting into a second account.
+        user.password_hash = hash_password(body.password)
+        if body.name and user.name is None:
+            user.name = body.name
+
+    try:
+        db.commit()
+    except IntegrityError:
+        # Two concurrent registrations for the same brand-new email -- same race handled in
+        # _resolve_user above.
+        db.rollback()
+        raise HTTPException(status_code=409, detail="An account with this email already exists.")
+    db.refresh(user)
+    return user
+
+
+@router.post("/auth/login", response_model=UserOut)
+def login(body: LoginIn, db: Session = Depends(get_db)):
+    user = db.query(User).filter_by(email=body.email).first()
+    if user is None or user.password_hash is None or not verify_password(body.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    return user
