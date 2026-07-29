@@ -2086,3 +2086,70 @@ names (SAIZERIYA -> Food, DAISO JAPAN -> Shopping, SPOTIFY -> Entertainment, an 
 name -> Other), and `categorize_transaction()`'s cache correctly short-circuits a second call for
 the same merchant (confirmed by inspecting the `merchant_category_cache` row directly, not just
 trusting the mocked test). Full backend suite re-confirmed at 196 passed after these fixes.
+
+## Made the web build usable on mobile-phone browsers
+
+**The problem**: the web build was only designed for desktop-width browsers. Opening it on an
+actual phone browser was broken -- `MainTabs.web.tsx` unconditionally rendered a fixed 236px
+`Sidebar` as a flex sibling next to page content with no responsive collapse at all, leaving only
+~139px for everything else at a 375px phone width. On top of that, `Home.web.tsx`,
+`Summary.web.tsx`, and `Budgets.tsx` all used unconditional `flexDirection: "row"` multi-column
+desktop layouts with numeric `flex` ratios that don't wrap or stack. There was **no responsive
+infrastructure anywhere** in the codebase (no `useWindowDimensions`, no breakpoint hook) -- built
+from scratch.
+
+**New `app/src/hooks/useIsMobileWeb.ts`** (new `hooks/` directory, no prior convention): exports
+`isMobileWebWidth(platformOS, width, breakpoint = 640)` as a pure function (so it's unit-testable
+with plain arguments, sidestepping the fact that jest-expo's haste `defaultPlatform` is always
+`"ios"`, so `Platform.OS` can't be meaningfully mocked to `"web"` in a real Jest test) plus
+`useIsMobileWeb()` wrapping it with real `useWindowDimensions()`. Breakpoint is 640, matching
+`Settings.tsx`'s own single-column `maxWidth: 640` so "mobile" has one consistent meaning already
+established in the app. Gates on `Platform.OS === "web"` internally, so it's always `false` on
+native and safe to call unconditionally from a shared file like `Budgets.tsx` without touching
+native's behavior at all.
+
+**Reused the native app's existing bottom tab bar instead of inventing a new mobile nav pattern**:
+`app/src/navigation/TabBar.tsx` (blur background, safe-area-aware, already includes a `Budgets`
+icon) was already built for native and already passed to the same `createBottomTabNavigator` that
+`MainTabs.web.tsx` uses (previously forced to `tabBar={() => null}` since the Sidebar substituted
+for it). `MainTabs.web.tsx` now branches on `useIsMobileWeb()`: desktop keeps the Sidebar +
+`PageHeader` + hidden tab bar exactly as before; mobile drops the Sidebar and swaps in `tabBar={(props) => <TabBar {...props} />}` -- zero changes needed to `TabBar.tsx` itself, since `Tab.Navigator` already had all 5 routes registered.
+
+**`PageHeader.tsx` restyles rather than disappearing on mobile** -- it's the only page-title
+source for `Home.web.tsx`/`Summary.web.tsx`/`Budgets.tsx` (none have an in-content title the way
+native `Home.tsx` does). On mobile it stacks to a column and the Activity-only search box (fixed
+230px on desktop, squeezed next to the avatar) moves to its own full-width row below the title
+instead of being dropped -- search stays reachable on phones.
+
+**`Home.web.tsx`/`Summary.web.tsx`/`Budgets.tsx` each got the same treatment**: a local `rowFlex(n)`
+helper that returns `{flex: n}` on desktop and `undefined` on mobile (so a stacked card takes its
+own natural full width instead of stretching by a ratio that only makes sense in a row), applied
+to every page-level `styles.row` split; `content`'s padding switches from a flat `paddingBottom: 56`
+to `spacing.screenBottom` (96, the same constant native screens already use) so stacked content
+doesn't hide behind the new mobile tab bar. `Summary.web.tsx`'s 3-across `yearGrid` tiles are
+already percentage-based (`width: "31%"`) and left as-is -- self-reflows at any width, flagged for
+manual QA rather than pre-emptively redesigned.
+
+**Tested:** `jest --runInBand` -- 113 passed across 20 suites (+17: a new `useIsMobileWeb.test.ts`
+testing the pure breakpoint function directly; new `MainTabsWeb.test.tsx`, `PageHeader.test.tsx`,
+`HomeWeb.test.tsx`, `SummaryWeb.test.tsx` -- **the first Jest coverage these `.web.tsx` files have
+ever had**, since jest-expo's haste resolver defaults to `ios` platform and silently substitutes
+the native sibling for any extensionless import, so these new files import via the explicit `.web`
+path and mock `useIsMobileWeb` directly to exercise both branches; plus 2 new cases in the existing
+`Budgets.test.tsx`). Added minimal `testID`s to the stacked row containers (`home-hero-row`,
+`summary-chart-row`, `budgets-row`, etc.) purely so tests could assert on `flexDirection` directly.
+`npx expo export -p web` re-confirmed a clean compile (no errors).
+
+**Not verified**: actual visual layout at real phone pixel widths -- no browser-automation tool is
+available in this environment (confirmed via `ToolSearch`), and RTL's test renderer doesn't perform
+real flexbox layout/measurement, so it can only assert *intended* styles, not resulting pixel
+layout. This needs a manual pass.
+
+**Manual steps for the human:** run `npm run web`, open Chrome DevTools' device toolbar at
+320/375/393/428px and confirm: no horizontal scroll/overflow anywhere, the bottom tab bar (all 5
+routes including Budgets) replaces the sidebar and is fully tappable, every card on
+Home/Summary/Budgets stacks to full-width and is legible, the Activity search box is reachable and
+functional, scrolling to the bottom of any screen doesn't hide content behind the tab bar, and
+`Summary`'s year-view month tiles are legible at the smallest widths (fallback if not: an
+`isMobile && { width: "48%" }` override for 2-across instead of 3, same pattern as the other gated
+styles). Also spot-check desktop web (>640px) still looks pixel-identical to before.

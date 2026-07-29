@@ -7,8 +7,9 @@ import type { Transaction } from "../api/client";
 import { CategorizeSheet } from "./CategorizeSheet";
 import { Donut } from "../components/Donut";
 import { ProgressBar } from "../components/ProgressBar";
+import { useIsMobileWeb } from "../hooks/useIsMobileWeb";
 import { useAppData } from "../store/TransactionsProvider";
-import { categoryColor, colors, radii, shadow, typography, type CategoryId } from "../theme/tokens";
+import { categoryColor, colors, radii, shadow, spacing, typography, type CategoryId } from "../theme/tokens";
 import {
   categoryTotals,
   currentMonthTransactions,
@@ -35,6 +36,10 @@ export default function Home() {
   const { transactions, budget, goal, loading } = useAppData();
   const [layout, setLayout] = useState<HomeLayout>("focused");
   const [selected, setSelected] = useState<Transaction | null>(null);
+  const isMobile = useIsMobileWeb();
+  // Applies a row-only flex ratio -- omitted entirely on mobile so a stacked (column) card takes
+  // its own natural full width instead of stretching by a ratio that only makes sense in a row.
+  const rowFlex = (n: number) => (isMobile ? undefined : { flex: n });
 
   const now = useMemo(() => new Date(), []);
   const monthTxns = useMemo(() => currentMonthTransactions(transactions, now), [transactions, now]);
@@ -124,7 +129,11 @@ export default function Home() {
   ];
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content} testID="home-screen">
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[styles.content, isMobile && styles.contentMobile]}
+      testID="home-screen"
+    >
       <View style={styles.toolbar}>
         <Text style={styles.eyebrow}>LAYOUT</Text>
         <View style={styles.segmented}>
@@ -143,8 +152,8 @@ export default function Home() {
 
       {layout === "focused" ? (
         <View style={{ gap: 16 }}>
-          <View style={styles.row}>
-            <View style={[styles.card, { flex: 8 }, shadow.card]}>
+          <View style={[styles.row, isMobile && styles.rowStacked]} testID="home-hero-row">
+            <View style={[styles.card, rowFlex(8), shadow.card]}>
               <View style={styles.heroTop}>
                 <View>
                   <Text style={styles.eyebrow}>SPENT THIS MONTH</Text>
@@ -188,8 +197,8 @@ export default function Home() {
               </View>
             </View>
 
-            <View style={{ flex: 4, gap: 16 }}>
-              <View style={[styles.card, { flex: 1 }, shadow.card]}>
+            <View style={{ ...rowFlex(4), gap: 16 }}>
+              <View style={[styles.card, rowFlex(1), shadow.card]}>
                 <Text style={styles.eyebrow}>SAFE TO SPEND TODAY</Text>
                 <Text style={styles.safeAmount}>{formatMoney(safeToday)}</Text>
                 <Text style={styles.safeCaption}>Keeps you on budget through the end of the month.</Text>
@@ -225,8 +234,8 @@ export default function Home() {
             </View>
           </View>
 
-          <View style={styles.row}>
-            <View style={[styles.card, { flex: 5 }, shadow.card]}>
+          <View style={[styles.row, isMobile && styles.rowStacked]} testID="home-secondary-row">
+            <View style={[styles.card, rowFlex(5), shadow.card]}>
               <View style={styles.cardHeaderRow}>
                 <Text style={styles.eyebrow}>WHERE IT WENT</Text>
                 <Text style={styles.linkText} onPress={() => navigation.navigate("Summary")}>
@@ -252,7 +261,7 @@ export default function Home() {
               </View>
             </View>
 
-            <View style={[styles.card, styles.reviewCard, { flex: 4 }]}>
+            <View style={[styles.card, styles.reviewCard, rowFlex(4)]}>
               <View style={styles.cardHeaderRow}>
                 <Text style={styles.reviewEyebrow}>NEEDS REVIEW</Text>
                 <Text style={styles.reviewBadge}>{reviewQueue.length}</Text>
@@ -281,9 +290,9 @@ export default function Home() {
               )}
             </View>
 
-            <View style={{ flex: 3, gap: 16 }}>
+            <View style={{ ...rowFlex(3), gap: 16 }}>
               {insights.map((ins, i) => (
-                <View key={i} style={[styles.card, { flex: 1 }, shadow.card]}>
+                <View key={i} style={[styles.card, rowFlex(1), shadow.card]}>
                   <Text style={styles.eyebrow}>{ins.kicker}</Text>
                   <Text style={styles.insightText}>{ins.text}</Text>
                 </View>
@@ -291,8 +300,8 @@ export default function Home() {
             </View>
           </View>
 
-          <View style={styles.row}>
-            <View style={[styles.card, { flex: 8 }, shadow.card]}>
+          <View style={[styles.row, isMobile && styles.rowStacked]}>
+            <View style={[styles.card, rowFlex(8), shadow.card]}>
               <View style={styles.cardHeaderRow}>
                 <Text style={styles.eyebrow}>RECENT TRANSACTIONS</Text>
                 <Text style={styles.linkText} onPress={() => navigation.navigate("Activity")}>
@@ -310,7 +319,7 @@ export default function Home() {
               ))}
             </View>
 
-            <View style={[styles.card, { flex: 4 }, shadow.card]}>
+            <View style={[styles.card, rowFlex(4), shadow.card]}>
               <Text style={styles.eyebrow}>UPCOMING RECURRING</Text>
               <Text style={styles.reviewCaption}>Detected from your transactions.</Text>
               {recurring.length === 0 ? (
@@ -333,9 +342,9 @@ export default function Home() {
         </View>
       ) : (
         <View style={{ gap: 16 }}>
-          <View style={styles.row}>
+          <View style={[styles.row, isMobile && styles.rowStacked]}>
             {kpis.map((k) => (
-              <View key={k.label} style={[styles.card, { flex: 1 }, shadow.card]}>
+              <View key={k.label} style={[styles.card, rowFlex(1), shadow.card]}>
                 <Text style={styles.eyebrow}>{k.label}</Text>
                 <Text style={styles.kpiValue}>{k.value}</Text>
                 <Text style={styles.safeCaption}>{k.sub}</Text>
@@ -343,8 +352,8 @@ export default function Home() {
             ))}
           </View>
 
-          <View style={styles.row}>
-            <View style={[styles.card, { flex: 7 }, shadow.card]}>
+          <View style={[styles.row, isMobile && styles.rowStacked]}>
+            <View style={[styles.card, rowFlex(7), shadow.card]}>
               <View style={styles.cardHeaderRow}>
                 <Text style={styles.eyebrow}>BUDGET PACE · {SPARK_DAYS} DAYS</Text>
                 <Text style={styles.sparkAvg}>avg {formatMoney(sparkAvg, false)}/day</Text>
@@ -368,7 +377,7 @@ export default function Home() {
               </View>
             </View>
 
-            <View style={{ flex: 5, gap: 16 }}>
+            <View style={{ ...rowFlex(5), gap: 16 }}>
               <View style={[styles.card, shadow.card]}>
                 <Text style={styles.eyebrow}>SPEND BY CATEGORY</Text>
                 <View style={{ gap: 13, marginTop: 12 }}>
@@ -452,6 +461,7 @@ export default function Home() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.canvas },
   content: { paddingHorizontal: 34, paddingBottom: 56, maxWidth: 1360, width: "100%" },
+  contentMobile: { paddingHorizontal: spacing.screenH, paddingBottom: spacing.screenBottom },
   toolbar: { flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 10, marginBottom: 16 },
   segmented: { flexDirection: "row", gap: 4, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.ink06, borderRadius: radii.chip, padding: 4 },
   segmentItem: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: radii.pill },
@@ -459,6 +469,7 @@ const styles = StyleSheet.create({
   segmentText: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.base, color: colors.ink55 },
   segmentTextActive: { color: colors.onDark, fontFamily: typography.fontFamily.sansMedium },
   row: { flexDirection: "row", gap: 16, alignItems: "stretch" },
+  rowStacked: { flexDirection: "column" },
   card: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.ink06, borderRadius: radii.hero, padding: 22 },
   eyebrow: { fontFamily: typography.fontFamily.mono, fontSize: typography.size.xs5, letterSpacing: 1.4, textTransform: "uppercase", color: colors.ink45 },
   heroTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },

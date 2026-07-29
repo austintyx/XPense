@@ -5,8 +5,9 @@ import Svg, { Circle } from "react-native-svg";
 import { getCategoryBudgets, updateCategoryBudget, type CategoryBudget, type Frequency } from "../api/client";
 import { AddSubscriptionSheet } from "./AddSubscriptionSheet";
 import { useToast } from "../components/Toast";
+import { useIsMobileWeb } from "../hooks/useIsMobileWeb";
 import { useAppData } from "../store/TransactionsProvider";
-import { colors, radii, shadow, typography } from "../theme/tokens";
+import { colors, radii, shadow, spacing, typography } from "../theme/tokens";
 import { confirmDestructive } from "../utils/confirm";
 import {
   allCategories,
@@ -69,6 +70,10 @@ export default function Budgets() {
     loading,
   } = useAppData();
   const { showToast } = useToast();
+  const isMobile = useIsMobileWeb();
+  // Applies a row-only flex ratio -- omitted entirely on mobile so a stacked (column) card takes
+  // its own natural full width instead of stretching by a ratio that only makes sense in a row.
+  const rowFlex = (n: number) => (isMobile ? undefined : { flex: n });
   const [limits, setLimits] = useState<CategoryBudget[]>([]);
   const [limitsLoading, setLimitsLoading] = useState(true);
   const [editMode, setEditMode] = useState(false);
@@ -185,9 +190,13 @@ export default function Budgets() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content} testID="budgets-screen">
-      <View style={styles.row}>
-        <View style={[styles.card, { flex: 7 }, shadow.card]}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={[styles.content, isMobile && styles.contentMobile]}
+      testID="budgets-screen"
+    >
+      <View style={[styles.row, isMobile && styles.rowStacked]} testID="budgets-row">
+        <View style={[styles.card, rowFlex(7), shadow.card]}>
           <View style={styles.headerRow}>
             <Text style={styles.eyebrow}>MONTHLY BUDGETS</Text>
             <View style={styles.headerRight}>
@@ -295,7 +304,7 @@ export default function Budgets() {
           </View>
         </View>
 
-        <View style={{ flex: 5, gap: 16 }}>
+        <View style={{ ...rowFlex(5), gap: 16 }}>
           <View style={styles.goalCard}>
             <View style={styles.goalRingWrap}>
               <Svg width={56} height={56} viewBox="0 0 56 56">
@@ -402,7 +411,9 @@ export default function Budgets() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.canvas },
   content: { paddingHorizontal: 34, paddingBottom: 56, maxWidth: 1360, width: "100%" },
+  contentMobile: { paddingHorizontal: spacing.screenH, paddingBottom: spacing.screenBottom },
   row: { flexDirection: "row", gap: 16, alignItems: "flex-start" },
+  rowStacked: { flexDirection: "column" },
   card: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.ink06, borderRadius: radii.hero, padding: 24 },
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
   headerRight: { flexDirection: "row", alignItems: "center", gap: 14 },
