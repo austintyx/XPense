@@ -62,6 +62,18 @@ test('removing a custom category calls the API and the card disappears', async (
   await waitFor(() => expect(screen.queryByTestId('category-card-Pets')).toBeNull());
 });
 
+test('centers the content column instead of stretching full width, matching Settings', async () => {
+  mockClientDefaults();
+
+  renderWithProviders(<ManageCategories />);
+
+  await screen.findByTestId('category-card-Food');
+  const content = screen.getByTestId('manage-categories-screen').props.contentContainerStyle;
+  expect(content).toEqual(
+    expect.objectContaining({ maxWidth: 640, width: '100%', alignSelf: 'center' }),
+  );
+});
+
 test('adding a subcategory under Food calls the API and renders a removable chip', async () => {
   mockClientDefaults();
   const createSubSpy = jest

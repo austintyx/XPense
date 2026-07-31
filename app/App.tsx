@@ -3,14 +3,14 @@ import { InstrumentSerif_400Regular, useFonts as useInstrumentSerifFonts } from 
 import { JetBrainsMono_400Regular, useFonts as useJetBrainsMonoFonts } from "@expo-google-fonts/jetbrains-mono";
 import { NavigationContainer } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { RootNavigator } from "./src/navigation/RootNavigator";
 import Login from "./src/screens/Login";
 import { ToastProvider } from "./src/components/Toast";
 import { AuthProvider, useAuth } from "./src/store/AuthProvider";
-import { TransactionsProvider } from "./src/store/TransactionsProvider";
+import { TransactionsProvider, useAppData } from "./src/store/TransactionsProvider";
 import { colors, radii, spacing, typography } from "./src/theme/tokens";
 
 function SessionErrorScreen({ onRetry }: { onRetry: () => void }) {
@@ -36,11 +36,40 @@ const sessionErrorStyles = StyleSheet.create({
   buttonText: { fontFamily: typography.fontFamily.sansMedium, fontSize: typography.size.lg, color: colors.onDark },
 });
 
+function ConnectingScreen({ testID }: { testID: string }) {
+  return (
+    <View style={connectingStyles.container} testID={testID}>
+      <ActivityIndicator color={colors.ink} size="large" />
+      <Text style={connectingStyles.text}>Connecting…</Text>
+    </View>
+  );
+}
+
+const connectingStyles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.canvas, alignItems: "center", justifyContent: "center", gap: 14 },
+  text: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.base5, color: colors.ink55 },
+});
+
+function AuthenticatedApp() {
+  const { loading } = useAppData();
+
+  if (loading) {
+    return <ConnectingScreen testID="app-loading" />;
+  }
+
+  return (
+    <NavigationContainer>
+      <RootNavigator />
+      <StatusBar style="dark" />
+    </NavigationContainer>
+  );
+}
+
 function AppContent() {
   const { ready, userId, sessionError, retryAuth } = useAuth();
 
   if (!ready) {
-    return <View style={{ flex: 1, backgroundColor: colors.canvas }} testID="auth-loading" />;
+    return <ConnectingScreen testID="auth-loading" />;
   }
 
   if (sessionError) {
@@ -53,10 +82,7 @@ function AppContent() {
 
   return (
     <TransactionsProvider>
-      <NavigationContainer>
-        <RootNavigator />
-        <StatusBar style="dark" />
-      </NavigationContainer>
+      <AuthenticatedApp />
     </TransactionsProvider>
   );
 }

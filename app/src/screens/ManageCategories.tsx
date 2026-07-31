@@ -156,7 +156,14 @@ export default function ManageCategories() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.canvas },
-  content: { paddingHorizontal: spacing.screenH, paddingTop: spacing.screenTop, paddingBottom: 40 },
+  content: {
+    paddingHorizontal: spacing.screenH,
+    paddingTop: spacing.screenTop,
+    paddingBottom: 40,
+    maxWidth: 640,
+    width: "100%" as const,
+    alignSelf: "center" as const,
+  },
   backLink: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.md, color: colors.ink55, marginBottom: 18 },
   title: { fontFamily: typography.fontFamily.serif, fontSize: typography.size.heading, marginBottom: 6, color: colors.ink },
   subtitle: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.base5, color: colors.ink55, marginBottom: 20, maxWidth: 300 },

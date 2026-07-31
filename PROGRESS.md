@@ -2299,3 +2299,41 @@ detail sheet showing a time, and the Add Transaction Income toggle swapping cate
 a stale pick).
 
 **Manual steps for the human:** none -- purely additive, no schema changes.
+
+## "Connecting…" loading screen for Render cold-starts; centered Manage Categories layout
+
+On the free Render plan the backend spins down after inactivity, so opening the app after a while
+previously showed a genuinely blank screen (just the canvas background color, no text/spinner) for
+however long the cold-start took -- at two separate points: `App.tsx`'s `!ready` gate (while
+`AuthProvider` verifies the stored session, already backoff-retried from an earlier fix but
+rendered blank the whole time) and the initial data load (`TransactionsProvider` mounts
+unconditionally after auth resolves, and every screen independently blanked out via its own
+`if (loading) return <View testID="X-screen" />` guard while the first `refetch()`'s 8 parallel API
+calls were in flight).
+
+**`app/App.tsx`**: new `ConnectingScreen` component (same local-component pattern as the existing
+`SessionErrorScreen`) -- a centered `ActivityIndicator` + "Connecting…" text, reused at both gates
+via a `testID` prop. The `!ready` gate now renders it instead of a blank view. A new
+`AuthenticatedApp` component (a child of `TransactionsProvider`, reading its `loading` via
+`useAppData()`) renders `ConnectingScreen` while the initial load is in flight and only mounts
+`NavigationContainer`/`RootNavigator` once it's done -- confirmed `loading` is a one-time flag that
+never re-fires on later manual refetches, so this single gate covers every tab's cold-start blank
+screen without touching Home/Summary/Activity/Budgets/Settings's own `loading` guards (left as-is;
+they still serve their other conditions like `!budget`/`!goal`). The outer font-loading gate in
+`App()` stays a plain blank view -- custom fonts genuinely aren't loaded yet at that point, so a
+styled "Connecting…" screen can't render there, and it's a near-instant JS-bundle concern, not the
+cold-start scenario being fixed.
+
+**`app/src/screens/ManageCategories.tsx`**: its `content` style had no `maxWidth`/`alignSelf`
+treatment, so its cards stretched full-width on web unlike Settings' already-centered single
+column. Added the same `maxWidth: 640, width: "100%", alignSelf: "center"` Settings.tsx's `content`
+style already has -- every card on the page is plain flex-based single-column with no fixed widths,
+so centering just the outer wrapper was sufficient.
+
+**Tested:** frontend `jest --runInBand` -- 133 passed across 21 suites (+3: `App.test.tsx` cases
+asserting `auth-loading`/`app-loading` render "Connecting…" instead of a blank view or the tab bar
+while the session check and initial data load are respectively still pending;
+`ManageCategories.test.tsx` case asserting the screen's `contentContainerStyle` includes the
+centering properties).
+
+**Manual steps for the human:** none -- purely UI, no schema or API changes.
