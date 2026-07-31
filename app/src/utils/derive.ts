@@ -1,16 +1,57 @@
 import type { CustomCategory, CustomSubcategory, Transaction } from "../api/client";
 import { CATEGORIES, CREDIT_CATEGORIES, subcategoriesFor, type CategoryId } from "../theme/tokens";
 
-export function formatMoney(amount: number | string, decimals = true): string {
+export function formatMoney(amount: number | string, decimals = true, currency?: string): string {
   const value = typeof amount === "string" ? Number(amount) : amount;
   // A day group's total can go negative once transfers subtract from it (see groupByDay) -- put
-  // the sign before "S$" ("-S$5.00"), not after it ("S$-5.00").
+  // the sign before the currency prefix ("-S$5.00"), not after it ("S$-5.00").
   const sign = value < 0 ? "-" : "";
   const abs = Math.abs(value);
+  // Non-SGD amounts are shown in their own currency, not converted -- there's no FX rate lookup
+  // anywhere in this app, so pretending a foreign amount is SGD would just be wrong.
+  const prefix = !currency || currency === "SGD" ? "S$" : `${currency} `;
   if (decimals) {
-    return sign + "S$" + abs.toLocaleString("en-SG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return sign + prefix + abs.toLocaleString("en-SG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
-  return sign + "S$" + Math.round(abs).toLocaleString("en-SG");
+  return sign + prefix + Math.round(abs).toLocaleString("en-SG");
+}
+
+/** Curated common-travel-currency -> country/region names for a Singapore-based traveler.
+ * Deliberately not exhaustive -- falls back to the raw currency code for anything unmapped rather
+ * than guessing, since a wrong country label is worse than an honest currency code. */
+export const CURRENCY_COUNTRY: Record<string, string> = {
+  SGD: "Singapore",
+  USD: "United States",
+  EUR: "Eurozone",
+  GBP: "United Kingdom",
+  JPY: "Japan",
+  CNY: "China",
+  HKD: "Hong Kong",
+  KRW: "South Korea",
+  TWD: "Taiwan",
+  THB: "Thailand",
+  MYR: "Malaysia",
+  IDR: "Indonesia",
+  VND: "Vietnam",
+  PHP: "Philippines",
+  INR: "India",
+  AUD: "Australia",
+  NZD: "New Zealand",
+  CAD: "Canada",
+  CHF: "Switzerland",
+  AED: "United Arab Emirates",
+  MOP: "Macau",
+  BND: "Brunei",
+};
+
+export function countryForCurrency(currency: string): string {
+  return CURRENCY_COUNTRY[currency] ?? currency;
+}
+
+/** Unique countries present across `transactions`, derived from each one's currency -- drives the
+ * Activity/Summary country filter pill lists. */
+export function countriesInTransactions(transactions: Transaction[]): string[] {
+  return [...new Set(transactions.map((t) => countryForCurrency(t.currency)))];
 }
 
 export function deriveSource(txn: Pick<Transaction, "provider" | "bank">): string {

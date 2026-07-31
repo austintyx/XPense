@@ -8,7 +8,15 @@ import { useToast } from "../components/Toast";
 import { useSearch } from "../store/SearchProvider";
 import { useAppData } from "../store/TransactionsProvider";
 import { categoryColor, colors, radii, shadow, spacing, typography, type CategoryId } from "../theme/tokens";
-import { allCategories, deriveSource, formatMoney, groupByDay, uncategorized } from "../utils/derive";
+import {
+  allCategories,
+  countriesInTransactions,
+  countryForCurrency,
+  deriveSource,
+  formatMoney,
+  groupByDay,
+  uncategorized,
+} from "../utils/derive";
 import { categorizePending, type Transaction } from "../api/client";
 
 type Filter = "all" | "needs" | string;
@@ -21,6 +29,7 @@ export default function Activity() {
   const { search } = useSearch();
   const { showToast } = useToast();
   const [filter, setFilter] = useState<Filter>("all");
+  const [countryFilter, setCountryFilter] = useState<string>("all");
   const [refreshing, setRefreshing] = useState(false);
   const [selected, setSelected] = useState<Transaction | null>(null);
   const [addVisible, setAddVisible] = useState(false);
@@ -54,15 +63,20 @@ export default function Activity() {
     const present = new Set(transactions.map((t) => t.category).filter(Boolean) as string[]);
     return allCategories(customCategories).filter((c) => present.has(c));
   }, [transactions, customCategories]);
+  // Only shown once there's actually more than one country present -- avoids cluttering the UI
+  // for a user who's never had a non-SGD transaction.
+  const countriesPresent = useMemo(() => countriesInTransactions(transactions), [transactions]);
 
   const filtered =
     filter === "needs" ? uncat : filter === "all" ? transactions : transactions.filter((t) => t.category === filter);
+  const byCountry =
+    countryFilter === "all" ? filtered : filtered.filter((t) => countryForCurrency(t.currency) === countryFilter);
   // useSearch() defaults to an always-empty, no-op search when no SearchProvider is mounted (the
   // case on native), so this filter is a harmless pass-through there -- only the web shell wires
   // up a real header search input.
   const visible = search.trim()
-    ? filtered.filter((t) => (t.merchant_clean ?? t.merchant_raw ?? "").toLowerCase().includes(search.trim().toLowerCase()))
-    : filtered;
+    ? byCountry.filter((t) => (t.merchant_clean ?? t.merchant_raw ?? "").toLowerCase().includes(search.trim().toLowerCase()))
+    : byCountry;
   const groups = useMemo(() => groupByDay(visible), [visible]);
 
   if (loading) {
@@ -113,6 +127,28 @@ export default function Activity() {
                 </Pressable>
               ))}
             </View>
+
+            {countriesPresent.length > 1 && (
+              <View style={styles.filterRow} testID="country-filter-row">
+                <Pressable
+                  onPress={() => setCountryFilter("all")}
+                  style={[styles.pill, countryFilter === "all" ? styles.pillActive : styles.pillInactive]}
+                  testID="country-filter-all"
+                >
+                  <Text style={[styles.pillText, countryFilter === "all" && styles.pillTextActive]}>All countries</Text>
+                </Pressable>
+                {countriesPresent.map((country) => (
+                  <Pressable
+                    key={country}
+                    onPress={() => setCountryFilter(country)}
+                    style={[styles.pill, countryFilter === country ? styles.pillActive : styles.pillInactive]}
+                    testID={`country-filter-${country}`}
+                  >
+                    <Text style={[styles.pillText, countryFilter === country && styles.pillTextActive]}>{country}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
 
             {filter === "needs" && uncat.length > 0 && (
               <>
@@ -192,7 +228,7 @@ export default function Activity() {
                     <View style={styles.amountCol}>
                       <Text style={[styles.amount, txn.direction === "credit" && styles.amountCredit]}>
                         {txn.direction === "credit" ? "+" : ""}
-                        {formatMoney(txn.amount)}
+                        {formatMoney(txn.amount, true, txn.currency)}
                       </Text>
                       <Text style={styles.source}>{deriveSource(txn)}</Text>
                     </View>

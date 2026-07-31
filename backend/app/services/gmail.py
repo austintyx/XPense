@@ -1,6 +1,6 @@
 import base64
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
 
 import httpx
@@ -128,3 +128,10 @@ def get_sender(message: dict) -> str:
         if header.get("name", "").lower() == "from":
             return header.get("value", "")
     return ""
+
+
+def get_received_at(message: dict) -> datetime:
+    """Gmail's own `internalDate` (epoch ms, UTC) -- already present on every `format=full`
+    response with no extra $select needed. Used by parsers (currently only YouTrip) whose emails
+    don't include a full date in the body, only a bare time-of-day."""
+    return datetime.fromtimestamp(int(message["internalDate"]) / 1000, tz=timezone.utc)

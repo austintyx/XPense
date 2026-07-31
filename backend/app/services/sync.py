@@ -64,7 +64,6 @@ def sync_email_account(db: Session, account: EmailAccount, since: datetime | Non
     inserted = 0
     for stub in stubs:
         message_id = stub["id"]
-        already_exists = db.query(Transaction).filter_by(source_email_id=message_id).first() is not None
 
         message = mail_service.fetch_message(access_token, message_id)
         sender = mail_service.get_sender(message)
@@ -75,32 +74,39 @@ def sync_email_account(db: Session, account: EmailAccount, since: datetime | Non
             continue
 
         text = mail_service.extract_plain_text(message)
-        parsed = parse_email(text, sender)
-        if parsed is None:
-            continue
+        received_at = mail_service.get_received_at(message)
+        # Most emails produce at most one transaction (message_id alone is the dedup key, same as
+        # before); a YouTrip digest can produce several, each carrying its own dedup_suffix so they
+        # get distinct, stable ids instead of colliding on message_id.
+        for parsed in parse_email(text, sender, received_at):
+            source_email_id = message_id if parsed.dedup_suffix is None else f"{message_id}:{parsed.dedup_suffix}"
+            already_exists = db.query(Transaction).filter_by(source_email_id=source_email_id).first() is not None
 
-        if parsed.category is None:
-            grab_result = None
-            if is_generic_grab_merchant(parsed.merchant_raw):
-                grab_result = reconcile_grab_transaction(
-                    mail_service, access_token, parsed.merchant_raw, parsed.amount, parsed.txn_at
-                )
-            if grab_result is not None:
-                parsed.category, parsed.subcategory, grab_merchant = grab_result
-                if grab_merchant is not None:
-                    parsed.merchant_raw = grab_merchant
-            else:
-                parsed.category, parsed.subcategory = categorize_transaction(
-                    db, parsed.merchant_raw, parsed.bank, parsed.txn_at, parsed.direction
-                )
-        elif parsed.subcategory is None:
-            # The parser already hardcoded a category (e.g. SimplyGo transit -> Transport) --
-            # still derive a subcategory so parser-hardcoded rows aren't left without one.
-            parsed.subcategory = subcategory_for(parsed.category, parsed.merchant_raw, parsed.txn_at)
+            if parsed.category is None:
+                grab_result = None
+                # Grab reconciliation only makes sense for local (SGD) rides -- an overseas Grab
+                # charge paid via a travel wallet must still route through Travel categorization
+                # below, not get swept into the local Grab-receipt lookup.
+                if parsed.currency == "SGD" and is_generic_grab_merchant(parsed.merchant_raw):
+                    grab_result = reconcile_grab_transaction(
+                        mail_service, access_token, parsed.merchant_raw, parsed.amount, parsed.txn_at
+                    )
+                if grab_result is not None:
+                    parsed.category, parsed.subcategory, grab_merchant = grab_result
+                    if grab_merchant is not None:
+                        parsed.merchant_raw = grab_merchant
+                else:
+                    parsed.category, parsed.subcategory = categorize_transaction(
+                        db, parsed.merchant_raw, parsed.bank, parsed.txn_at, parsed.direction, parsed.currency
+                    )
+            elif parsed.subcategory is None:
+                # The parser already hardcoded a category (e.g. SimplyGo transit -> Transport) --
+                # still derive a subcategory so parser-hardcoded rows aren't left without one.
+                parsed.subcategory = subcategory_for(parsed.category, parsed.merchant_raw, parsed.txn_at)
 
-        save_parsed_transaction(db, account.user_id, message_id, account.provider, parsed)
-        if not already_exists:
-            inserted += 1
+            save_parsed_transaction(db, account.user_id, source_email_id, account.provider, parsed)
+            if not already_exists:
+                inserted += 1
 
     account.last_synced_at = datetime.now(timezone.utc)
     db.commit()

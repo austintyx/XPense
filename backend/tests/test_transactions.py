@@ -312,6 +312,22 @@ def test_categorize_pending_backfills_hardcoded_matchable_rows(client, db_sessio
     assert stale_transport.subcategory == "Public"  # backfilled from merchant name
 
 
+def test_categorize_pending_backfills_a_currency_field_into_travel_routing(client, db_session, user, monkeypatch):
+    """A pre-existing uncategorized non-SGD row (e.g. synced before Travel routing shipped, or
+    where the AI call failed on first try) must still route to Travel when backfilled via
+    "Categorize pending" -- not silently fall through to the normal SGD/CATEGORIES path for lack
+    of a currency argument."""
+    monkeypatch.setattr("app.services.categorize.ai_category", lambda merchant, bank, categories=None: None)
+
+    overseas = _make_txn(db_session, user, merchant_raw="SBB CFF FFS", category=None, currency="CHF", bank="YouTrip")
+
+    response = client.post("/transactions/categorize-pending", params={"user_id": user.id})
+    assert response.status_code == 200
+
+    db_session.refresh(overseas)
+    assert overseas.category == "Travel"
+
+
 def test_categorize_pending_reconciles_a_generic_grab_transport_row_against_a_matching_receipt(
     client, db_session, user, monkeypatch
 ):

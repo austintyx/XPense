@@ -154,6 +154,81 @@ test('week view uses the Sunday-Saturday calendar week, not a rolling 7-day wind
   expect(screen.queryByText('S$15')).toBeNull();
 });
 
+test('the country filter row is hidden when every transaction is SGD', async () => {
+  mockClientDefaults({
+    transactions: [makeTxn({ id: 1, category: 'Food', amount: '10.00', txn_at: '2026-07-15T10:00:00Z' })],
+  });
+
+  renderWithProviders(<Summary />);
+
+  await screen.findByTestId('summary-screen');
+  expect(screen.queryByTestId('country-filter-row')).toBeNull();
+});
+
+test('expanding the Travel category row reveals its subcategory breakdown', async () => {
+  mockClientDefaults({
+    summary: { user_id: 1, month: '2026-07', categories: [{ category: 'Travel', total: '358.00' }], total: '358.00' },
+    transactions: [
+      makeTxn({
+        id: 1,
+        category: 'Travel',
+        subcategory: 'Transport',
+        amount: '358.00',
+        currency: 'CHF',
+        txn_at: '2026-07-15T10:00:00Z',
+        merchant_raw: 'SBB CFF FFS',
+      }),
+    ],
+  });
+
+  renderWithProviders(<Summary />);
+
+  const row = await screen.findByTestId('cat-row-Travel');
+  fireEvent.press(row);
+  expect(await screen.findByText('Transport')).toBeTruthy();
+  expect(screen.getByText('SBB CFF FFS')).toBeTruthy();
+});
+
+test('selecting a country filter recomputes the total instead of using the unfiltered backend summary', async () => {
+  mockClientDefaults({
+    summary: {
+      user_id: 1,
+      month: '2026-07',
+      categories: [
+        { category: 'Food', total: '40.00' },
+        { category: 'Travel', total: '358.00' },
+      ],
+      total: '398.00',
+    },
+    transactions: [
+      makeTxn({ id: 1, category: 'Food', amount: '40.00', currency: 'SGD', txn_at: '2026-07-15T10:00:00Z' }),
+      makeTxn({
+        id: 2,
+        category: 'Travel',
+        subcategory: 'Transport',
+        amount: '358.00',
+        currency: 'CHF',
+        txn_at: '2026-07-15T10:00:00Z',
+      }),
+    ],
+  });
+
+  renderWithProviders(<Summary />);
+
+  expect(await screen.findByText('S$398')).toBeTruthy();
+  expect(screen.getByTestId('sum-country-all')).toBeTruthy();
+  expect(screen.getByTestId('sum-country-Singapore')).toBeTruthy();
+  expect(screen.getByTestId('sum-country-Switzerland')).toBeTruthy();
+
+  fireEvent.press(screen.getByTestId('sum-country-Switzerland'));
+
+  expect(await screen.findByText('S$358')).toBeTruthy();
+  expect(screen.queryByText('S$398')).toBeNull();
+
+  fireEvent.press(screen.getByTestId('sum-country-all'));
+  expect(await screen.findByText('S$398')).toBeTruthy();
+});
+
 test('paging the calendar view to a different month resets the selected day and shows that month\'s data', async () => {
   mockClientDefaults({
     transactions: [

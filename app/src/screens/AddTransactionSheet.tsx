@@ -7,7 +7,9 @@ import { DateField } from "../components/DateField";
 import { useToast } from "../components/Toast";
 import { useAppData } from "../store/TransactionsProvider";
 import { categoryColorChip, colors, typography } from "../theme/tokens";
-import { allCategories, formatMoney, mergedSubcategories } from "../utils/derive";
+import { allCategories, CURRENCY_COUNTRY, formatMoney, mergedSubcategories } from "../utils/derive";
+
+const CURRENCIES = Object.keys(CURRENCY_COUNTRY);
 
 interface AddTransactionSheetProps {
   visible: boolean;
@@ -28,6 +30,7 @@ export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetPro
   const [date, setDate] = useState(new Date());
   const [category, setCategory] = useState<string | null>(null);
   const [subcategory, setSubcategory] = useState<string | null>(null);
+  const [currency, setCurrency] = useState("SGD");
 
   const categories = useMemo(() => allCategories(customCategories, direction), [customCategories, direction]);
   const subcategories = category ? mergedSubcategories(category, customSubcategories) : [];
@@ -39,6 +42,7 @@ export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetPro
     setDate(new Date());
     setCategory(null);
     setSubcategory(null);
+    setCurrency("SGD");
   };
 
   const handleClose = () => {
@@ -55,6 +59,7 @@ export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetPro
     await addTransaction({
       user_id: user?.id ?? 1,
       amount,
+      currency,
       direction,
       merchant_raw: merchant,
       merchant_clean: merchant,
@@ -92,7 +97,7 @@ export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetPro
 
       <Text style={styles.label}>Amount</Text>
       <View style={styles.amountBox}>
-        <Text style={styles.currencyPrefix}>S$</Text>
+        <Text style={styles.currencyPrefix}>{currency === "SGD" ? "S$" : `${currency} `}</Text>
         <TextInput
           value={amount}
           onChangeText={setAmount}
@@ -101,6 +106,31 @@ export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetPro
           style={styles.amountInput}
           testID="draft-amount"
         />
+      </View>
+
+      <Text style={styles.label}>Currency</Text>
+      <View style={[styles.chipsRow, styles.subChipsRow]}>
+        {CURRENCIES.map((c) => (
+          <CategoryChip
+            key={c}
+            label={c}
+            size="small"
+            active={currency === c}
+            onPress={() => {
+              setCurrency(c);
+              // Overseas spend gets its own Travel category with its own subcategory list --
+              // a category picked under SGD may not fit anymore, so default (not force) into
+              // Travel, mirroring the direction toggle's exact reset pattern below.
+              if (c !== "SGD") {
+                setCategory("Travel");
+              } else if (category === "Travel") {
+                setCategory(null);
+              }
+              setSubcategory(null);
+            }}
+            testID={`draft-currency-${c}`}
+          />
+        ))}
       </View>
 
       <Text style={styles.label}>Date</Text>

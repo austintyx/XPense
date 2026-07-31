@@ -40,9 +40,17 @@ GRAB_FOOD_RECEIPT_TEXT = (
 )
 
 
-def _fake_message(msg_id: str, text: str, sender: str) -> dict:
+# 2026-07-25T02:03:00Z = 10:03 AM SGT -- matches the real YouTrip screenshot's clock, used as the
+# default "received at" for every fixture message below (irrelevant to every parser except
+# YouTrip's, which is the only one that infers a date from this instead of the email body).
+_DEFAULT_INTERNAL_DATE_MS = 1784944980000
+_DEFAULT_RECEIVED_DATETIME = "2026-07-25T02:03:00Z"
+
+
+def _fake_message(msg_id: str, text: str, sender: str, internal_date_ms: int = _DEFAULT_INTERNAL_DATE_MS) -> dict:
     return {
         "id": msg_id,
+        "internalDate": str(internal_date_ms),
         "payload": {
             "mimeType": "text/plain",
             "headers": [{"name": "From", "value": sender}],
@@ -51,11 +59,14 @@ def _fake_message(msg_id: str, text: str, sender: str) -> dict:
     }
 
 
-def _fake_graph_message(msg_id: str, text: str, address: str) -> dict:
+def _fake_graph_message(
+    msg_id: str, text: str, address: str, received_at: str = _DEFAULT_RECEIVED_DATETIME
+) -> dict:
     return {
         "id": msg_id,
         "body": {"contentType": "text", "content": text},
         "from": {"emailAddress": {"name": "", "address": address}},
+        "receivedDateTime": received_at,
     }
 
 
@@ -236,6 +247,85 @@ def test_sync_falls_back_to_transport_when_no_matching_grab_receipt_is_found(
     txn = db_session.query(Transaction).filter_by(user_id=user.id, merchant_raw="GRAB").one()
     assert txn.category == "Transport"
     assert txn.subcategory == "Private"
+
+
+YOUTRIP_SENDER = "noreply=you.co@mail.you.co"
+YOUTRIP_MULTI_TEXT = (
+    "Hello YouTrooper, Thank you for using YouTrip! Here's a summary of your online purchases and "
+    "ATM withdrawals in the last 24 hours. The times shown are based on Singapore Time (UTC+8). "
+    "SBB CFF FFS Ticket Sho, Bern CHF 358.00 Ref. No: SFT-1372409889 3:42 PM "
+    "COOP Pronto Zurich HB USD 12.50 Ref. No: SFT-1372409901 9:15 AM "
+    "You may view the full transaction history in your YouTrip app. If these transactions were not "
+    "authorised by you, please lock your card immediately and contact us at customer@you.co for "
+    "assistance."
+)
+YOUTRIP_GRAB_TEXT = (
+    "Hello YouTrooper, Thank you for using YouTrip! Here's a summary of your online purchases and "
+    "ATM withdrawals in the last 24 hours. The times shown are based on Singapore Time (UTC+8). "
+    "GRAB USD 8.00 Ref. No: SFT-9001 3:42 PM "
+    "You may view the full transaction history in your YouTrip app. If these transactions were not "
+    "authorised by you, please lock your card immediately and contact us at customer@you.co for "
+    "assistance."
+)
+
+
+def test_sync_youtrip_digest_creates_multiple_transactions_with_stable_dedup(
+    client, db_session, user, email_account, monkeypatch
+):
+    """A single YouTrip digest email can list multiple transactions -- each must get its own row,
+    deduped by its own Ref. No (not collapsed onto one row keyed by the email's message id alone)."""
+    messages = [_fake_message("msg-youtrip", YOUTRIP_MULTI_TEXT, YOUTRIP_SENDER)]
+    message_lookup = {m["id"]: m for m in messages}
+
+    monkeypatch.setattr(
+        gmail, "list_bank_messages", lambda access_token, query=None: [{"id": m["id"]} for m in messages]
+    )
+    monkeypatch.setattr(gmail, "fetch_message", lambda access_token, message_id: message_lookup[message_id])
+
+    response = client.post("/sync", params={"user_id": user.id})
+    assert response.status_code == 200
+    assert response.json()["inserted"] == 2
+
+    txns = db_session.query(Transaction).filter_by(user_id=user.id).all()
+    assert len(txns) == 2
+    ids = {t.source_email_id for t in txns}
+    assert ids == {"msg-youtrip:SFT-1372409889", "msg-youtrip:SFT-1372409901"}
+    for t in txns:
+        assert t.currency in ("CHF", "USD")
+        assert t.bank == "YouTrip"
+        assert t.category == "Travel"
+
+    # Re-syncing the same digest email must not duplicate either transaction.
+    response2 = client.post("/sync", params={"user_id": user.id})
+    assert response2.status_code == 200
+    assert response2.json()["inserted"] == 0
+    assert db_session.query(Transaction).filter_by(user_id=user.id).count() == 2
+
+
+def test_sync_youtrip_grab_merchant_is_not_swept_into_local_grab_reconciliation(
+    client, db_session, user, email_account, monkeypatch
+):
+    """An overseas Grab charge paid via YouTrip must route through Travel categorization, never
+    the local (SGD-only) Grab-receipt reconciliation path."""
+    messages = [_fake_message("msg-youtrip-grab", YOUTRIP_GRAB_TEXT, YOUTRIP_SENDER)]
+    message_lookup = {m["id"]: m for m in messages}
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("reconcile_grab_transaction should not be called for a non-SGD transaction")
+
+    monkeypatch.setattr("app.services.sync.reconcile_grab_transaction", fail_if_called)
+    monkeypatch.setattr(
+        gmail, "list_bank_messages", lambda access_token, query=None: [{"id": m["id"]} for m in messages]
+    )
+    monkeypatch.setattr(gmail, "fetch_message", lambda access_token, message_id: message_lookup[message_id])
+
+    response = client.post("/sync", params={"user_id": user.id})
+    assert response.status_code == 200
+    assert response.json()["inserted"] == 1
+
+    txn = db_session.query(Transaction).filter_by(user_id=user.id).one()
+    assert txn.category == "Travel"
+    assert txn.currency == "USD"
 
 
 def test_sync_with_since_uses_the_paginated_backfill_path_instead_of_the_normal_query(

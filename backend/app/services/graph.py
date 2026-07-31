@@ -97,7 +97,7 @@ def list_bank_messages_since(access_token: str, since: datetime) -> list[dict]:
 def fetch_message(access_token: str, message_id: str) -> dict:
     response = httpx.get(
         f"{GRAPH_API_BASE}/messages/{message_id}",
-        params={"$select": "body,from"},
+        params={"$select": "body,from,receivedDateTime"},
         headers={"Authorization": f"Bearer {access_token}"},
     )
     raise_for_status_with_body(response)
@@ -117,3 +117,11 @@ def get_sender(message: dict) -> str:
     name = email.get("name") or ""
     address = email.get("address") or ""
     return f"{name} <{address}>" if name else address
+
+
+def get_received_at(message: dict) -> datetime:
+    """Graph's `receivedDateTime` (ISO8601 UTC, e.g. "2026-05-25T02:03:00Z") -- requires
+    `receivedDateTime` in fetch_message's $select above, unlike Gmail's always-present
+    internalDate. Used by parsers (currently only YouTrip) whose emails don't include a full date
+    in the body, only a bare time-of-day."""
+    return datetime.fromisoformat(message["receivedDateTime"].replace("Z", "+00:00"))
