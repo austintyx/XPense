@@ -142,7 +142,8 @@ def _normalize_merchant_key(merchant: str, direction: DirectionEnum) -> str:
     # Scoped by direction so a debit and credit transaction that happen to share a merchant
     # string (e.g. a person's name via both a card refund and a PayNow transfer) never share one
     # cached category across two unrelated taxonomies.
-    return f"{direction.value}:{re.sub(r'\s+', ' ', merchant).strip().upper()}"
+    normalized = re.sub(r"\s+", " ", merchant).strip().upper()
+    return f"{direction.value}:{normalized}"
 
 
 def _get_cached_category(db: Session, merchant: str, direction: DirectionEnum) -> str | None:
