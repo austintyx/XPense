@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
@@ -29,6 +29,11 @@ class ParsedTxn:
     category: str | None = None
     subcategory: str | None = None
     raw_parsed: dict = field(default_factory=dict)
+    # Set when one email can contain multiple transactions (currently only YouTrip's digest
+    # emails) -- combined with the email's own id to build a per-transaction dedup key, instead of
+    # every parser's default of one Transaction row per email (source_email_id = the email's own
+    # id alone, unchanged for every parser that leaves this None).
+    dedup_suffix: str | None = None
 
 
 def _parse_amount(raw: str) -> Decimal:
@@ -89,68 +94,78 @@ _DBS_TABLE_PAYNOW_SUFFIX_RE = re.compile(rf"^(?P<name>.+?)\s*\((?P<idtype>{_ID_S
 _DBS_TABLE_ACCOUNT_SUFFIX_RE = re.compile(r"^(?P<name>.+?)\s+A/C ending \d+$", re.IGNORECASE)
 
 
-def _parse_dbs(text: str) -> ParsedTxn | None:
+def _parse_dbs(text: str, received_at: datetime) -> list[ParsedTxn]:
     if match := _DBS_OWN_TRANSFER_RE.search(text):
-        return ParsedTxn(
-            amount=_parse_amount(match["amount"]),
-            currency="SGD",
-            merchant_raw=f"A/C ending {match['to_acct']}",
-            direction=DirectionEnum.debit,
-            bank="DBS",
-            txn_at=_sgt_datetime(int(match["day"]), match["month"], int(match["hour"]), int(match["minute"])),
-            raw_parsed=match.groupdict(),
-        )
+        return [
+            ParsedTxn(
+                amount=_parse_amount(match["amount"]),
+                currency="SGD",
+                merchant_raw=f"A/C ending {match['to_acct']}",
+                direction=DirectionEnum.debit,
+                bank="DBS",
+                txn_at=_sgt_datetime(int(match["day"]), match["month"], int(match["hour"]), int(match["minute"])),
+                raw_parsed=match.groupdict(),
+            )
+        ]
 
     if match := _DBS_PAYNOW_RECEIVED_RE.search(text):
-        return ParsedTxn(
-            amount=_parse_amount(match["amount"]),
-            currency="SGD",
-            merchant_raw=match["sender"].strip(),
-            direction=DirectionEnum.credit,
-            bank="DBS",
-            txn_at=_sgt_datetime(
-                int(match["day"]), match["month"], int(match["hour"]), int(match["minute"]), year=int(match["year"])
-            ),
-            raw_parsed=match.groupdict(),
-        )
+        return [
+            ParsedTxn(
+                amount=_parse_amount(match["amount"]),
+                currency="SGD",
+                merchant_raw=match["sender"].strip(),
+                direction=DirectionEnum.credit,
+                bank="DBS",
+                txn_at=_sgt_datetime(
+                    int(match["day"]), match["month"], int(match["hour"]), int(match["minute"]), year=int(match["year"])
+                ),
+                raw_parsed=match.groupdict(),
+            )
+        ]
 
     if match := _DBS_TABLE_RE.search(text):
         merchant_field = match["merchant"].strip()
         txn_at = _sgt_datetime(int(match["day"]), match["month"], int(match["hour"]), int(match["minute"]))
 
         if id_match := _DBS_TABLE_PAYNOW_SUFFIX_RE.match(merchant_field):
-            return ParsedTxn(
-                amount=_parse_amount(match["amount"]),
-                currency="SGD",
-                merchant_raw=id_match["name"].strip(),
-                direction=DirectionEnum.debit,
-                bank="DBS",
-                txn_at=txn_at,
-                raw_parsed=match.groupdict(),
-            )
+            return [
+                ParsedTxn(
+                    amount=_parse_amount(match["amount"]),
+                    currency="SGD",
+                    merchant_raw=id_match["name"].strip(),
+                    direction=DirectionEnum.debit,
+                    bank="DBS",
+                    txn_at=txn_at,
+                    raw_parsed=match.groupdict(),
+                )
+            ]
 
         if acct_match := _DBS_TABLE_ACCOUNT_SUFFIX_RE.match(merchant_field):
-            return ParsedTxn(
+            return [
+                ParsedTxn(
+                    amount=_parse_amount(match["amount"]),
+                    currency="SGD",
+                    merchant_raw=acct_match["name"].strip(),
+                    direction=DirectionEnum.debit,
+                    bank="DBS",
+                    txn_at=txn_at,
+                    raw_parsed=match.groupdict(),
+                )
+            ]
+
+        return [
+            ParsedTxn(
                 amount=_parse_amount(match["amount"]),
                 currency="SGD",
-                merchant_raw=acct_match["name"].strip(),
+                merchant_raw=merchant_field,
                 direction=DirectionEnum.debit,
                 bank="DBS",
                 txn_at=txn_at,
                 raw_parsed=match.groupdict(),
             )
+        ]
 
-        return ParsedTxn(
-            amount=_parse_amount(match["amount"]),
-            currency="SGD",
-            merchant_raw=merchant_field,
-            direction=DirectionEnum.debit,
-            bank="DBS",
-            txn_at=txn_at,
-            raw_parsed=match.groupdict(),
-        )
-
-    return None
+    return []
 
 
 _UOB_PAYNOW_RE = re.compile(
@@ -164,23 +179,25 @@ _UOB_PAYNOW_RE = re.compile(
 )
 
 
-def _parse_uob(text: str) -> ParsedTxn | None:
+def _parse_uob(text: str, received_at: datetime) -> list[ParsedTxn]:
     if match := _UOB_PAYNOW_RE.search(text):
         hour = int(match["hour"]) % 12
         if match["ampm"].upper() == "PM":
             hour += 12
-        return ParsedTxn(
-            amount=_parse_amount(match["amount"]),
-            currency="SGD",
-            merchant_raw=match["merchant"].strip(),
-            direction=DirectionEnum.debit,
-            bank="UOB",
-            txn_at=_sgt_datetime(
-                int(match["day"]), match["month"], hour, int(match["minute"]), year=2000 + int(match["year"])
-            ),
-            raw_parsed=match.groupdict(),
-        )
-    return None
+        return [
+            ParsedTxn(
+                amount=_parse_amount(match["amount"]),
+                currency="SGD",
+                merchant_raw=match["merchant"].strip(),
+                direction=DirectionEnum.debit,
+                bank="UOB",
+                txn_at=_sgt_datetime(
+                    int(match["day"]), match["month"], hour, int(match["minute"]), year=2000 + int(match["year"])
+                ),
+                raw_parsed=match.groupdict(),
+            )
+        ]
+    return []
 
 
 _SIMPLYGO_RE = re.compile(
@@ -190,38 +207,104 @@ _SIMPLYGO_RE = re.compile(
 )
 
 
-def _parse_simplygo(text: str) -> ParsedTxn | None:
+def _parse_simplygo(text: str, received_at: datetime) -> list[ParsedTxn]:
     if match := _SIMPLYGO_RE.search(text):
         origin = match["origin"].strip()
         destination = match["destination"].strip()
-        return ParsedTxn(
-            amount=_parse_amount(match["amount"]),
-            currency="SGD",
-            merchant_raw=f"Transit: {origin}-{destination}",
-            direction=DirectionEnum.debit,
-            bank="SimplyGo",
-            txn_at=_sgt_datetime(int(match["day"]), match["month"], int(match["hour"]), int(match["minute"])),
-            category="Transport",
-            raw_parsed=match.groupdict(),
+        return [
+            ParsedTxn(
+                amount=_parse_amount(match["amount"]),
+                currency="SGD",
+                merchant_raw=f"Transit: {origin}-{destination}",
+                direction=DirectionEnum.debit,
+                bank="SimplyGo",
+                txn_at=_sgt_datetime(int(match["day"]), match["month"], int(match["hour"]), int(match["minute"])),
+                category="Transport",
+                raw_parsed=match.groupdict(),
+            )
+        ]
+    return []
+
+
+# Bounds the transactions section of a YouTrip digest email so the non-greedy merchant capture in
+# _YOUTRIP_TXN_RE below can't bleed into the intro paragraph (for the first transaction) or the
+# footer/security-notice text.
+_YOUTRIP_SECTION_START_RE = re.compile(r"\(UTC\+8\)\.\s*", re.IGNORECASE)
+_YOUTRIP_SECTION_END_RE = re.compile(r"You may view the full transaction history", re.IGNORECASE)
+
+# Built from 2 real screenshots of a "Summary of your recent online purchases & ATM withdrawals"
+# YouTrip alert (rendered, not raw HTML/plain-text source) -- token order (merchant, then
+# currency+amount, then Ref. No, then time) is inferred from the visual layout, not confirmed
+# against raw extracted text. Not directly confirmed against a live inbox -- if YouTrip
+# transactions aren't parsing, check the real extracted plain text first; a non-matching email
+# just produces no transaction (never a crash), so shipping this best-effort and refining later is
+# low-risk.
+_YOUTRIP_TXN_RE = re.compile(
+    r"(?P<merchant>.+?)\s+"
+    r"(?P<currency>[A-Z]{3})\s+(?P<amount>[\d,]+\.\d{2})\s*"
+    r"Ref\.?\s*No:?\s*(?P<ref>[\w-]+)\s*"
+    r"(?P<hour>\d{1,2}):(?P<minute>\d{2})\s*(?P<ampm>AM|PM)",
+    re.IGNORECASE,
+)
+
+
+def _parse_youtrip(text: str, received_at: datetime) -> list[ParsedTxn]:
+    # A rolling "last 24 hours" digest -- unlike every other parser here, one email can contain
+    # multiple transactions (the subject/body says "purchases" plural), so this returns 0, 1, or
+    # many ParsedTxn instead of at most one.
+    start = _YOUTRIP_SECTION_START_RE.search(text)
+    if not start:
+        return []
+    end = _YOUTRIP_SECTION_END_RE.search(text, start.end())
+    section = text[start.end() : end.start() if end else len(text)]
+
+    received_sgt = received_at.astimezone(SGT)
+    results: list[ParsedTxn] = []
+    for match in _YOUTRIP_TXN_RE.finditer(section):
+        hour = int(match["hour"]) % 12
+        if match["ampm"].upper() == "PM":
+            hour += 12
+        # The email body has no date at all, only a bare time -- infer the calendar date from the
+        # email's own received timestamp: since this is a rolling "last 24 hours" digest, a
+        # transaction time later in the day than the email itself must be from the day before.
+        # Done per-transaction (not once per email), since a single digest can straddle midnight.
+        candidate = received_sgt.replace(hour=hour, minute=int(match["minute"]), second=0, microsecond=0)
+        if candidate > received_sgt:
+            candidate -= timedelta(days=1)
+
+        results.append(
+            ParsedTxn(
+                amount=_parse_amount(match["amount"]),
+                currency=match["currency"].upper(),
+                merchant_raw=match["merchant"].strip(" ,"),
+                direction=DirectionEnum.debit,
+                bank="YouTrip",
+                txn_at=candidate,
+                raw_parsed=match.groupdict(),
+                dedup_suffix=match["ref"],
+            )
         )
-    return None
+    return results
 
 
 _BANK_PARSERS = [
     ("dbs", _parse_dbs),
     ("uob", _parse_uob),
     ("simplygo", _parse_simplygo),
+    # The keyword must be a substring of the actual sender address, not the bank's name -- YouTrip's
+    # is the VERP-rewritten "noreply=you.co@mail.you.co", which doesn't contain "youtrip" anywhere.
+    ("mail.you.co", _parse_youtrip),
 ]
 
 
-def parse_email(text: str, sender: str) -> ParsedTxn | None:
+def parse_email(text: str, sender: str, received_at: datetime) -> list[ParsedTxn]:
     sender_lower = sender.lower()
     for keyword, parser_fn in _BANK_PARSERS:
         if keyword in sender_lower:
-            result = parser_fn(text)
-            if result is not None:
+            result = parser_fn(text, received_at)
+            if result:
                 return result
-    return None
+    return []
 
 
 def save_parsed_transaction(

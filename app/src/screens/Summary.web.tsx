@@ -12,6 +12,8 @@ import {
   calendarWeeks,
   categoryTotals,
   categoryTransactions,
+  countriesInTransactions,
+  countryForCurrency,
   currentMonthTransactions,
   dailyTotalsForRange,
   dayLabel,
@@ -55,6 +57,7 @@ function dayTransactions(transactions: Transaction[], date: Date): Transaction[]
 export default function Summary() {
   const { transactions, summary, loading } = useAppData();
   const [sumPeriod, setSumPeriod] = useState<SumPeriod>("month");
+  const [countryFilter, setCountryFilter] = useState<string>("all");
   const [sumView, setSumView] = useState<SumView>("chart");
   const [openCat, setOpenCat] = useState<CategoryId | null>(null);
   const now = useMemo(() => new Date(), []);
@@ -80,12 +83,22 @@ export default function Summary() {
     });
   };
 
+  // Only shown once there's actually more than one country present -- avoids cluttering the UI
+  // for a user who's never had a non-SGD transaction. Derived from the full unfiltered set so the
+  // pill list itself doesn't shrink once a filter is active.
+  const countriesPresent = useMemo(() => countriesInTransactions(transactions), [transactions]);
+  const visibleTransactions = useMemo(
+    () =>
+      countryFilter === "all" ? transactions : transactions.filter((t) => countryForCurrency(t.currency) === countryFilter),
+    [transactions, countryFilter],
+  );
+
   const periodTransactions = useMemo(() => {
-    if (sumPeriod === "day") return dayTransactions(transactions, viewAnchor);
-    if (sumPeriod === "week") return calendarWeekTransactions(transactions, viewAnchor);
-    if (sumPeriod === "year") return yearRangeTransactions(transactions, viewAnchor);
-    return currentMonthTransactions(transactions, viewAnchor);
-  }, [transactions, sumPeriod, viewAnchor]);
+    if (sumPeriod === "day") return dayTransactions(visibleTransactions, viewAnchor);
+    if (sumPeriod === "week") return calendarWeekTransactions(visibleTransactions, viewAnchor);
+    if (sumPeriod === "year") return yearRangeTransactions(visibleTransactions, viewAnchor);
+    return currentMonthTransactions(visibleTransactions, viewAnchor);
+  }, [visibleTransactions, sumPeriod, viewAnchor]);
 
   const totals = useMemo(() => categoryTotals(periodTransactions), [periodTransactions]);
   const uncategorizedTotal = useMemo(
@@ -93,7 +106,11 @@ export default function Summary() {
     [periodTransactions],
   );
   const isCurrentRealMonth = sumPeriod === "month" && isSameMonth(viewAnchor, now);
-  const grand = isCurrentRealMonth && summary ? Number(summary.total) : expenseTotal(periodTransactions);
+  // The backend's /summary total is never filtered by anything client-side, so this shortcut must
+  // only apply when no country filter is active -- otherwise the headline total would silently
+  // ignore the filter.
+  const grand =
+    isCurrentRealMonth && summary && countryFilter === "all" ? Number(summary.total) : expenseTotal(periodTransactions);
   // Uncategorized spend is folded in as its own slice/row (rather than left out) so the chart's
   // wedges and the category rows' percentages actually tally to `grand`.
   const sortedCats = useMemo(() => {
@@ -121,18 +138,18 @@ export default function Summary() {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       months.push({
         label: d.toLocaleDateString(undefined, { month: "short" }),
-        total: monthTotal(transactions, d.getFullYear(), d.getMonth()),
+        total: monthTotal(visibleTransactions, d.getFullYear(), d.getMonth()),
       });
     }
     return months;
-  }, [transactions, now]);
+  }, [visibleTransactions, now]);
   const trendMax = Math.max(1, ...trend.map((m) => m.total));
 
   const movers = useMemo(() => {
-    const thisMonth = categoryTotals(currentMonthTransactions(transactions, now));
+    const thisMonth = categoryTotals(currentMonthTransactions(visibleTransactions, now));
     const prevAnchor = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const lastMonth = categoryTotals(
-      transactions.filter((t) => {
+      visibleTransactions.filter((t) => {
         if (!isExpense(t)) return false;
         const d = new Date(t.txn_at);
         return d.getFullYear() === prevAnchor.getFullYear() && d.getMonth() === prevAnchor.getMonth();
@@ -143,12 +160,12 @@ export default function Summary() {
       .map((cat) => ({ category: cat as CategoryId, delta: (thisMonth[cat] ?? 0) - (lastMonth[cat] ?? 0) }))
       .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
       .slice(0, 3);
-  }, [transactions, now]);
+  }, [visibleTransactions, now]);
 
   // Month grid (unchanged shape from before -- weeks of 7 cells, blanks padded).
   const dailyAmounts = useMemo(
-    () => calendarDailyTotals(transactions, viewAnchor.getFullYear(), viewAnchor.getMonth()),
-    [transactions, viewAnchor],
+    () => calendarDailyTotals(visibleTransactions, viewAnchor.getFullYear(), viewAnchor.getMonth()),
+    [visibleTransactions, viewAnchor],
   );
   const maxDay = Math.max(1, ...dailyAmounts);
   const leadingBlanks = firstWeekdayOfMonth(viewAnchor.getFullYear(), viewAnchor.getMonth());
@@ -158,8 +175,8 @@ export default function Summary() {
   const weekStart = useMemo(() => startOfWeek(viewAnchor), [viewAnchor]);
   const weekEnd = useMemo(() => endOfWeek(viewAnchor), [viewAnchor]);
   const weekDailyAmounts = useMemo(
-    () => dailyTotalsForRange(transactions, weekStart, weekEnd),
-    [transactions, weekStart, weekEnd],
+    () => dailyTotalsForRange(visibleTransactions, weekStart, weekEnd),
+    [visibleTransactions, weekStart, weekEnd],
   );
   const maxWeekDay = Math.max(1, ...weekDailyAmounts);
 
@@ -169,9 +186,9 @@ export default function Summary() {
     return Array.from({ length: 12 }, (_, month) => ({
       month,
       label: new Date(year, month, 1).toLocaleDateString(undefined, { month: "short" }),
-      total: monthTotal(transactions, year, month),
+      total: monthTotal(visibleTransactions, year, month),
     }));
-  }, [transactions, viewAnchor]);
+  }, [visibleTransactions, viewAnchor]);
   const maxYearMonth = Math.max(1, ...yearMonths.map((m) => m.total));
 
   // Right panel: every transaction in the active period, grouped by day so week/month/year
@@ -209,6 +226,28 @@ export default function Summary() {
         </Pressable>
       </View>
 
+      {countriesPresent.length > 1 && (
+        <View style={styles.pillsRow} testID="country-filter-row">
+          <Pressable
+            onPress={() => setCountryFilter("all")}
+            style={[styles.pill, countryFilter === "all" ? styles.pillActive : styles.pillInactive]}
+            testID="sum-country-all"
+          >
+            <Text style={[styles.pillText, countryFilter === "all" && styles.pillTextActive]}>All countries</Text>
+          </Pressable>
+          {countriesPresent.map((country) => (
+            <Pressable
+              key={country}
+              onPress={() => setCountryFilter(country)}
+              style={[styles.pill, countryFilter === country ? styles.pillActive : styles.pillInactive]}
+              testID={`sum-country-${country}`}
+            >
+              <Text style={[styles.pillText, countryFilter === country && styles.pillTextActive]}>{country}</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+
       {sumView === "chart" ? (
         <View style={[styles.row, isMobile && styles.rowStacked]} testID="summary-chart-row">
           <View style={[styles.card, rowFlex(7), shadow.card]}>
@@ -233,14 +272,16 @@ export default function Summary() {
                 />
                 <View style={styles.donutCenter} pointerEvents="none">
                   <Text style={styles.donutEyebrow}>TOTAL</Text>
-                  <Text style={styles.donutAmount}>{formatMoney(grand, false)}</Text>
+                  <Text style={styles.donutAmount} testID="donut-total">{formatMoney(grand, false)}</Text>
                 </View>
               </View>
               <View style={styles.catRows}>
                 {sortedCats.map(([cat, total]) => {
                   const expanded = openCat === cat;
                   const subs =
-                    cat === "Food" || cat === "Transport" ? subcategoryTotals(periodTransactions, cat) : [];
+                    cat === "Food" || cat === "Transport" || cat === "Travel"
+                      ? subcategoryTotals(periodTransactions, cat)
+                      : [];
                   const maxSub = Math.max(1, ...subs.map(([, v]) => v));
                   const catTxns = expanded ? categoryTransactions(periodTransactions, cat) : [];
                   return (

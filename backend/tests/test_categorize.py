@@ -7,6 +7,7 @@ from app.config import settings
 from app.models import DirectionEnum, MerchantCategoryCache
 from app.services.categorize import (
     CREDIT_CATEGORIES,
+    TRAVEL_SUBCATEGORIES,
     ai_category,
     categorize_transaction,
     food_subcategory,
@@ -280,3 +281,71 @@ def test_merchant_cache_is_scoped_by_direction(monkeypatch, db_session):
     assert debit_category == "Food"
     assert credit_category == "Gift"
     assert db_session.query(MerchantCategoryCache).count() == 2
+
+
+def test_categorize_transaction_overseas_routes_to_travel_and_classifies_subcategory(monkeypatch, db_session):
+    seen_categories = []
+
+    def fake_ai_category(merchant, bank, categories=None):
+        seen_categories.append(categories)
+        return "Transport"
+
+    monkeypatch.setattr("app.services.categorize.ai_category", fake_ai_category)
+
+    category, subcategory = categorize_transaction(
+        db_session,
+        "SBB CFF FFS Ticket Sho, Bern",
+        "YouTrip",
+        datetime(2026, 7, 24, 15, 42, tzinfo=SGT),
+        DirectionEnum.debit,
+        "CHF",
+    )
+    assert category == "Travel"
+    assert subcategory == "Transport"
+    assert seen_categories == [TRAVEL_SUBCATEGORIES]
+
+
+def test_categorize_transaction_overseas_skips_hardcoded_rules(monkeypatch, db_session):
+    # "BUS/MRT" hardcoded-matches Transport for a normal SGD debit transaction -- for the exact
+    # same merchant string paid in a foreign currency, that rule must not apply; the transaction
+    # always files under Travel regardless of what a local rule would have said.
+    monkeypatch.setattr("app.services.categorize.ai_category", lambda merchant, bank, categories=None: "Transport")
+
+    category, _ = categorize_transaction(
+        db_session, "BUS/MRT", "YouTrip", datetime(2026, 7, 23, 19, 0, tzinfo=SGT), DirectionEnum.debit, "USD"
+    )
+    assert category == "Travel"
+
+
+def test_categorize_transaction_overseas_caches_independently_of_debit_scope(monkeypatch, db_session):
+    monkeypatch.setattr(
+        "app.services.categorize.ai_category",
+        lambda merchant, bank, categories=None: ("Food" if categories is TRAVEL_SUBCATEGORIES else "Groceries"),
+    )
+
+    txn_at = datetime(2026, 7, 23, 19, 0, tzinfo=SGT)
+    debit_category, _ = categorize_transaction(db_session, "SAME NAME", "DBS", txn_at, DirectionEnum.debit, "SGD")
+    travel_category, travel_subcategory = categorize_transaction(
+        db_session, "SAME NAME", "YouTrip", txn_at, DirectionEnum.debit, "CHF"
+    )
+
+    assert debit_category == "Groceries"
+    assert travel_category == "Travel"
+    assert travel_subcategory == "Food"
+    keys = {row.merchant_key for row in db_session.query(MerchantCategoryCache).all()}
+    assert keys == {"debit:SAME NAME", "travel:SAME NAME"}
+
+
+def test_categorize_transaction_overseas_ai_failure_still_sets_travel_with_no_subcategory(monkeypatch, db_session):
+    monkeypatch.setattr("app.services.categorize.ai_category", lambda merchant, bank, categories=None: None)
+
+    category, subcategory = categorize_transaction(
+        db_session,
+        "UNKNOWN MERCHANT",
+        "YouTrip",
+        datetime(2026, 7, 23, 19, 0, tzinfo=SGT),
+        DirectionEnum.debit,
+        "JPY",
+    )
+    assert category == "Travel"
+    assert subcategory is None

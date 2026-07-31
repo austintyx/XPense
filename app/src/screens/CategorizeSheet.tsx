@@ -140,7 +140,9 @@ export function CategorizeSheet({ transaction, onClose }: CategorizeSheetProps) 
           <Text style={[styles.headerText, styles.merchantText]} numberOfLines={2}>
             {transaction.merchant_clean ?? transaction.merchant_raw ?? "Unknown"}
           </Text>
-          <Text style={[styles.headerText, styles.amountText]}>{formatMoney(transaction.amount)}</Text>
+          <Text style={[styles.headerText, styles.amountText]}>
+            {formatMoney(transaction.amount, true, transaction.currency)}
+          </Text>
         </View>
       )}
       <View style={styles.metaRow}>

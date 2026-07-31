@@ -57,6 +57,7 @@ export type CategoryId =
   | "Bills"
   | "Entertainment"
   | "Health"
+  | "Travel"
   | "Other";
 
 const CATEGORY_HUES: Record<CategoryId, number> = {
@@ -67,6 +68,7 @@ const CATEGORY_HUES: Record<CategoryId, number> = {
   Shopping: 300,
   Bills: 190,
   Health: 350,
+  Travel: 265,
   Other: 80,
 };
 
@@ -78,6 +80,7 @@ export const CATEGORIES: CategoryId[] = [
   "Bills",
   "Entertainment",
   "Health",
+  "Travel",
   "Other",
 ];
 
@@ -108,10 +111,19 @@ const CREDIT_CATEGORY_HUES: Record<string, number> = {
 
 export const FOOD_SUBCATEGORIES = ["Breakfast", "Lunch", "Dinner", "Beverage", "Others"] as const;
 export const TRANSPORT_SUBCATEGORIES = ["Public", "Private", "Others"] as const;
+export const TRAVEL_SUBCATEGORIES = [
+  "Food",
+  "Groceries",
+  "Transport",
+  "Shopping",
+  "Entertainment",
+  "Accommodations",
+] as const;
 
 export function subcategoriesFor(category: string): readonly string[] | null {
   if (category === "Food") return FOOD_SUBCATEGORIES;
   if (category === "Transport") return TRANSPORT_SUBCATEGORIES;
+  if (category === "Travel") return TRAVEL_SUBCATEGORIES;
   return null;
 }
 

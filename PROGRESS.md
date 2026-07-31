@@ -2337,3 +2337,103 @@ while the session check and initial data load are respectively still pending;
 centering properties).
 
 **Manual steps for the human:** none -- purely UI, no schema or API changes.
+
+## Fixed a Render deploy-breaking syntax error, then built overseas spending: Travel category, YouTrip email parsing, country detection & filtering
+
+**Deploy fix first:** `_normalize_merchant_key` (`categorize.py`) had `re.sub(r'\s+', ' ',
+merchant)` inline inside an f-string's `{}` expression -- a `SyntaxError` on Python 3.11 (Render's
+runtime) even though it's legal on 3.12+ (this machine's local Python), so the bug was invisible
+until the crash showed up in Render's deploy logs. Fixed by extracting the `re.sub` call to a local
+variable before the f-string. (This landed as a separate commit the human pushed directly while the
+main feature below was still in progress.)
+
+**The feature:** overseas spending was previously invisible -- no "country" concept anywhere, every
+bank email parser hardcoded `currency="SGD"` with an amount regex that structurally couldn't match a
+non-SGD amount, and subcategories were never a generic per-category mechanism (only Food/Transport
+were special-cased, both algorithmically derived, not static lists). Scoped to YouTrip only for
+now, per explicit instruction -- other banks' overseas-alert formats are unknown.
+
+**New built-in "Travel" category** (`app/src/theme/tokens.ts` + `backend/app/services/categorize.py`,
+same hand-duplicated-constants convention as every other built-in category list) with a genuinely
+static subcategory list -- Food, Groceries, Transport, Shopping, Entertainment, Accommodations --
+via a third branch in `subcategoriesFor()`/dispatched independently of `subcategory_for()` (which
+only knows Food/Transport). `ManageCategories.tsx` needed no changes -- it's already fully generic
+over `CATEGORIES`/`subcategoriesFor()`.
+
+**Currency -> country derivation** (`app/src/utils/derive.ts`, frontend-only, no schema change): a
+curated ~20-entry `CURRENCY_COUNTRY` map (SGD->Singapore, CHF->Switzerland, etc.) plus
+`countryForCurrency()`/`countriesInTransactions()`, falling back to the raw currency code for
+anything unmapped. The backend doesn't need this map at all -- it only ever needs `currency !=
+"SGD"` as the overseas signal, so country *names* stay purely a frontend display/filter concern,
+consistent with this app's existing "everything filterable is derived client-side" pattern (no new
+`GET /transactions` query param, matches how category/search filtering already works).
+
+**YouTrip email parsing** -- built from 2 real screenshots the human shared of an actual YouTrip
+"Summary of your recent online purchases & ATM withdrawals" alert (sender
+`noreply=you.co@mail.you.co`, VERP-shaped -- flagged with the same "not directly confirmed, check
+the real address first" caveat this file already has for PayLah!). This is a rolling "last 24
+hours" digest that can list multiple transactions in one email, each showing a merchant, a stable
+per-transaction "Ref. No:", an amount as `{ISO currency code} {amount}` (not S$-prefixed like every
+other bank here), and a bare time-of-day with **no date at all**. Two real architecture changes,
+not just a new regex:
+1. **One email -> many transactions.** `parse_email(text, sender, received_at)` changed from
+   returning `ParsedTxn | None` to `list[ParsedTxn]`; every existing single-transaction parser
+   (DBS/UOB/SimplyGo) now returns `[ParsedTxn(...)]`/`[]` instead, zero behavior change for them.
+   `ParsedTxn` gained `dedup_suffix: str | None`, which YouTrip sets to its own Ref. No so
+   `sync.py` can build a per-transaction dedup key (`f"{message_id}:{dedup_suffix}"`) instead of
+   every transaction in one digest colliding on the email's own id.
+2. **Date inference from the email's own received timestamp**, not the body (which has none) --
+   both `gmail.py` (parses the already-present `internalDate`) and `graph.py` (added
+   `receivedDateTime` to `fetch_message`'s `$select`) gained a `get_received_at(message)` function.
+   For a rolling "last 24 hours" digest, a transaction's time-of-day later than the email's own
+   received time can only mean the day before -- done **per transaction**, not once per email,
+   since a single digest can straddle midnight.
+
+Auto-categorization: `categorize_transaction()` gained a `currency` param -- any non-SGD currency
+skips the normal hardcoded-rules/CATEGORIES path entirely and classifies straight against
+`TRAVEL_SUBCATEGORIES` via the same `ai_category(merchant, bank, categories=...)` mechanism already
+used for `CREDIT_CATEGORIES`, setting `category="Travel"` unconditionally and returning directly
+(bypassing the trailing `subcategory_for()` call, which would otherwise null out the Travel
+subcategory just set). The merchant cache's scope param was generalized from
+`direction: DirectionEnum` to a plain `scope: str` ("debit"/"credit"/"travel") since overseas-ness
+is orthogonal to money-flow direction -- a Travel purchase is still `direction=debit`. Two gaps
+caught in review before shipping: `categorize_pending`'s backfill path needed `currency` threaded
+through too (not just the live sync path, or a pre-existing uncategorized YouTrip row would never
+route to Travel when backfilled); and the existing Grab-reconciliation shortcut in `sync.py` now
+only runs for SGD transactions, so an overseas Grab ride paid via YouTrip routes through Travel
+instead of being swept into the local (SGD-only) Grab-receipt lookup.
+
+**Manual entry** (`AddTransactionSheet.tsx`) previously had zero currency support at all (hardcoded
+"S$", no field sent to the backend even though `TransactionCreateIn.currency` already existed
+server-side). Added a currency chip row; picking non-SGD auto-selects Travel (still
+user-overridable), mirroring the existing direction-toggle's reset pattern.
+
+**Country filtering** -- Activity.tsx gained a second pill row (hidden unless >1 country present);
+Summary.tsx/Summary.web.tsx gained a country selector that pre-filters every downstream computation.
+Caught and fixed one real edge case: both files' headline total had a shortcut using the backend's
+own unfiltered `/summary` total when viewing the current real month -- now disabled whenever a
+country filter is active, or the total would silently ignore the filter. Also extended the existing
+`cat === "Food" || cat === "Transport"` subcategory-breakdown special case to include `"Travel"`.
+
+**Currency-aware display**: `formatMoney()` gained an optional `currency` param (default unchanged
+"S$..." behavior) -- wired into Activity's transaction rows and CategorizeSheet's detail view,
+which already fetched `currency` but never displayed it. Day/period aggregate totals intentionally
+stay S$-formatted (summing mixed currencies has no single correct symbol).
+
+**Tested:** backend `pytest -q` -- 216 passed (+19: YouTrip parser cases including a real
+multi-transaction-per-digest test with per-item midnight-rollover date inference built from the
+actual screenshot text; end-to-end sync tests confirming multi-transaction dedup and the
+currency-gated Grab check, both against a real Gemini API call since a key is configured locally;
+overseas/Travel categorization + independent cache-scope tests; the `categorize_pending`
+currency-backfill gap). Frontend `jest --runInBand` -- 152 passed across 21 suites (+19: currency/
+country derivation, Travel category chips in Manage Categories, the Activity/Summary country filter
+pill rows shown/hidden by country count and their filtering behavior, the Summary `grand`-shortcut
+edge case in both native and web, the manual-entry currency picker's auto-Travel-category behavior,
+currency-aware amount display).
+
+**Manual steps for the human:** none for the code itself. Once a real YouTrip email has synced
+through the live app, check the parsed merchant/amount/category/subcategory/date against what
+actually landed -- the regex was built from 2 screenshots (rendered, not raw HTML/plain-text
+source), so the token order is inferred from the visual layout, not confirmed against real
+extracted text; a non-matching email just silently produces no transaction (never a crash), so this
+is safe to have shipped best-effort and refine against real data.

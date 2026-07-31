@@ -9,7 +9,13 @@ from app.config import settings
 from app.models import DirectionEnum, MerchantCategoryCache
 from app.services.parser import SGT
 
-CATEGORIES = ["Food", "Groceries", "Transport", "Shopping", "Bills", "Entertainment", "Health", "Other"]
+CATEGORIES = ["Food", "Groceries", "Transport", "Shopping", "Bills", "Entertainment", "Health", "Travel", "Other"]
+
+# Subcategories for overseas (non-SGD currency) spend -- classified independently of the debit
+# CATEGORIES list above via categorize_transaction's currency-routing branch, not through
+# subcategory_for (which only knows Food/Transport). Kept in sync by hand with
+# app/src/theme/tokens.ts's TRAVEL_SUBCATEGORIES, same no-shared-infra convention as CATEGORIES.
+TRAVEL_SUBCATEGORIES = ["Food", "Groceries", "Transport", "Shopping", "Entertainment", "Accommodations"]
 
 # Money coming in needs its own taxonomy -- kept in sync by hand with app/src/theme/tokens.ts's
 # CREDIT_CATEGORIES (no shared-constants infrastructure exists between frontend/backend, same as
@@ -138,33 +144,35 @@ def subcategory_for(category: str | None, merchant: str, txn_at: datetime) -> st
     return None
 
 
-def _normalize_merchant_key(merchant: str, direction: DirectionEnum) -> str:
-    # Scoped by direction so a debit and credit transaction that happen to share a merchant
-    # string (e.g. a person's name via both a card refund and a PayNow transfer) never share one
-    # cached category across two unrelated taxonomies.
+def _normalize_merchant_key(merchant: str, scope: str) -> str:
+    # Scoped so a debit, credit, and overseas ("travel") transaction that happen to share a
+    # merchant string (e.g. a person's name via both a card refund and a PayNow transfer, or a
+    # merchant that appears both locally and abroad) never share one cached category across
+    # unrelated taxonomies.
     normalized = re.sub(r"\s+", " ", merchant).strip().upper()
-    return f"{direction.value}:{normalized}"
+    return f"{scope}:{normalized}"
 
 
-def _get_cached_category(db: Session, merchant: str, direction: DirectionEnum) -> str | None:
+def _get_cached_category(db: Session, merchant: str, scope: str) -> str | None:
     row = (
         db.query(MerchantCategoryCache)
-        .filter_by(merchant_key=_normalize_merchant_key(merchant, direction))
+        .filter_by(merchant_key=_normalize_merchant_key(merchant, scope))
         .one_or_none()
     )
     return row.category if row is not None else None
 
 
-def remember_category(
-    db: Session, merchant: str, category: str, direction: DirectionEnum = DirectionEnum.debit
-) -> None:
+def remember_category(db: Session, merchant: str, category: str, scope: str = "debit") -> None:
     """Upserts the merchant->category cache, overwriting any existing entry -- called both after
     a successful AI classification and whenever a user manually (re)categorizes a transaction, so
     a user's correction always wins over a prior guess and sticks for every future transaction
     from that merchant. Flushes (but doesn't commit) so the change is visible to a subsequent
     _get_cached_category call later in the same request/batch -- this project's sessions are
-    created with autoflush=False, so that visibility isn't automatic."""
-    key = _normalize_merchant_key(merchant, direction)
+    created with autoflush=False, so that visibility isn't automatic. `scope` is a plain string
+    ("debit"/"credit"/"travel", typically a DirectionEnum's `.value`) rather than DirectionEnum
+    itself -- overseas-ness ("travel") is orthogonal to money-flow direction, a Travel purchase is
+    still direction=debit, so the cache scope needs a third value the enum doesn't have."""
+    key = _normalize_merchant_key(merchant, scope)
     row = db.query(MerchantCategoryCache).filter_by(merchant_key=key).one_or_none()
     if row is None:
         db.add(MerchantCategoryCache(merchant_key=key, category=category))
@@ -179,22 +187,38 @@ def categorize_transaction(
     bank: str | None,
     txn_at: datetime,
     direction: DirectionEnum = DirectionEnum.debit,
+    currency: str = "SGD",
 ) -> tuple[str | None, str | None]:
+    if currency != "SGD":
+        # An overseas transaction (any non-SGD currency) always files under the fixed "Travel"
+        # category, with its own subcategory classified straight from TRAVEL_SUBCATEGORIES --
+        # never through the normal hardcoded-rules/CATEGORIES path (those are all local-merchant
+        # patterns) and never through subcategory_for (which only knows Food/Transport and would
+        # otherwise null out the subcategory just set here). Returns directly, skipping the
+        # trailing subcategory_for call below.
+        category = "Travel"
+        subcategory = _get_cached_category(db, merchant, "travel")
+        if subcategory is None:
+            subcategory = ai_category(merchant, bank, TRAVEL_SUBCATEGORIES)
+            if subcategory is not None:
+                remember_category(db, merchant, subcategory, "travel")
+        return category, subcategory
+
     if direction == DirectionEnum.credit:
         # None of the hardcoded rules (NTUC, Grab, Starbucks, ...) are meaningful for money
         # coming in -- skip straight to the credit-scoped cache/AI classification.
-        category = _get_cached_category(db, merchant, direction)
+        category = _get_cached_category(db, merchant, direction.value)
         if category is None:
             category = ai_category(merchant, bank, CREDIT_CATEGORIES)
             if category is not None:
-                remember_category(db, merchant, category, direction)
+                remember_category(db, merchant, category, direction.value)
     else:
         category = hardcoded_category(merchant)
         if category is None:
-            category = _get_cached_category(db, merchant, direction)
+            category = _get_cached_category(db, merchant, direction.value)
             if category is None:
                 category = ai_category(merchant, bank, CATEGORIES)
                 if category is not None:
-                    remember_category(db, merchant, category, direction)
+                    remember_category(db, merchant, category, direction.value)
     subcategory = subcategory_for(category, merchant, txn_at)
     return category, subcategory

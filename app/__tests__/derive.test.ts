@@ -1,8 +1,11 @@
 import {
   allCategories,
+  countriesInTransactions,
+  countryForCurrency,
   dailyTotalsForRange,
   deriveRecurring,
   expenseTotal,
+  formatMoney,
   initialsOf,
   previousMonthTransactions,
   relativeTime,
@@ -11,9 +14,10 @@ import { CATEGORIES, CREDIT_CATEGORIES } from '../src/theme/tokens';
 import { makeTxn } from '../src/testUtils';
 
 describe('allCategories', () => {
-  test('defaults to the debit list plus any custom categories', () => {
+  test('defaults to the debit list plus any custom categories, and includes Travel', () => {
     const result = allCategories([{ id: 1, name: 'Side Hustle' }]);
     expect(result).toEqual([...CATEGORIES, 'Side Hustle']);
+    expect(result).toContain('Travel');
   });
 
   test('direction "credit" returns the fixed credit list, ignoring custom categories', () => {
@@ -24,6 +28,51 @@ describe('allCategories', () => {
 
   test('direction "debit" is equivalent to the default', () => {
     expect(allCategories([], 'debit')).toEqual(allCategories([]));
+  });
+});
+
+describe('countryForCurrency', () => {
+  test('maps common currency codes to their country/region name', () => {
+    expect(countryForCurrency('SGD')).toBe('Singapore');
+    expect(countryForCurrency('CHF')).toBe('Switzerland');
+    expect(countryForCurrency('JPY')).toBe('Japan');
+  });
+
+  test('falls back to the raw currency code for anything unmapped', () => {
+    expect(countryForCurrency('ZZZ')).toBe('ZZZ');
+  });
+});
+
+describe('countriesInTransactions', () => {
+  test('returns the unique set of countries present, derived from currency', () => {
+    const txns = [
+      makeTxn({ id: 1, currency: 'SGD' }),
+      makeTxn({ id: 2, currency: 'CHF' }),
+      makeTxn({ id: 3, currency: 'CHF' }),
+    ];
+    expect(countriesInTransactions(txns)).toEqual(['Singapore', 'Switzerland']);
+  });
+
+  test('returns an empty array for no transactions', () => {
+    expect(countriesInTransactions([])).toEqual([]);
+  });
+});
+
+describe('formatMoney', () => {
+  test('defaults to S$ when no currency is given, unchanged from before', () => {
+    expect(formatMoney(10)).toBe('S$10.00');
+  });
+
+  test('formats SGD the same as no currency', () => {
+    expect(formatMoney(10, true, 'SGD')).toBe('S$10.00');
+  });
+
+  test('shows a non-SGD currency code instead of converting it', () => {
+    expect(formatMoney(358, true, 'CHF')).toBe('CHF 358.00');
+  });
+
+  test('keeps the sign before the currency prefix for a negative amount', () => {
+    expect(formatMoney(-5, true, 'CHF')).toBe('-CHF 5.00');
   });
 });
 

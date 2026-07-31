@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 
@@ -7,6 +8,11 @@ from app.models import DirectionEnum, ProviderEnum, Transaction
 from app.services.parser import parse_email, save_parsed_transaction
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "emails"
+
+# Irrelevant to every parser except YouTrip's (the only one that infers a date from the email's
+# own received time rather than an explicit date in the body) -- a fixed sentinel is enough for
+# every other fixture.
+_RECEIVED_AT = datetime(2026, 7, 25, 12, 0, tzinfo=timezone.utc)
 
 
 def _load(name: str) -> str:
@@ -149,9 +155,10 @@ CASES = [
 @pytest.mark.parametrize("fixture, sender, expected, expected_dt", CASES)
 def test_parses_expected_fields(fixture, sender, expected, expected_dt):
     text = _load(fixture)
-    result = parse_email(text, sender)
+    results = parse_email(text, sender, _RECEIVED_AT)
 
-    assert result is not None
+    assert len(results) == 1
+    result = results[0]
     for key, value in expected.items():
         assert getattr(result, key) == value, key
 
@@ -165,15 +172,16 @@ def test_parses_expected_fields(fixture, sender, expected, expected_dt):
         assert result.txn_at.year == expected_dt["year"]
 
 
-def test_unparseable_email_returns_none():
+def test_unparseable_email_returns_empty_list():
     text = _load("unparseable_unknown_format.txt")
-    assert parse_email(text, "alerts@dbs.com.sg") is None
+    assert parse_email(text, "alerts@dbs.com.sg", _RECEIVED_AT) == []
 
 
 def test_dedup_on_source_email_id(db_session, user):
     text = _load("dbs_paynow_merchant.txt")
-    parsed = parse_email(text, "alerts@dbs.com.sg")
-    assert parsed is not None
+    results = parse_email(text, "alerts@dbs.com.sg", _RECEIVED_AT)
+    assert len(results) == 1
+    parsed = results[0]
 
     first = save_parsed_transaction(db_session, user.id, "msg-123", ProviderEnum.google, parsed)
     second = save_parsed_transaction(db_session, user.id, "msg-123", ProviderEnum.google, parsed)
@@ -181,3 +189,54 @@ def test_dedup_on_source_email_id(db_session, user):
     assert first.id == second.id
     count = db_session.query(Transaction).filter_by(source_email_id="msg-123").count()
     assert count == 1
+
+
+YOUTRIP_SENDER = "noreply=you.co@mail.you.co"
+# 10:03 AM SGT -- matches the real screenshot's status bar clock.
+YOUTRIP_RECEIVED_AT = datetime(2026, 7, 25, 2, 3, tzinfo=timezone.utc)
+
+
+def test_youtrip_single_transaction():
+    text = _load("youtrip_single.txt")
+    results = parse_email(text, YOUTRIP_SENDER, YOUTRIP_RECEIVED_AT)
+
+    assert len(results) == 1
+    txn = results[0]
+    assert txn.amount == Decimal("358.00")
+    assert txn.currency == "CHF"
+    assert txn.merchant_raw == "SBB CFF FFS Ticket Sho, Bern"
+    assert txn.direction == DirectionEnum.debit
+    assert txn.bank == "YouTrip"
+    assert txn.dedup_suffix == "SFT-1372409889"
+    # 3:42 PM is later in the day than the email's own 10:03 AM received time -- for a rolling
+    # "last 24 hours" digest, that can only mean the day before.
+    assert txn.txn_at.day == 24
+    assert txn.txn_at.hour == 15
+    assert txn.txn_at.minute == 42
+
+
+def test_youtrip_multiple_transactions_in_one_digest_with_per_item_date_inference():
+    # One digest email straddling midnight -- each transaction's date must be inferred
+    # independently, not once for the whole email.
+    text = _load("youtrip_multi.txt")
+    results = parse_email(text, YOUTRIP_SENDER, YOUTRIP_RECEIVED_AT)
+
+    assert len(results) == 2
+    first, second = results
+
+    assert first.merchant_raw == "SBB CFF FFS Ticket Sho, Bern"
+    assert first.currency == "CHF"
+    assert first.dedup_suffix == "SFT-1372409889"
+    assert first.txn_at.day == 24  # 3:42 PM > 10:03 AM received time -> previous day
+    assert first.txn_at.hour == 15
+
+    assert second.merchant_raw == "COOP Pronto Zurich HB"
+    assert second.currency == "USD"
+    assert second.dedup_suffix == "SFT-1372409901"
+    assert second.txn_at.day == 25  # 9:15 AM < 10:03 AM received time -> same day
+    assert second.txn_at.hour == 9
+
+
+def test_youtrip_no_match_returns_empty_list():
+    text = _load("unparseable_unknown_format.txt")
+    assert parse_email(text, YOUTRIP_SENDER, YOUTRIP_RECEIVED_AT) == []

@@ -25,6 +25,17 @@ test('lists built-in categories with no remove affordance', async () => {
   expect(screen.queryByTestId('remove-category-Food')).toBeNull();
 });
 
+test('built-in Travel shows its default subcategory chips with no remove affordance', async () => {
+  mockClientDefaults();
+
+  renderWithProviders(<ManageCategories />);
+
+  await screen.findByTestId('category-card-Travel');
+  expect(screen.getByTestId('subcategory-Travel-Accommodations')).toBeTruthy();
+  expect(screen.getByTestId('subcategory-Travel-Transport')).toBeTruthy();
+  expect(screen.queryByTestId('remove-category-Travel')).toBeNull();
+});
+
 test('built-in Food shows its default subcategory chips with no remove affordance', async () => {
   mockClientDefaults();
 

@@ -17,6 +17,13 @@ KNOWN_BANK_SENDERS: dict[str, list[str]] = {
     # confirmed -- if PayLah! mail goes missing, check the real From address first.
     "dbs": ["ibanking.alert@dbs.com", "alerts@dbs.com.sg", "paylah.alerts@dbs.com"],
     "uob": ["unialerts@uobgroup.com", "alerts@uob.com.sg"],
+    # YouTrip (multi-currency travel wallet) "Summary of your recent online purchases & ATM
+    # withdrawals" alerts -- confirmed via 2 real screenshots ("On behalf of YouTrip", subject as
+    # above). The local part is VERP/ESP-rewritten (noreply=you.co, not noreply@you.co) -- if this
+    # exact address ever turns out unstable (some ESPs vary it per-send), YouTrip mail will
+    # silently stop being fetched at all; check the real From address first before assuming
+    # anything else is wrong, same as this file's existing PayLah! caveat above.
+    "youtrip": ["noreply=you.co@mail.you.co"],
 }
 
 _ALL_ADDRESSES = [address for addresses in KNOWN_BANK_SENDERS.values() for address in addresses]

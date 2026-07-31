@@ -299,3 +299,98 @@ test('the auto-categorize action is hidden once nothing needs a category', async
   fireEvent.press(await screen.findByTestId('filter-needs'));
   expect(screen.queryByTestId('auto-categorize-button')).toBeNull();
 });
+
+test('the country filter row is hidden when every transaction is SGD', async () => {
+  mockClientDefaults({
+    transactions: [makeTxn({ id: 1, currency: 'SGD' }), makeTxn({ id: 2, currency: 'SGD' })],
+  });
+
+  renderWithProviders(<Activity />);
+
+  await screen.findByTestId('activity-screen');
+  expect(screen.queryByTestId('country-filter-row')).toBeNull();
+});
+
+test('the country filter row appears once more than one country is present, and filters the list', async () => {
+  mockClientDefaults({
+    transactions: [
+      makeTxn({ id: 1, merchant_raw: 'NTUC', currency: 'SGD' }),
+      makeTxn({ id: 2, merchant_raw: 'SBB CFF FFS', currency: 'CHF', bank: 'YouTrip' }),
+    ],
+  });
+
+  renderWithProviders(<Activity />);
+
+  expect(await screen.findByTestId('country-filter-row')).toBeTruthy();
+  expect(screen.getByTestId('country-filter-all')).toBeTruthy();
+  expect(screen.getByTestId('country-filter-Singapore')).toBeTruthy();
+  expect(screen.getByTestId('country-filter-Switzerland')).toBeTruthy();
+  expect(screen.getByText('NTUC')).toBeTruthy();
+  expect(screen.getByText('SBB CFF FFS')).toBeTruthy();
+
+  fireEvent.press(screen.getByTestId('country-filter-Switzerland'));
+
+  expect(screen.queryByText('NTUC')).toBeNull();
+  expect(screen.getByText('SBB CFF FFS')).toBeTruthy();
+
+  fireEvent.press(screen.getByTestId('country-filter-all'));
+  expect(screen.getByText('NTUC')).toBeTruthy();
+});
+
+test('a non-SGD transaction row shows its own currency instead of S$', async () => {
+  mockClientDefaults({
+    transactions: [makeTxn({ id: 1, merchant_raw: 'SBB CFF FFS', currency: 'CHF', amount: '358.00' })],
+  });
+
+  renderWithProviders(<Activity />);
+
+  await screen.findByText('SBB CFF FFS');
+  // The day-group total (an aggregate across possibly-mixed currencies) intentionally stays
+  // S$-formatted -- only the individual row shows its own currency.
+  expect(within(screen.getByTestId('transaction-1')).getByText('CHF 358.00')).toBeTruthy();
+});
+
+test('the detail sheet for a non-SGD transaction shows its own currency', async () => {
+  mockClientDefaults({
+    transactions: [makeTxn({ id: 1, merchant_raw: 'SBB CFF FFS', currency: 'CHF', amount: '358.00' })],
+  });
+
+  renderWithProviders(<Activity />);
+
+  fireEvent.press(await screen.findByTestId('transaction-1'));
+  expect(await screen.findAllByText('CHF 358.00')).not.toHaveLength(0);
+});
+
+test('picking a non-SGD currency in Add Transaction auto-selects Travel, and it can still be overridden', async () => {
+  mockClientDefaults({ transactions: [] });
+
+  renderWithProviders(<Activity />);
+
+  fireEvent.press(await screen.findByTestId('add-transaction-button'));
+  fireEvent.press(await screen.findByTestId('draft-currency-CHF'));
+
+  // Travel was auto-selected -- confirmed via save below, which would fail validation
+  // (canSave requires a category) if nothing had been picked.
+  fireEvent.changeText(screen.getByTestId('draft-amount'), '50.00');
+  fireEvent.changeText(screen.getByTestId('draft-merchant'), 'Somewhere Abroad');
+  const autoCreateSpy = jest.spyOn(client, 'createTransaction').mockResolvedValue(
+    makeTxn({ id: 51, merchant_raw: 'Somewhere Abroad', category: 'Travel', currency: 'CHF' }),
+  );
+  fireEvent.press(screen.getByTestId('save-draft'));
+  expect(autoCreateSpy).toHaveBeenCalledWith(expect.objectContaining({ category: 'Travel', currency: 'CHF' }));
+  autoCreateSpy.mockRestore();
+
+  // Still user-overridable -- picking a different category must stick.
+  fireEvent.press(await screen.findByTestId('add-transaction-button'));
+  fireEvent.press(await screen.findByTestId('draft-currency-CHF'));
+  fireEvent.press(screen.getByTestId('draft-cat-Shopping'));
+  fireEvent.changeText(screen.getByTestId('draft-amount'), '50.00');
+  fireEvent.changeText(screen.getByTestId('draft-merchant'), 'Duty Free');
+
+  const createSpy = jest.spyOn(client, 'createTransaction').mockResolvedValue(
+    makeTxn({ id: 50, merchant_raw: 'Duty Free', category: 'Shopping', currency: 'CHF' }),
+  );
+  fireEvent.press(screen.getByTestId('save-draft'));
+
+  expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({ currency: 'CHF', category: 'Shopping' }));
+});
