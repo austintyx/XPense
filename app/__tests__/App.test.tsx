@@ -74,6 +74,28 @@ test('renders without crashing, defaulting to the Home tab', async () => {
   expect(screen.getByTestId('tab-Settings')).toBeTruthy();
 });
 
+test('shows a Connecting screen instead of a blank view while the stored session is verifying', async () => {
+  jest.spyOn(client, 'getUser').mockReturnValue(new Promise(() => {}));
+
+  render(<App />);
+
+  expect(await screen.findByTestId('auth-loading')).toBeTruthy();
+  expect(screen.getByText('Connecting…')).toBeTruthy();
+  expect(screen.queryByTestId('tab-Home')).toBeNull();
+});
+
+test('shows a Connecting screen instead of a blank tab while the initial data load is in flight', async () => {
+  jest.spyOn(client, 'getCategories').mockResolvedValue({ categories: [], subcategories: [] });
+  jest.spyOn(client, 'getSubscriptions').mockResolvedValue([]);
+  jest.spyOn(client, 'getTransactions').mockReturnValue(new Promise(() => {}));
+
+  render(<App />);
+
+  expect(await screen.findByTestId('app-loading')).toBeTruthy();
+  expect(screen.getByText('Connecting…')).toBeTruthy();
+  expect(screen.queryByTestId('tab-Home')).toBeNull();
+});
+
 test('shows the Login screen instead of the tab bar when no user is stored', async () => {
   await AsyncStorage.clear();
 
