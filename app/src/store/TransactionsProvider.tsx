@@ -56,7 +56,7 @@ interface AppDataActions {
   refetch: () => Promise<void>;
   categorize: (id: number, category: string, subcategory?: string | null) => Promise<void>;
   addTransaction: (draft: TransactionDraft) => Promise<void>;
-  editTransaction: (id: number, merchant: string, amount: string) => Promise<void>;
+  editTransaction: (id: number, merchant: string, amount: string, country?: string | null) => Promise<void>;
   removeTransaction: (id: number) => Promise<void>;
   updateBudget: (monthlyTarget: string) => Promise<void>;
   updateGoal: (goal: { name: string; target_amount: string; saved_amount: string }) => Promise<void>;
@@ -169,8 +169,8 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     setState((s) => ({ ...s, summary }));
   }, []);
 
-  const editTransaction = useCallback(async (id: number, merchant: string, amount: string) => {
-    const updated = await updateTransactionDetails(id, merchant, amount);
+  const editTransaction = useCallback(async (id: number, merchant: string, amount: string, country?: string | null) => {
+    const updated = await updateTransactionDetails(id, merchant, amount, undefined, country);
     setState((s) => ({
       ...s,
       transactions: s.transactions.map((t) => (t.id === updated.id ? updated : t)),

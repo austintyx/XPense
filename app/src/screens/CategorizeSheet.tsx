@@ -7,7 +7,7 @@ import { useToast } from "../components/Toast";
 import { useAppData } from "../store/TransactionsProvider";
 import { categoryColorChip, colors, typography } from "../theme/tokens";
 import { confirmDestructive } from "../utils/confirm";
-import { allCategories, deriveSource, formatDateTime, formatMoney, mergedSubcategories } from "../utils/derive";
+import { allCategories, deriveSource, effectiveCountry, formatDateTime, formatMoney, mergedSubcategories } from "../utils/derive";
 import type { Transaction } from "../api/client";
 
 interface CategorizeSheetProps {
@@ -22,6 +22,7 @@ export function CategorizeSheet({ transaction, onClose }: CategorizeSheetProps) 
   const [editing, setEditing] = useState(false);
   const [editMerchant, setEditMerchant] = useState("");
   const [editAmount, setEditAmount] = useState("");
+  const [editCountry, setEditCountry] = useState("");
 
   const categories = useMemo(
     () => allCategories(customCategories, transaction?.direction ?? "debit"),
@@ -66,6 +67,7 @@ export function CategorizeSheet({ transaction, onClose }: CategorizeSheetProps) 
   const startEdit = () => {
     setEditMerchant(transaction.merchant_clean ?? transaction.merchant_raw ?? "");
     setEditAmount(String(transaction.amount));
+    setEditCountry(transaction.category === "Travel" ? effectiveCountry(transaction) : "");
     setEditing(true);
   };
 
@@ -73,7 +75,12 @@ export function CategorizeSheet({ transaction, onClose }: CategorizeSheetProps) 
 
   const saveEdit = async () => {
     if (!canSaveEdit) return;
-    await editTransaction(transaction.id, editMerchant.trim(), editAmount.trim());
+    await editTransaction(
+      transaction.id,
+      editMerchant.trim(),
+      editAmount.trim(),
+      transaction.category === "Travel" ? editCountry.trim() || null : undefined,
+    );
     showToast("Transaction updated");
     setEditing(false);
   };
@@ -105,7 +112,7 @@ export function CategorizeSheet({ transaction, onClose }: CategorizeSheetProps) 
           />
           <Text style={styles.label}>Amount</Text>
           <View style={styles.amountBox}>
-            <Text style={styles.currencyPrefix}>S$</Text>
+            <Text style={styles.currencyPrefix}>{transaction.currency === "SGD" ? "S$" : transaction.currency}</Text>
             <TextInput
               value={editAmount}
               onChangeText={setEditAmount}
@@ -114,6 +121,18 @@ export function CategorizeSheet({ transaction, onClose }: CategorizeSheetProps) 
               testID="edit-amount"
             />
           </View>
+          {transaction.category === "Travel" && (
+            <>
+              <Text style={styles.label}>Country</Text>
+              <TextInput
+                value={editCountry}
+                onChangeText={setEditCountry}
+                placeholder="e.g. Japan"
+                style={styles.textInput}
+                testID="edit-country"
+              />
+            </>
+          )}
           <View style={styles.editActionsRow}>
             <Pressable onPress={() => setEditing(false)} style={styles.editCancelButton} testID="edit-cancel">
               <Text style={styles.editCancelText}>Cancel</Text>

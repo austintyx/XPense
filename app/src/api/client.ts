@@ -91,6 +91,7 @@ export interface Transaction {
   subcategory: string | null;
   txn_at: string;
   bank: string | null;
+  country: string | null;
   raw_parsed: Record<string, unknown> | null;
   created_at: string;
 }
@@ -129,11 +130,12 @@ export async function updateTransactionDetails(
   merchant: string,
   amount: string,
   userId: number = CURRENT_USER_ID,
+  country?: string | null,
 ): Promise<Transaction> {
   const response = await fetch(`${API_BASE_URL}/transactions/${transactionId}/details?user_id=${userId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ merchant, amount }),
+    body: JSON.stringify({ merchant, amount, country: country ?? null }),
   });
   if (!response.ok) {
     throw new Error(`Failed to update transaction (${response.status})`);
@@ -176,6 +178,7 @@ export interface TransactionDraft {
   subcategory?: string | null;
   txn_at: string;
   bank?: string | null;
+  country?: string | null;
 }
 
 export async function createTransaction(draft: TransactionDraft): Promise<Transaction> {

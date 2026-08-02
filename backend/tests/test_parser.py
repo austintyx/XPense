@@ -237,6 +237,27 @@ def test_youtrip_multiple_transactions_in_one_digest_with_per_item_date_inferenc
     assert second.txn_at.hour == 9
 
 
+def test_youtrip_real_sample_strips_icon_label_and_stray_digit_token():
+    # Built from a real YouTrip email the human forwarded -- unlike the two screenshot-derived
+    # fixtures above, this one has a per-row icon that renders as a literal "Image" text token
+    # right before the merchant name, and a stray digit token (card-last-digits or similar)
+    # between the merchant/address text and the currency. Both must be excluded from the parsed
+    # merchant name rather than absorbed into it.
+    text = _load("youtrip_real_sample.txt")
+    results = parse_email(text, YOUTRIP_SENDER, YOUTRIP_RECEIVED_AT)
+
+    assert len(results) == 1
+    txn = results[0]
+    assert txn.merchant_raw == "GRAB RIDES-EC~GPAY NETWORK (M) SD~PETALING JAYA~47800 MY"
+    assert txn.currency == "MYR"
+    assert txn.amount == Decimal("45.32")
+    assert txn.dedup_suffix == "SFT-1498050209"
+    # 4:09 PM is later in the day than the email's own 10:03 AM received time -> previous day.
+    assert txn.txn_at.day == 24
+    assert txn.txn_at.hour == 16
+    assert txn.txn_at.minute == 9
+
+
 def test_youtrip_no_match_returns_empty_list():
     text = _load("unparseable_unknown_format.txt")
     assert parse_email(text, YOUTRIP_SENDER, YOUTRIP_RECEIVED_AT) == []

@@ -25,7 +25,13 @@ def test_microsoft_auth_start_redirects_to_microsoft_carrying_return_to(client, 
     location = response.headers["location"]
     assert location.startswith("https://login.microsoftonline.com/common/oauth2/v2.0/authorize")
 
-    state = parse_qs(urlparse(location).query)["state"][0]
+    query = parse_qs(urlparse(location).query)
+    # Forces the account chooser every time (so a device with an already-active Microsoft
+    # session can't silently log in as whatever account happens to be signed in there) without
+    # reintroducing the full permissions screen on a repeat connect -- see ms_oauth.py.
+    assert query["prompt"] == ["select_account"]
+
+    state = query["state"][0]
     decoded_user_id, decoded_return_to = decode_state(state)
     assert decoded_user_id == user.id
     assert decoded_return_to == RETURN_TO

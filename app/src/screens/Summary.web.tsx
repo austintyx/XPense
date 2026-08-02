@@ -13,7 +13,7 @@ import {
   categoryTotals,
   categoryTransactions,
   countriesInTransactions,
-  countryForCurrency,
+  effectiveCountry,
   currentMonthTransactions,
   dailyTotalsForRange,
   dayLabel,
@@ -89,7 +89,7 @@ export default function Summary() {
   const countriesPresent = useMemo(() => countriesInTransactions(transactions), [transactions]);
   const visibleTransactions = useMemo(
     () =>
-      countryFilter === "all" ? transactions : transactions.filter((t) => countryForCurrency(t.currency) === countryFilter),
+      countryFilter === "all" ? transactions : transactions.filter((t) => effectiveCountry(t) === countryFilter),
     [transactions, countryFilter],
   );
 

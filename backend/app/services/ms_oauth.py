@@ -20,11 +20,18 @@ def build_authorization_url(state: str) -> str:
     # authorization is a quick silent re-auth instead. Unlike Google, Microsoft's v2.0 endpoint
     # still returns a refresh_token on every exchange as long as `offline_access` is in scope, so
     # there's no equivalent "only issued once" nuance to handle here.
+    #
+    # `prompt=select_account` IS forced, though -- without any prompt at all, a device/browser
+    # with an already-active Microsoft session skips the account chooser entirely and silently
+    # completes using whatever account is already signed in there, which is wrong for a "log in"
+    # action. select_account forces that chooser every time without reintroducing the full
+    # permissions screen -- the two are independent knobs.
     params = {
         "client_id": settings.ms_client_id,
         "redirect_uri": settings.ms_redirect_uri,
         "response_type": "code",
         "scope": SCOPES,
+        "prompt": "select_account",
         "state": state,
     }
     return f"{AUTH_URL}?{urlencode(params)}"

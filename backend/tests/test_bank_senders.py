@@ -27,3 +27,17 @@ def test_is_allowlisted_sender_rejects_lookalike_and_marketing_senders():
     assert not is_allowlisted_sender("marketing@eDM.uob.com.sg")
     assert not is_allowlisted_sender("alerts@dbs.com.sg.evil.com")
     assert not is_allowlisted_sender("someone@gmail.com")
+
+
+def test_is_allowlisted_sender_accepts_any_local_part_at_youtrips_domain():
+    # YouTrip's local part is VERP-rewritten and varies per send -- confirmed against a real
+    # inbox, unlike every other bank here which uses one fixed exact address. Two differently
+    # VERP-encoded local parts at the same domain must both be accepted.
+    assert is_allowlisted_sender("noreply=you.co@mail.you.co")
+    assert is_allowlisted_sender("bounce+abc123=you.co@mail.you.co")
+    assert is_allowlisted_sender("On behalf of YouTrip <noreply=you.co@mail.you.co>")
+
+
+def test_is_allowlisted_sender_rejects_youtrip_domain_lookalikes():
+    assert not is_allowlisted_sender("someone@mail.you.co.evil.com")
+    assert not is_allowlisted_sender("someone@notmail.you.co")

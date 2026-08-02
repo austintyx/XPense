@@ -162,6 +162,21 @@ def test_update_transaction_details_persists_merchant_and_amount(client, db_sess
     assert txn.amount == Decimal("12.50")
 
 
+def test_update_transaction_details_persists_country_for_a_travel_transaction(client, db_session, user):
+    txn = _make_txn(db_session, user, category="Travel", currency="CHF", country=None)
+
+    response = client.patch(
+        f"/transactions/{txn.id}/details",
+        params={"user_id": user.id},
+        json={"merchant": "SBB CFF FFS", "amount": "358.00", "country": "Switzerland"},
+    )
+    assert response.status_code == 200
+    assert response.json()["country"] == "Switzerland"
+
+    db_session.refresh(txn)
+    assert txn.country == "Switzerland"
+
+
 def test_update_transaction_details_rejects_blank_merchant_or_non_positive_amount(client, db_session, user):
     txn = _make_txn(db_session, user)
 
@@ -250,6 +265,24 @@ def test_manual_add_without_a_category_does_not_error_or_write_the_cache(client,
     response = client.post("/transactions", json=payload)
     assert response.status_code == 201
     assert db_session.query(MerchantCategoryCache).count() == 0
+
+
+def test_manual_add_with_travel_category_stores_country(client, user):
+    payload = {
+        "user_id": user.id,
+        "amount": "358.00",
+        "currency": "CHF",
+        "direction": "debit",
+        "merchant_raw": "SBB CFF FFS",
+        "category": "Travel",
+        "subcategory": "Transport",
+        "country": "Switzerland",
+        "txn_at": datetime.now(timezone.utc).isoformat(),
+        "bank": None,
+    }
+    response = client.post("/transactions", json=payload)
+    assert response.status_code == 201
+    assert response.json()["country"] == "Switzerland"
 
 
 def test_manual_add_accepts_food_subcategory(client, user):

@@ -26,7 +26,13 @@ def test_google_auth_start_redirects_to_google_carrying_return_to(client, user):
     location = response.headers["location"]
     assert location.startswith("https://accounts.google.com/o/oauth2/v2/auth")
 
-    state = parse_qs(urlparse(location).query)["state"][0]
+    query = parse_qs(urlparse(location).query)
+    # Forces the account chooser every time (so a device with an already-active Google session
+    # can't silently log in as whatever account happens to be signed in there) without
+    # reintroducing the full consent screen on a repeat connect -- see google_oauth.py.
+    assert query["prompt"] == ["select_account"]
+
+    state = query["state"][0]
     decoded_user_id, decoded_return_to = decode_state(state)
     assert decoded_user_id == user.id
     assert decoded_return_to == RETURN_TO

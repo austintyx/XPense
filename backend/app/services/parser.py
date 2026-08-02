@@ -234,14 +234,16 @@ _YOUTRIP_SECTION_END_RE = re.compile(r"You may view the full transaction history
 
 # Built from 2 real screenshots of a "Summary of your recent online purchases & ATM withdrawals"
 # YouTrip alert (rendered, not raw HTML/plain-text source) -- token order (merchant, then
-# currency+amount, then Ref. No, then time) is inferred from the visual layout, not confirmed
-# against raw extracted text. Not directly confirmed against a live inbox -- if YouTrip
-# transactions aren't parsing, check the real extracted plain text first; a non-matching email
-# just produces no transaction (never a crash), so shipping this best-effort and refining later is
-# low-risk.
+# currency+amount, then Ref. No, then time) is inferred from the visual layout. Since confirmed
+# against a real extracted email (see youtrip_real_sample.txt fixture): each row's icon renders as
+# a literal "Image" text token immediately before the merchant name (no separating space), and
+# there's a stray digit token (card-last-digits or similar) between the merchant/address text and
+# the currency -- both optional here so they're excluded from the merchant capture instead of
+# being absorbed into it, rather than absent entirely (as the original 2-screenshot fixtures are).
 _YOUTRIP_TXN_RE = re.compile(
+    r"(?:Image\s*)?"
     r"(?P<merchant>.+?)\s+"
-    r"(?P<currency>[A-Z]{3})\s+(?P<amount>[\d,]+\.\d{2})\s*"
+    r"\d*\s*(?P<currency>[A-Z]{3})\s+(?P<amount>[\d,]+\.\d{2})\s*"
     r"Ref\.?\s*No:?\s*(?P<ref>[\w-]+)\s*"
     r"(?P<hour>\d{1,2}):(?P<minute>\d{2})\s*(?P<ampm>AM|PM)",
     re.IGNORECASE,

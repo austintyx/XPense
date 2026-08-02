@@ -81,6 +81,10 @@ class Transaction(Base):
     subcategory: Mapped[str | None] = mapped_column(String, nullable=True)
     txn_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     bank: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Optional, human-entered/edited override -- when unset, the frontend derives a display
+    # country from `currency` (see app/src/utils/derive.ts's effectiveCountry). No backend logic
+    # ever writes this automatically; it only ever reflects what a person explicitly entered.
+    country: Mapped[str | None] = mapped_column(String, nullable=True)
     raw_parsed: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

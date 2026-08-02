@@ -137,7 +137,7 @@ test('editing the merchant name saves the new name via editTransaction and keeps
   fireEvent.changeText(input, 'GRAB SG');
   fireEvent.press(screen.getByTestId('qs-edit-save'));
 
-  expect(detailsSpy).toHaveBeenCalledWith(1, 'GRAB SG', '12.50');
+  expect(detailsSpy).toHaveBeenCalledWith(1, 'GRAB SG', '12.50', undefined, undefined);
   expect(await screen.findByText('GRAB SG')).toBeTruthy();
 });
 

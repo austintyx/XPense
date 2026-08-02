@@ -28,12 +28,20 @@ def build_authorization_url(state: str) -> str:
     # user+client+scope) -- _upsert_email_account in routers/auth.py already handles that
     # correctly by only overwriting the stored refresh token when the response actually includes
     # one, so the existing one is kept rather than being wiped.
+    #
+    # `prompt=select_account` IS forced, though -- without any prompt at all, a device/browser
+    # with an already-active Google session skips the account chooser entirely and silently
+    # completes using whatever account is already signed in there, which is wrong for a "log in"
+    # action (the person may want a different account than whatever the browser already has
+    # active). select_account forces that chooser every time without reintroducing the full
+    # consent screen -- the two are independent knobs.
     params = {
         "client_id": settings.google_client_id,
         "redirect_uri": settings.google_redirect_uri,
         "response_type": "code",
         "scope": SCOPES,
         "access_type": "offline",
+        "prompt": "select_account",
         "state": state,
     }
     return f"{AUTH_URL}?{urlencode(params)}"
