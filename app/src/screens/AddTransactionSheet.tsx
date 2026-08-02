@@ -7,7 +7,7 @@ import { DateField } from "../components/DateField";
 import { useToast } from "../components/Toast";
 import { useAppData } from "../store/TransactionsProvider";
 import { categoryColorChip, colors, typography } from "../theme/tokens";
-import { allCategories, CURRENCY_COUNTRY, formatMoney, mergedSubcategories } from "../utils/derive";
+import { allCategories, countryForCurrency, CURRENCY_COUNTRY, formatMoney, mergedSubcategories } from "../utils/derive";
 
 const CURRENCIES = Object.keys(CURRENCY_COUNTRY);
 
@@ -31,6 +31,8 @@ export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetPro
   const [category, setCategory] = useState<string | null>(null);
   const [subcategory, setSubcategory] = useState<string | null>(null);
   const [currency, setCurrency] = useState("SGD");
+  const [currencyExpanded, setCurrencyExpanded] = useState(false);
+  const [country, setCountry] = useState("");
 
   const categories = useMemo(() => allCategories(customCategories, direction), [customCategories, direction]);
   const subcategories = category ? mergedSubcategories(category, customSubcategories) : [];
@@ -43,6 +45,8 @@ export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetPro
     setCategory(null);
     setSubcategory(null);
     setCurrency("SGD");
+    setCurrencyExpanded(false);
+    setCountry("");
   };
 
   const handleClose = () => {
@@ -66,6 +70,7 @@ export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetPro
       category,
       subcategory: subcategories.length > 0 ? subcategory : null,
       txn_at: txnAt.toISOString(),
+      country: category === "Travel" ? country.trim() || null : null,
     });
     showToast(`Added ${formatMoney(amount)} · ${merchant}`);
     reset();
@@ -86,6 +91,7 @@ export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetPro
               setDirection(opt.value);
               setCategory(null);
               setSubcategory(null);
+              setCountry("");
             }}
             style={[styles.typeOption, direction === opt.value && styles.typeOptionActive]}
             testID={`draft-type-${opt.value}`}
@@ -97,7 +103,13 @@ export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetPro
 
       <Text style={styles.label}>Amount</Text>
       <View style={styles.amountBox}>
-        <Text style={styles.currencyPrefix}>{currency === "SGD" ? "S$" : `${currency} `}</Text>
+        <Pressable
+          onPress={() => setCurrencyExpanded((v) => !v)}
+          style={styles.currencyToggle}
+          testID="draft-currency-toggle"
+        >
+          <Text style={styles.currencyPrefix}>{currency === "SGD" ? "S$" : currency}</Text>
+        </Pressable>
         <TextInput
           value={amount}
           onChangeText={setAmount}
@@ -108,30 +120,33 @@ export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetPro
         />
       </View>
 
-      <Text style={styles.label}>Currency</Text>
-      <View style={[styles.chipsRow, styles.subChipsRow]}>
-        {CURRENCIES.map((c) => (
-          <CategoryChip
-            key={c}
-            label={c}
-            size="small"
-            active={currency === c}
-            onPress={() => {
-              setCurrency(c);
-              // Overseas spend gets its own Travel category with its own subcategory list --
-              // a category picked under SGD may not fit anymore, so default (not force) into
-              // Travel, mirroring the direction toggle's exact reset pattern below.
-              if (c !== "SGD") {
-                setCategory("Travel");
-              } else if (category === "Travel") {
-                setCategory(null);
-              }
-              setSubcategory(null);
-            }}
-            testID={`draft-currency-${c}`}
-          />
-        ))}
-      </View>
+      {currencyExpanded && (
+        <View style={[styles.chipsRow, styles.subChipsRow]}>
+          {CURRENCIES.map((c) => (
+            <CategoryChip
+              key={c}
+              label={c}
+              size="small"
+              active={currency === c}
+              onPress={() => {
+                setCurrency(c);
+                setCurrencyExpanded(false);
+                // Overseas spend gets its own Travel category with its own subcategory list --
+                // a category picked under SGD may not fit anymore, so default (not force) into
+                // Travel, mirroring the direction toggle's exact reset pattern below.
+                if (c !== "SGD") {
+                  setCategory("Travel");
+                  setCountry((prev) => prev || countryForCurrency(c));
+                } else if (category === "Travel") {
+                  setCategory(null);
+                }
+                setSubcategory(null);
+              }}
+              testID={`draft-currency-${c}`}
+            />
+          ))}
+        </View>
+      )}
 
       <Text style={styles.label}>Date</Text>
       <View style={styles.dateBox}>
@@ -158,11 +173,27 @@ export function AddTransactionSheet({ visible, onClose }: AddTransactionSheetPro
             onPress={() => {
               setCategory(c);
               setSubcategory(null);
+              if (c === "Travel") {
+                setCountry((prev) => prev || countryForCurrency(currency));
+              }
             }}
             testID={`draft-cat-${c}`}
           />
         ))}
       </View>
+
+      {category === "Travel" && (
+        <>
+          <Text style={styles.label}>Country</Text>
+          <TextInput
+            value={country}
+            onChangeText={setCountry}
+            placeholder="e.g. Japan"
+            style={styles.textInput}
+            testID="draft-country"
+          />
+        </>
+      )}
 
       {subcategories.length > 0 && (
         <View style={[styles.chipsRow, styles.subChipsRow]}>
@@ -235,6 +266,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     marginBottom: 14,
   },
+  currencyToggle: { paddingVertical: 4 },
   currencyPrefix: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.lg, color: colors.ink45 },
   amountInput: { flex: 1, paddingVertical: 12, paddingHorizontal: 8, fontFamily: typography.fontFamily.sans, fontSize: typography.size.xl, color: colors.ink },
   textInput: {

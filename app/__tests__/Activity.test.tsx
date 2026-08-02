@@ -230,8 +230,49 @@ test('editing a transaction updates the merchant name and amount', async () => {
   fireEvent.changeText(screen.getByTestId('edit-amount'), '12.50');
   fireEvent.press(screen.getByTestId('edit-save'));
 
-  await waitFor(() => expect(editSpy).toHaveBeenCalledWith(1, 'Corrected Stall', '12.50'));
+  await waitFor(() => expect(editSpy).toHaveBeenCalledWith(1, 'Corrected Stall', '12.50', undefined, undefined));
   expect(await screen.findByText('Corrected Stall')).toBeTruthy();
+});
+
+test('editing a Travel transaction shows a pre-filled, editable country field and saves the correction', async () => {
+  mockClientDefaults({
+    transactions: [
+      makeTxn({ id: 1, merchant_raw: 'SBB CFF FFS', category: 'Travel', subcategory: 'Transport', currency: 'CHF', country: null }),
+    ],
+  });
+  const editSpy = jest.spyOn(client, 'updateTransactionDetails').mockResolvedValue(
+    makeTxn({ id: 1, merchant_raw: 'SBB CFF FFS', category: 'Travel', currency: 'CHF', country: 'Liechtenstein' }),
+  );
+
+  renderWithProviders(<Activity />);
+
+  fireEvent.press(await screen.findByTestId('transaction-1'));
+  fireEvent.press(await screen.findByTestId('edit-transaction'));
+
+  // No explicit country was set, so it's pre-filled from the currency-derived guess.
+  const countryInput = await screen.findByTestId('edit-country');
+  expect(countryInput.props.value).toBe('Switzerland');
+
+  fireEvent.changeText(countryInput, 'Liechtenstein');
+  fireEvent.press(screen.getByTestId('edit-save'));
+
+  await waitFor(() =>
+    expect(editSpy).toHaveBeenCalledWith(1, 'SBB CFF FFS', '10.00', undefined, 'Liechtenstein'),
+  );
+});
+
+test('editing a non-Travel transaction has no country field', async () => {
+  mockClientDefaults({
+    transactions: [makeTxn({ id: 1, merchant_raw: 'CHICKEN RICE', category: 'Food' })],
+  });
+
+  renderWithProviders(<Activity />);
+
+  fireEvent.press(await screen.findByTestId('transaction-1'));
+  fireEvent.press(await screen.findByTestId('edit-transaction'));
+
+  await screen.findByTestId('edit-merchant');
+  expect(screen.queryByTestId('edit-country')).toBeNull();
 });
 
 test('add transaction sheet requires amount, merchant and category before Save is enabled', async () => {
@@ -361,29 +402,52 @@ test('the detail sheet for a non-SGD transaction shows its own currency', async 
   expect(await screen.findAllByText('CHF 358.00')).not.toHaveLength(0);
 });
 
-test('picking a non-SGD currency in Add Transaction auto-selects Travel, and it can still be overridden', async () => {
+test('the currency selector is collapsed by default and defaults to SGD with no interaction', async () => {
   mockClientDefaults({ transactions: [] });
 
   renderWithProviders(<Activity />);
 
   fireEvent.press(await screen.findByTestId('add-transaction-button'));
+  await screen.findByTestId('draft-currency-toggle');
+
+  expect(screen.getByText('S$')).toBeTruthy();
+  expect(screen.queryByTestId('draft-currency-CHF')).toBeNull();
+});
+
+test('picking a non-SGD currency in Add Transaction auto-selects Travel and pre-fills a country, and both can still be overridden', async () => {
+  mockClientDefaults({ transactions: [] });
+
+  renderWithProviders(<Activity />);
+
+  fireEvent.press(await screen.findByTestId('add-transaction-button'));
+  fireEvent.press(await screen.findByTestId('draft-currency-toggle'));
   fireEvent.press(await screen.findByTestId('draft-currency-CHF'));
 
-  // Travel was auto-selected -- confirmed via save below, which would fail validation
-  // (canSave requires a category) if nothing had been picked.
+  // The chip row collapses again once a currency is picked.
+  expect(screen.queryByTestId('draft-currency-CHF')).toBeNull();
+
+  // Travel was auto-selected and the country pre-filled from the currency.
+  expect((await screen.findByTestId('draft-country')).props.value).toBe('Switzerland');
+
   fireEvent.changeText(screen.getByTestId('draft-amount'), '50.00');
   fireEvent.changeText(screen.getByTestId('draft-merchant'), 'Somewhere Abroad');
   const autoCreateSpy = jest.spyOn(client, 'createTransaction').mockResolvedValue(
-    makeTxn({ id: 51, merchant_raw: 'Somewhere Abroad', category: 'Travel', currency: 'CHF' }),
+    makeTxn({ id: 51, merchant_raw: 'Somewhere Abroad', category: 'Travel', currency: 'CHF', country: 'Switzerland' }),
   );
   fireEvent.press(screen.getByTestId('save-draft'));
-  expect(autoCreateSpy).toHaveBeenCalledWith(expect.objectContaining({ category: 'Travel', currency: 'CHF' }));
+  expect(autoCreateSpy).toHaveBeenCalledWith(
+    expect.objectContaining({ category: 'Travel', currency: 'CHF', country: 'Switzerland' }),
+  );
   autoCreateSpy.mockRestore();
 
-  // Still user-overridable -- picking a different category must stick.
+  // Still user-overridable -- picking a different category hides the country field, and a
+  // manually-edited country sticks instead of the auto-filled guess.
   fireEvent.press(await screen.findByTestId('add-transaction-button'));
+  fireEvent.press(await screen.findByTestId('draft-currency-toggle'));
   fireEvent.press(await screen.findByTestId('draft-currency-CHF'));
+  fireEvent.changeText(await screen.findByTestId('draft-country'), 'Liechtenstein');
   fireEvent.press(screen.getByTestId('draft-cat-Shopping'));
+  expect(screen.queryByTestId('draft-country')).toBeNull();
   fireEvent.changeText(screen.getByTestId('draft-amount'), '50.00');
   fireEvent.changeText(screen.getByTestId('draft-merchant'), 'Duty Free');
 
@@ -392,5 +456,7 @@ test('picking a non-SGD currency in Add Transaction auto-selects Travel, and it 
   );
   fireEvent.press(screen.getByTestId('save-draft'));
 
-  expect(createSpy).toHaveBeenCalledWith(expect.objectContaining({ currency: 'CHF', category: 'Shopping' }));
+  expect(createSpy).toHaveBeenCalledWith(
+    expect.objectContaining({ currency: 'CHF', category: 'Shopping', country: null }),
+  );
 });

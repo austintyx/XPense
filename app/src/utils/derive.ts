@@ -48,10 +48,18 @@ export function countryForCurrency(currency: string): string {
   return CURRENCY_COUNTRY[currency] ?? currency;
 }
 
-/** Unique countries present across `transactions`, derived from each one's currency -- drives the
- * Activity/Summary country filter pill lists. */
+/** The country a transaction should be considered to be in: a human-entered/edited `country`
+ * always wins (it's more precise -- a currency alone can't disambiguate e.g. any Eurozone
+ * country), falling back to a currency-derived guess when nothing's been explicitly set. Single
+ * source of truth for every place a transaction's country is displayed or filtered on. */
+export function effectiveCountry(txn: Pick<Transaction, "country" | "currency">): string {
+  return txn.country?.trim() || countryForCurrency(txn.currency);
+}
+
+/** Unique countries present across `transactions` -- drives the Activity/Summary country filter
+ * pill lists. */
 export function countriesInTransactions(transactions: Transaction[]): string[] {
-  return [...new Set(transactions.map((t) => countryForCurrency(t.currency)))];
+  return [...new Set(transactions.map(effectiveCountry))];
 }
 
 export function deriveSource(txn: Pick<Transaction, "provider" | "bank">): string {

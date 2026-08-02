@@ -64,6 +64,7 @@ export function makeTxn(overrides: Partial<client.Transaction> = {}): client.Tra
     subcategory: null,
     txn_at: new Date().toISOString(),
     bank: 'DBS',
+    country: null,
     raw_parsed: null,
     created_at: new Date().toISOString(),
     ...overrides,

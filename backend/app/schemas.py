@@ -23,6 +23,7 @@ class TransactionOut(BaseModel):
     subcategory: str | None
     txn_at: datetime
     bank: str | None
+    country: str | None
     raw_parsed: dict[str, Any] | None
     created_at: datetime
 
@@ -81,11 +82,13 @@ class TransactionCreateIn(BaseModel):
     subcategory: str | None = None
     txn_at: datetime
     bank: str | None = None
+    country: str | None = None
 
 
 class TransactionDetailsUpdateIn(BaseModel):
     merchant: str
     amount: Decimal
+    country: str | None = None
 
 
 class CategorySummary(BaseModel):

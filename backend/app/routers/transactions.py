@@ -146,6 +146,7 @@ def update_transaction_details(
     txn.merchant_raw = merchant
     txn.merchant_clean = merchant
     txn.amount = body.amount
+    txn.country = body.country
     db.commit()
     db.refresh(txn)
     return txn
@@ -175,6 +176,7 @@ def create_manual_transaction(body: TransactionCreateIn, db: Session = Depends(g
         subcategory=body.subcategory,
         txn_at=body.txn_at,
         bank=body.bank,
+        country=body.country,
     )
     db.add(txn)
     if body.category and body.merchant_raw:

@@ -19,11 +19,12 @@ KNOWN_BANK_SENDERS: dict[str, list[str]] = {
     "uob": ["unialerts@uobgroup.com", "alerts@uob.com.sg"],
     # YouTrip (multi-currency travel wallet) "Summary of your recent online purchases & ATM
     # withdrawals" alerts -- confirmed via 2 real screenshots ("On behalf of YouTrip", subject as
-    # above). The local part is VERP/ESP-rewritten (noreply=you.co, not noreply@you.co) -- if this
-    # exact address ever turns out unstable (some ESPs vary it per-send), YouTrip mail will
-    # silently stop being fetched at all; check the real From address first before assuming
-    # anything else is wrong, same as this file's existing PayLah! caveat above.
-    "youtrip": ["noreply=you.co@mail.you.co"],
+    # above). The local part is VERP/ESP-rewritten (noreply=you.co, not noreply@you.co) and DOES
+    # vary per send -- confirmed in practice: real YouTrip mail was being silently dropped here
+    # even though Gmail's own from: search (fuzzy/domain-based, not exact) still found it. So
+    # unlike every other entry in this dict, this one is a domain-suffix pattern (leading "@", no
+    # local part) rather than one fixed exact address -- see is_allowlisted_sender below.
+    "youtrip": ["@mail.you.co"],
 }
 
 _ALL_ADDRESSES = [address for addresses in KNOWN_BANK_SENDERS.values() for address in addresses]
@@ -31,8 +32,16 @@ _ALLOWED_ADDRESSES = {address.lower() for address in _ALL_ADDRESSES}
 
 _ANGLE_ADDRESS_RE = re.compile(r"<([^<>]+)>")
 
-GMAIL_SENDER_FILTER = "from:(" + " OR ".join(_ALL_ADDRESSES) + ")"
-GRAPH_SENDER_QUERY = '"' + " OR ".join(f"from:{addr}" for addr in _ALL_ADDRESSES) + '"'
+
+def _search_term(address: str) -> str:
+    # A "@domain" entry means "any sender at this domain" (the local part is unstable) -- Gmail's
+    # from: operator (and Graph's $search) both accept a bare domain for that, so drop the "@"
+    # rather than searching for the literal (unmatchable as a whole address) "@domain" string.
+    return address[1:] if address.startswith("@") else address
+
+
+GMAIL_SENDER_FILTER = "from:(" + " OR ".join(_search_term(a) for a in _ALL_ADDRESSES) + ")"
+GRAPH_SENDER_QUERY = '"' + " OR ".join(f"from:{_search_term(a)}" for a in _ALL_ADDRESSES) + '"'
 
 
 def extract_address(sender: str) -> str:
@@ -43,4 +52,14 @@ def extract_address(sender: str) -> str:
 
 
 def is_allowlisted_sender(sender: str) -> bool:
-    return extract_address(sender) in _ALLOWED_ADDRESSES
+    address = extract_address(sender)
+    for allowed in _ALLOWED_ADDRESSES:
+        if allowed.startswith("@"):
+            # Domain-suffix pattern (e.g. "@mail.you.co") -- the leading "@" anchors this to the
+            # actual address boundary, so a lookalike domain without it (e.g.
+            # "...@mail.you.co.evil.com" doesn't end with "@mail.you.co") still correctly fails.
+            if address.endswith(allowed):
+                return True
+        elif address == allowed:
+            return True
+    return False

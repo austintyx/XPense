@@ -2437,3 +2437,114 @@ actually landed -- the regex was built from 2 screenshots (rendered, not raw HTM
 source), so the token order is inferred from the visual layout, not confirmed against real
 extracted text; a non-matching email just silently produces no transaction (never a crash), so this
 is safe to have shipped best-effort and refine against real data.
+
+## Compact currency selector on Add Transaction; a real, editable "country" field for Travel transactions
+
+Follow-up refinement to the overseas-spending feature above, addressing two rough edges the human
+flagged after using it.
+
+**Currency selector, collapsed by default.** The standing "Currency" chip row in
+`AddTransactionSheet.tsx` (added by the feature above) forced a decision on every entry even though
+almost all of them are SGD. Replaced it with a `Pressable` built into the amount field's own "S$"
+prefix (`testID="draft-currency-toggle"`): shows "S$"/SGD and requires zero interaction by default;
+tapping it expands the same `CategoryChip` list below the amount box, and picking a chip collapses
+it again. Untouched, the field behaves exactly as it did before the whole overseas feature shipped.
+
+**A real, persisted `country` field.** Until now "country" was purely *derived* from `currency`
+client-side (`countryForCurrency()`) -- a reasonable guess but an imprecise one (EUR can't
+disambiguate ~20 countries), and there was nothing to actually *edit* since nothing was stored.
+Added `Transaction.country: str | None` (new nullable column, migration
+`4570a3abd401_add_country_to_transactions`), threaded through `TransactionOut`/
+`TransactionCreateIn`/`TransactionDetailsUpdateIn` and both routes that touch a transaction
+(`create_manual_transaction`, `update_transaction_details`). Kept deliberately backend-agnostic --
+no currency->country map ported to Python, no changes to the YouTrip parser or
+`categorize_transaction`; the backend still only ever needs `currency != "SGD"`.
+
+`app/src/utils/derive.ts` gained `effectiveCountry(txn) = txn.country?.trim() ||
+countryForCurrency(txn.currency)` as the single source of truth for display/filtering -- a human
+override wins, the currency-derived guess is the fallback. `countriesInTransactions` and the
+country-filter predicates in `Activity.tsx`/`Summary.tsx`/`Summary.web.tsx` switched from
+`countryForCurrency(t.currency)` to `effectiveCountry(t)`; every synced YouTrip transaction (which
+never gets an explicit `country`) keeps filtering exactly as before.
+
+A "Country" `TextInput` now appears -- only when a transaction's category is/becomes "Travel" -- in
+both `AddTransactionSheet.tsx` (`testID="draft-country"`, pre-filled with `countryForCurrency`'s
+guess the moment Travel is selected, freely editable, sent as `null` if left blank) and
+`CategorizeSheet.tsx`'s edit form (`testID="edit-country"`, pre-filled from `effectiveCountry()` in
+`startEdit()`, saved via `editTransaction`'s new `country` param). `editTransaction`/
+`updateTransactionDetails` (`client.ts`, `TransactionsProvider.tsx`) both gained a `country?: string
+| null` parameter to carry this through. Also fixed a small pre-existing inconsistency while in
+there: `CategorizeSheet`'s edit-form amount prefix was hardcoded to "S$" even for non-SGD
+transactions -- now shows the transaction's real currency, matching the detail view above it.
+
+**Tested:** backend `pytest tests/test_transactions.py` -- 22 passed (+2: manual-add and
+details-update both persist `country` for a Travel transaction). Frontend `jest --runInBand` -- 21
+suites / 159 passed (+4 in `derive.test.ts` for `effectiveCountry` and its interaction with
+`countriesInTransactions`; `Activity.test.tsx` updated for the collapsed-by-default currency
+selector and the Travel-only country field; two pre-existing tests in `Activity.test.tsx` and
+`QuickSort.test.tsx` updated for `updateTransactionDetails`'s new trailing `country` argument).
+
+**Manual steps for the human:** none -- the migration applies cleanly on top of the existing schema
+with no backfill needed (`country` is nullable, existing rows are unaffected and simply fall back to
+the currency-derived guess).
+
+## Fixed three reported bugs: OAuth silently reusing whatever account is logged in, and YouTrip transactions never recording
+
+Three separate issues the human reported after using the app for a while, each root-caused by
+reading the code/history rather than guessed.
+
+**1. OAuth always asks which account to use; consent still only shown the first time.**
+`PROGRESS.md`'s own earlier entry ("Also removed hardcoded prompt=consent...") explains removing
+`prompt=consent` from `google_oauth.py`/`ms_oauth.py` so a repeat connection wouldn't force the full
+permissions screen every time -- but that removal left **no** `prompt` param at all, so a
+device/browser with an already-active Google/Microsoft session silently completes the whole OAuth
+handshake using whatever account is already signed in there, with no account picker ever shown.
+Added `prompt=select_account` to both -- forces the chooser every time without reintroducing the
+full consent screen (an independent knob from `consent`).
+
+**2. The "Sync past transactions?" prompt sometimes missing on a brand-new "Continue with
+Gmail/Outlook" sign-up.** No separate bug found in the `is_new_account` computation itself
+(`_upsert_email_account`, already covered by passing tests) or in `Login.tsx`'s redirect-parsing --
+the working theory is that this is a side effect of #1: with no prompt at all, the OAuth flow could
+complete near-instantly with zero user interaction, and `expo-web-browser`'s auth session is known
+to sometimes fail to capture the final redirect URL when the flow closes that fast without a real
+tap. Forcing `select_account` on every connect (fix #1) should also fix this as a side effect, since
+it guarantees a genuine interactive step every time. Not independently reproducible in this
+environment -- flagged as a hypothesis, not a confirmed-and-fixed bug; if it still happens after
+this, the next step would be a `Linking` event-listener fallback in `Login.tsx`.
+
+**3. YouTrip transactions not recording at all.** Two independent bugs, found by tracing a real
+YouTrip email the human forwarded through the actual code:
+- **The sender allowlist gate was rejecting every real YouTrip email before parsing ever ran.**
+  `bank_senders.py` hardcoded one exact VERP-rewritten address
+  (`noreply=you.co@mail.you.co`) and required an exact match; VERP addresses vary per send by
+  design, so the real "From" header essentially never equals that fixed string, and `sync.py`'s
+  `if not is_allowlisted_sender(sender): continue` silently dropped every one. Confirmed with the
+  human that Gmail's own `from:` search for that literal address still found the emails (fuzzy/
+  domain-based matching, unlike the exact-string check here) -- proving the domain is stable even
+  though the full address isn't. `parser.py`'s bank-parser dispatch already handled this correctly
+  (matches the substring `"mail.you.co"`, not the full address) -- `bank_senders.py` was the one
+  place still doing it wrong. Changed `KNOWN_BANK_SENDERS["youtrip"]` to a domain-suffix pattern
+  (`"@mail.you.co"`) and taught `is_allowlisted_sender` to match "ends with this domain" for any
+  entry starting with `@` (exact-match behavior unchanged for every other bank); also fixed
+  `GMAIL_SENDER_FILTER`/`GRAPH_SENDER_QUERY` to search `from:mail.you.co` (domain-wide) instead of
+  the one unstable exact address.
+- **The merchant field absorbed stray tokens.** Hand-tracing the real email text through
+  `_YOUTRIP_TXN_RE` showed it does match (amount/currency/ref/time all correct) but picks up a
+  literal "Image" text token (the row icon's alt text, immediately preceding the merchant with no
+  separating space) and a stray digit token (card-last-digits or similar, between the merchant/
+  address text and the currency) into the merchant capture. Added an optional `(?:Image\s*)?`
+  prefix and an optional `\d*\s*` before the currency so both are excluded instead of absorbed --
+  additive changes, so the original 2-screenshot fixtures (which have neither token) are unaffected.
+
+**Tested:** backend `pytest -q` -- 221 passed (+5: `prompt=select_account` asserted in both the
+Google and Microsoft `/auth/*` redirect tests; `is_allowlisted_sender` accepting multiple
+differently-VERP-encoded YouTrip local parts at the same domain while still rejecting domain
+lookalikes; a new fixture built from the real forwarded email, `youtrip_real_sample.txt`, confirming
+a clean merchant name and correct amount/currency/ref/time). No frontend changes in this fix.
+
+**Manual steps for the human:** sign in fresh via "Continue with Gmail" on a device/browser with an
+existing Google session and confirm the account picker now always appears, and that the sync prompt
+shows up on that first sign-up (report back if it still sometimes doesn't -- that's the unconfirmed
+part of fix #2). Trigger a sync on an account with real YouTrip mail and confirm the transactions
+now show up with a clean merchant name.

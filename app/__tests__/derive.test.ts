@@ -4,6 +4,7 @@ import {
   countryForCurrency,
   dailyTotalsForRange,
   deriveRecurring,
+  effectiveCountry,
   expenseTotal,
   formatMoney,
   initialsOf,
@@ -43,6 +44,20 @@ describe('countryForCurrency', () => {
   });
 });
 
+describe('effectiveCountry', () => {
+  test('falls back to the currency-derived guess when no country is set', () => {
+    expect(effectiveCountry({ country: null, currency: 'CHF' })).toBe('Switzerland');
+  });
+
+  test('a human-entered country wins over the currency-derived guess', () => {
+    expect(effectiveCountry({ country: 'Liechtenstein', currency: 'CHF' })).toBe('Liechtenstein');
+  });
+
+  test('an empty/whitespace-only country is treated as unset', () => {
+    expect(effectiveCountry({ country: '   ', currency: 'CHF' })).toBe('Switzerland');
+  });
+});
+
 describe('countriesInTransactions', () => {
   test('returns the unique set of countries present, derived from currency', () => {
     const txns = [
@@ -51,6 +66,11 @@ describe('countriesInTransactions', () => {
       makeTxn({ id: 3, currency: 'CHF' }),
     ];
     expect(countriesInTransactions(txns)).toEqual(['Singapore', 'Switzerland']);
+  });
+
+  test('a human-entered country overrides the currency-derived one', () => {
+    const txns = [makeTxn({ id: 1, currency: 'CHF', country: 'Liechtenstein' })];
+    expect(countriesInTransactions(txns)).toEqual(['Liechtenstein']);
   });
 
   test('returns an empty array for no transactions', () => {

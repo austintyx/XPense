@@ -11,7 +11,7 @@ import { categoryColor, colors, radii, shadow, spacing, typography, type Categor
 import {
   allCategories,
   countriesInTransactions,
-  countryForCurrency,
+  effectiveCountry,
   deriveSource,
   formatMoney,
   groupByDay,
@@ -70,7 +70,7 @@ export default function Activity() {
   const filtered =
     filter === "needs" ? uncat : filter === "all" ? transactions : transactions.filter((t) => t.category === filter);
   const byCountry =
-    countryFilter === "all" ? filtered : filtered.filter((t) => countryForCurrency(t.currency) === countryFilter);
+    countryFilter === "all" ? filtered : filtered.filter((t) => effectiveCountry(t) === countryFilter);
   // useSearch() defaults to an always-empty, no-op search when no SearchProvider is mounted (the
   // case on native), so this filter is a harmless pass-through there -- only the web shell wires
   // up a real header search input.
