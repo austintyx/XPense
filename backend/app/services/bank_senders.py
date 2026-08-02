@@ -18,13 +18,16 @@ KNOWN_BANK_SENDERS: dict[str, list[str]] = {
     "dbs": ["ibanking.alert@dbs.com", "alerts@dbs.com.sg", "paylah.alerts@dbs.com"],
     "uob": ["unialerts@uobgroup.com", "alerts@uob.com.sg"],
     # YouTrip (multi-currency travel wallet) "Summary of your recent online purchases & ATM
-    # withdrawals" alerts -- confirmed via 2 real screenshots ("On behalf of YouTrip", subject as
-    # above). The local part is VERP/ESP-rewritten (noreply=you.co, not noreply@you.co) and DOES
-    # vary per send -- confirmed in practice: real YouTrip mail was being silently dropped here
-    # even though Gmail's own from: search (fuzzy/domain-based, not exact) still found it. So
-    # unlike every other entry in this dict, this one is a domain-suffix pattern (leading "@", no
-    # local part) rather than one fixed exact address -- see is_allowlisted_sender below.
-    "youtrip": ["@mail.you.co"],
+    # withdrawals" alerts. Two confirmed real-inbox variants: Gmail shows the sender as
+    # noreply=you.co@mail.you.co (VERP/ESP-rewritten, varies per send); Outlook/Graph shows
+    # "noreply=you.co@mail.you.co on behalf of YouTrip <noreply@you.co>" -- i.e. the Sender:
+    # header is the VERP address at mail.you.co, but the From: header (what Graph's `message.from`
+    # actually returns) is noreply@you.co, domain you.co with no "mail." subdomain at all. Rather
+    # than hardcode one specific subdomain (which broke for Graph even after fixing it for Gmail),
+    # this allowlists the actual registrable domain YouTrip owns -- "@you.co" here means "you.co
+    # or any subdomain of it", so both noreply@you.co and noreply=...@mail.you.co match regardless
+    # of which header a given provider's API surfaces. See is_allowlisted_sender below.
+    "youtrip": ["@you.co"],
 }
 
 _ALL_ADDRESSES = [address for addresses in KNOWN_BANK_SENDERS.values() for address in addresses]
@@ -53,12 +56,15 @@ def extract_address(sender: str) -> str:
 
 def is_allowlisted_sender(sender: str) -> bool:
     address = extract_address(sender)
+    domain = address.rsplit("@", 1)[-1]
     for allowed in _ALLOWED_ADDRESSES:
         if allowed.startswith("@"):
-            # Domain-suffix pattern (e.g. "@mail.you.co") -- the leading "@" anchors this to the
-            # actual address boundary, so a lookalike domain without it (e.g.
-            # "...@mail.you.co.evil.com" doesn't end with "@mail.you.co") still correctly fails.
-            if address.endswith(allowed):
+            # Domain-or-subdomain pattern (e.g. "@you.co") -- matches the domain itself
+            # ("x@you.co") or any subdomain of it ("x@mail.you.co"), but not a lookalike that
+            # merely ends with the same characters ("x@notyou.co", "x@you.co.evil.com" -- neither
+            # equals "you.co" nor ends with ".you.co").
+            base = allowed[1:]
+            if domain == base or domain.endswith("." + base):
                 return True
         elif address == allowed:
             return True

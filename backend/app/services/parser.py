@@ -293,9 +293,12 @@ _BANK_PARSERS = [
     ("dbs", _parse_dbs),
     ("uob", _parse_uob),
     ("simplygo", _parse_simplygo),
-    # The keyword must be a substring of the actual sender address, not the bank's name -- YouTrip's
-    # is the VERP-rewritten "noreply=you.co@mail.you.co", which doesn't contain "youtrip" anywhere.
-    ("mail.you.co", _parse_youtrip),
+    # The keyword must be a substring of the actual sender address, not the bank's name -- and
+    # "you.co" (not "mail.you.co") since the two mail providers this app supports disagree on which
+    # header they expose for the same YouTrip message: Gmail shows the VERP address at
+    # mail.you.co, Graph shows the plain noreply@you.co with no "mail." subdomain at all (see
+    # bank_senders.py's KNOWN_BANK_SENDERS["youtrip"] comment) -- "you.co" is a substring of both.
+    ("you.co", _parse_youtrip),
 ]
 
 
@@ -315,8 +318,11 @@ def save_parsed_transaction(
     source_email_id: str,
     provider: ProviderEnum,
     parsed: ParsedTxn,
+    amount_sgd: Decimal | None = None,
 ) -> Transaction:
-    """Insert a Transaction for a parsed email, deduping on source_email_id."""
+    """Insert a Transaction for a parsed email, deduping on source_email_id. `amount_sgd` is
+    computed by the caller (services/fx.py, via sync.py) rather than here -- this function stays a
+    pure parse-result-to-row mapper with no network/FX concerns of its own."""
     existing = db.query(Transaction).filter_by(source_email_id=source_email_id).first()
     if existing is not None:
         return existing
@@ -327,6 +333,7 @@ def save_parsed_transaction(
         provider=provider,
         amount=parsed.amount,
         currency=parsed.currency,
+        amount_sgd=amount_sgd,
         direction=parsed.direction,
         merchant_raw=parsed.merchant_raw,
         merchant_clean=parsed.merchant_raw,

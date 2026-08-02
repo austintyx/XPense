@@ -7,8 +7,10 @@ export function formatMoney(amount: number | string, decimals = true, currency?:
   // the sign before the currency prefix ("-S$5.00"), not after it ("S$-5.00").
   const sign = value < 0 ? "-" : "";
   const abs = Math.abs(value);
-  // Non-SGD amounts are shown in their own currency, not converted -- there's no FX rate lookup
-  // anywhere in this app, so pretending a foreign amount is SGD would just be wrong.
+  // Non-SGD amounts are shown in their own currency here, deliberately not converted -- this is
+  // for per-transaction display, where the original foreign figure is what the person expects to
+  // see. The SGD-converted equivalent (spendAmount() below, from the backend's amount_sgd) is only
+  // ever used for totals/aggregates, never for a single transaction's own display.
   const prefix = !currency || currency === "SGD" ? "S$" : `${currency} `;
   if (decimals) {
     return sign + prefix + abs.toLocaleString("en-SG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -69,6 +71,15 @@ export function deriveSource(txn: Pick<Transaction, "provider" | "bank">): strin
   return "Manual";
 }
 
+/** The amount to use for any total/aggregate (day groups, category totals, period totals, the
+ * six-month trend, ...) -- the SGD-equivalent when available, falling back to the raw `amount`
+ * only if a foreign-currency row was never converted (rate lookup failed). Per-transaction
+ * display should keep using `amount`+`currency` directly (via formatMoney's `currency` param) so
+ * the original foreign figure is never hidden -- this is only for numbers that are summed. */
+export function spendAmount(txn: Pick<Transaction, "amount" | "amount_sgd">): number {
+  return Number(txn.amount_sgd ?? txn.amount);
+}
+
 export function isSameLocalDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
@@ -113,7 +124,7 @@ export function groupByDay(transactions: Transaction[], now: Date = new Date()):
       groups.push({ label, total: 0, items: [] });
     }
     groups[idx].items.push(txn);
-    groups[idx].total += txn.direction === "debit" ? Number(txn.amount) : -Number(txn.amount);
+    groups[idx].total += txn.direction === "debit" ? spendAmount(txn) : -spendAmount(txn);
   }
 
   return groups;
@@ -127,7 +138,7 @@ export function categoryTotals(transactions: Transaction[]): Record<string, numb
   const totals: Record<string, number> = {};
   for (const txn of transactions) {
     if (!isExpense(txn) || !txn.category) continue;
-    totals[txn.category] = (totals[txn.category] ?? 0) + Number(txn.amount);
+    totals[txn.category] = (totals[txn.category] ?? 0) + spendAmount(txn);
   }
   return totals;
 }
@@ -135,7 +146,7 @@ export function categoryTotals(transactions: Transaction[]): Record<string, numb
 /** Total expense spend regardless of category -- unlike summing categoryTotals(), this doesn't
  * silently drop uncategorized transactions, so it's the right source for a period's headline total. */
 export function expenseTotal(transactions: Transaction[]): number {
-  return transactions.filter(isExpense).reduce((sum, t) => sum + Number(t.amount), 0);
+  return transactions.filter(isExpense).reduce((sum, t) => sum + spendAmount(t), 0);
 }
 
 export interface CategoryTotal {
@@ -155,7 +166,7 @@ export function subcategoryTotals(transactions: Transaction[], category: string)
   const totals: Record<string, number> = {};
   for (const txn of transactions) {
     if (!isExpense(txn) || txn.category !== category || !txn.subcategory) continue;
-    totals[txn.subcategory] = (totals[txn.subcategory] ?? 0) + Number(txn.amount);
+    totals[txn.subcategory] = (totals[txn.subcategory] ?? 0) + spendAmount(txn);
   }
   return Object.entries(totals).sort((a, b) => b[1] - a[1]);
 }
@@ -163,7 +174,7 @@ export function subcategoryTotals(transactions: Transaction[], category: string)
 export function todaySpend(transactions: Transaction[], now: Date = new Date()): number {
   return transactions
     .filter((t) => isExpense(t) && isSameLocalDay(new Date(t.txn_at), now))
-    .reduce((sum, t) => sum + Number(t.amount), 0);
+    .reduce((sum, t) => sum + spendAmount(t), 0);
 }
 
 export function weekSpend(transactions: Transaction[], now: Date = new Date()): number {
@@ -172,7 +183,7 @@ export function weekSpend(transactions: Transaction[], now: Date = new Date()): 
   weekAgo.setHours(0, 0, 0, 0);
   return transactions
     .filter((t) => isExpense(t) && new Date(t.txn_at) >= weekAgo && new Date(t.txn_at) <= now)
-    .reduce((sum, t) => sum + Number(t.amount), 0);
+    .reduce((sum, t) => sum + spendAmount(t), 0);
 }
 
 /** Daily totals for a given local year/month (0-indexed month), index 0 = the 1st. */
@@ -183,7 +194,7 @@ export function calendarDailyTotals(transactions: Transaction[], year: number, m
     if (!isExpense(txn)) continue;
     const date = new Date(txn.txn_at);
     if (date.getFullYear() === year && date.getMonth() === month) {
-      totals[date.getDate() - 1] += Number(txn.amount);
+      totals[date.getDate() - 1] += spendAmount(txn);
     }
   }
   return totals;
@@ -258,7 +269,7 @@ export function dailyTotalsForRange(transactions: Transaction[], start: Date, en
     const date = new Date(txn.txn_at);
     const day = new Date(date.getFullYear(), date.getMonth(), date.getDate());
     const idx = Math.round((day.getTime() - startDay.getTime()) / 86400000);
-    if (idx >= 0 && idx < dayCount) totals[idx] += Number(txn.amount);
+    if (idx >= 0 && idx < dayCount) totals[idx] += spendAmount(txn);
   }
   return totals;
 }
@@ -280,7 +291,7 @@ export function deriveRecurring(transactions: Transaction[]): RecurringCharge[] 
     if (!display) continue;
     const key = display.trim().toLowerCase();
     const list = groups.get(key) ?? [];
-    list.push({ display, date: new Date(t.txn_at), amount: Number(t.amount) });
+    list.push({ display, date: new Date(t.txn_at), amount: spendAmount(t) });
     groups.set(key, list);
   }
 

@@ -35,7 +35,13 @@ CREDIT_CATEGORIES = [
 # top-level category rule and the Transport subcategory rule can reuse them without duplicating
 # the keyword lists.
 _PUBLIC_TRANSPORT_PATTERN = re.compile(r"BUS/MRT|\bMRT\b|TRANSIT|COMFORTDELGRO|EZ-?LINK", re.I)
-_PRIVATE_TRANSPORT_PATTERN = re.compile(r"\bGRAB\b|GOJEK|CABCHARGE|\bTADA\b", re.I)
+# Singapore private-hire (ride-hailing/taxi-booking) companies, not limited to Grab/Gojek --
+# RYDE, CDG (ComfortDelGro's own ride-hailing app/fleet, distinct from the EZ-Link/transit-topup
+# use of "COMFORTDELGRO" in the public pattern above -- checked first in transport_subcategory,
+# so there's no realistic collision), and TransCab added alongside. Researched, not yet confirmed
+# against a real bank alert -- if a private-hire charge doesn't get picked up, check the actual
+# merchant string first before assuming this list is wrong.
+_PRIVATE_TRANSPORT_PATTERN = re.compile(r"\bGRAB\b|GOJEK|CABCHARGE|\bTADA\b|\bRYDE\b|\bCDG\b|TRANSCAB", re.I)
 
 # Coffee/tea/juice-type merchants -- checked before time-of-day for Food subcategorization.
 # The bubble-tea/milk-tea brand names were curated from a web search of chains currently (or

@@ -2,7 +2,7 @@ import enum
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, String, text
+from sqlalchemy import DateTime, ForeignKey, Numeric, String, UniqueConstraint, text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -85,6 +85,13 @@ class Transaction(Base):
     # country from `currency` (see app/src/utils/derive.ts's effectiveCountry). No backend logic
     # ever writes this automatically; it only ever reflects what a person explicitly entered.
     country: Mapped[str | None] = mapped_column(String, nullable=True)
+    # SGD-equivalent of `amount`, computed via services/fx.py at save time using that month's
+    # average exchange rate -- `amount`/`currency` above are never touched, so the original foreign
+    # amount always stays available for display. Equals `amount` verbatim when `currency` is
+    # already "SGD" (no lookup needed). Nullable because a rate lookup can fail (unsupported
+    # currency, the FX API being down) -- every aggregate query falls back to raw `amount` via
+    # COALESCE in that case rather than dropping the transaction from totals.
+    amount_sgd: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     raw_parsed: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -162,6 +169,23 @@ class Budget(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class FxRate(Base):
+    __tablename__ = "fx_rates"
+
+    # A small cache of monthly-average CCY->SGD rates (services/fx.py) so repeated transactions
+    # in an already-known month don't each re-hit the FX API. Only fully-elapsed months get cached
+    # (see fx.py) -- the current, still-in-progress month's average shifts day to day, so it's
+    # recomputed fresh every time rather than caching a partial answer.
+    id: Mapped[int] = mapped_column(primary_key=True)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    year: Mapped[int] = mapped_column(nullable=False)
+    month: Mapped[int] = mapped_column(nullable=False)
+    rate_to_sgd: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    __table_args__ = (UniqueConstraint("currency", "year", "month", name="uq_fx_rates_currency_year_month"),)
 
 
 class SavingsGoal(Base):

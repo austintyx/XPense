@@ -25,6 +25,7 @@ import {
   isExpense,
   isSameLocalDay,
   isSameMonth,
+  spendAmount,
   startOfWeek,
   subcategoryTotals,
   uncategorized,
@@ -47,7 +48,7 @@ function monthTotal(transactions: Transaction[], year: number, month: number): n
       const d = new Date(t.txn_at);
       return d.getFullYear() === year && d.getMonth() === month;
     })
-    .reduce((sum, t) => sum + Number(t.amount), 0);
+    .reduce((sum, t) => sum + spendAmount(t), 0);
 }
 
 function dayTransactions(transactions: Transaction[], date: Date): Transaction[] {
@@ -102,7 +103,7 @@ export default function Summary() {
 
   const totals = useMemo(() => categoryTotals(periodTransactions), [periodTransactions]);
   const uncategorizedTotal = useMemo(
-    () => uncategorized(periodTransactions).reduce((sum, t) => sum + Number(t.amount), 0),
+    () => uncategorized(periodTransactions).reduce((sum, t) => sum + spendAmount(t), 0),
     [periodTransactions],
   );
   const isCurrentRealMonth = sumPeriod === "month" && isSameMonth(viewAnchor, now);

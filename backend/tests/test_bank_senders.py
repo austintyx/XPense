@@ -29,15 +29,20 @@ def test_is_allowlisted_sender_rejects_lookalike_and_marketing_senders():
     assert not is_allowlisted_sender("someone@gmail.com")
 
 
-def test_is_allowlisted_sender_accepts_any_local_part_at_youtrips_domain():
-    # YouTrip's local part is VERP-rewritten and varies per send -- confirmed against a real
-    # inbox, unlike every other bank here which uses one fixed exact address. Two differently
-    # VERP-encoded local parts at the same domain must both be accepted.
+def test_is_allowlisted_sender_accepts_any_local_part_or_subdomain_at_youtrips_domain():
+    # YouTrip's local part is VERP-rewritten and varies per send, AND the two mail providers this
+    # app supports disagree on which header they surface for the same message: Gmail's From shows
+    # the VERP address at mail.you.co, Graph's From shows the plain noreply@you.co (the Sender:
+    # header, which Graph doesn't expose, is the VERP one) -- both real, both must be accepted.
     assert is_allowlisted_sender("noreply=you.co@mail.you.co")
     assert is_allowlisted_sender("bounce+abc123=you.co@mail.you.co")
     assert is_allowlisted_sender("On behalf of YouTrip <noreply=you.co@mail.you.co>")
+    assert is_allowlisted_sender("YouTrip <noreply@you.co>")
 
 
 def test_is_allowlisted_sender_rejects_youtrip_domain_lookalikes():
-    assert not is_allowlisted_sender("someone@mail.you.co.evil.com")
-    assert not is_allowlisted_sender("someone@notmail.you.co")
+    # Genuine subdomains of you.co (mail.you.co, notmail.you.co -- both still end in ".you.co")
+    # are legitimately accepted; only a domain that merely *resembles* you.co without actually
+    # being it or a subdomain of it should be rejected.
+    assert not is_allowlisted_sender("someone@you.co.evil.com")
+    assert not is_allowlisted_sender("someone@notyou.co")

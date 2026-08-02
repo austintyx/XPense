@@ -85,6 +85,18 @@ def _make_email_account(db_session, user, provider: ProviderEnum) -> EmailAccoun
     return account
 
 
+@pytest.fixture(autouse=True)
+def _no_real_fx_calls(monkeypatch):
+    # sync_email_account calls get_amount_in_sgd for every parsed transaction (including the
+    # CHF/USD YouTrip fixtures below) -- never hit the real FX API from this suite. Doubling a
+    # foreign amount is an arbitrary, easy-to-assert-on stand-in for "some conversion happened";
+    # SGD passes through unchanged, matching fx.py's own real short-circuit behavior.
+    monkeypatch.setattr(
+        "app.services.sync.get_amount_in_sgd",
+        lambda db, amount, currency, txn_at: amount if currency == "SGD" else amount * Decimal("2"),
+    )
+
+
 @pytest.fixture()
 def email_account(db_session, user):
     return _make_email_account(db_session, user, ProviderEnum.google)
@@ -113,6 +125,9 @@ def test_sync_inserts_new_transactions_and_is_idempotent(client, db_session, use
 
     count = db_session.query(Transaction).filter_by(user_id=user.id).count()
     assert count == 2
+    for t in db_session.query(Transaction).filter_by(user_id=user.id).all():
+        # SGD needs no conversion -- amount_sgd is just amount, verbatim.
+        assert t.amount_sgd == t.amount
 
     db_session.refresh(email_account)
     assert email_account.last_synced_at is not None
@@ -294,6 +309,9 @@ def test_sync_youtrip_digest_creates_multiple_transactions_with_stable_dedup(
         assert t.currency in ("CHF", "USD")
         assert t.bank == "YouTrip"
         assert t.category == "Travel"
+        # Foreign-currency rows get an SGD-equivalent computed at save time (the autouse FX mock
+        # above doubles a foreign amount as a stand-in for real conversion).
+        assert t.amount_sgd == t.amount * Decimal("2")
 
     # Re-syncing the same digest email must not duplicate either transaction.
     response2 = client.post("/sync", params={"user_id": user.id})

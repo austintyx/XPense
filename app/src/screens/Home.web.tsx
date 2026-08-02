@@ -18,6 +18,7 @@ import {
   formatMoney,
   isExpense,
   previousMonthTransactions,
+  spendAmount,
   uncategorized,
   UNCATEGORIZED_LABEL,
 } from "../utils/derive";
@@ -45,11 +46,11 @@ export default function Home() {
   const monthTxns = useMemo(() => currentMonthTransactions(transactions, now), [transactions, now]);
   const prevMonthTxns = useMemo(() => previousMonthTransactions(transactions, now), [transactions, now]);
   const spent = useMemo(
-    () => monthTxns.filter(isExpense).reduce((sum, t) => sum + Number(t.amount), 0),
+    () => monthTxns.filter(isExpense).reduce((sum, t) => sum + spendAmount(t), 0),
     [monthTxns],
   );
   const prevSpent = useMemo(
-    () => prevMonthTxns.filter(isExpense).reduce((sum, t) => sum + Number(t.amount), 0),
+    () => prevMonthTxns.filter(isExpense).reduce((sum, t) => sum + spendAmount(t), 0),
     [prevMonthTxns],
   );
   const momDeltaPct = prevSpent > 0 ? ((spent - prevSpent) / prevSpent) * 100 : null;
@@ -65,7 +66,7 @@ export default function Home() {
 
   const totals = useMemo(() => categoryTotals(monthTxns), [monthTxns]);
   const uncategorizedTotal = useMemo(
-    () => uncategorized(monthTxns).reduce((sum, t) => sum + Number(t.amount), 0),
+    () => uncategorized(monthTxns).reduce((sum, t) => sum + spendAmount(t), 0),
     [monthTxns],
   );
   // Uncategorized spend is folded in as its own slice/row (rather than left out) so the donut's
@@ -91,7 +92,7 @@ export default function Home() {
     () =>
       monthTxns
         .filter(isExpense)
-        .reduce((max: Transaction | null, t) => (!max || Number(t.amount) > Number(max.amount) ? t : max), null),
+        .reduce((max: Transaction | null, t) => (!max || spendAmount(t) > spendAmount(max) ? t : max), null),
     [monthTxns],
   );
 

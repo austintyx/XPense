@@ -84,6 +84,11 @@ export interface Transaction {
   provider: Provider | null;
   amount: string;
   currency: string;
+  // SGD-equivalent of `amount`, computed server-side from that month's average exchange rate --
+  // equals `amount` when currency is already "SGD"; null if a foreign-currency row's rate lookup
+  // failed. Use this (falling back to `amount`) for any total/aggregate; `amount`+`currency` stay
+  // the original foreign figure for per-transaction display.
+  amount_sgd: string | null;
   direction: "debit" | "credit";
   merchant_raw: string | null;
   merchant_clean: string | null;

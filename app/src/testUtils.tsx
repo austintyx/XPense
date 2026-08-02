@@ -57,6 +57,10 @@ export function makeTxn(overrides: Partial<client.Transaction> = {}): client.Tra
     provider: 'google',
     amount: '10.00',
     currency: 'SGD',
+    // null (not '10.00') by default so overriding just `amount` in a test still behaves
+    // correctly -- spendAmount() falls back to `amount` whenever amount_sgd is null, rather than
+    // silently using a stale default that no longer matches an overridden amount.
+    amount_sgd: null,
     direction: 'debit',
     merchant_raw: 'TEST MERCHANT',
     merchant_clean: null,

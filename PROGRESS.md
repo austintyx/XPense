@@ -2548,3 +2548,63 @@ existing Google session and confirm the account picker now always appears, and t
 shows up on that first sign-up (report back if it still sometimes doesn't -- that's the unconfirmed
 part of fix #2). Trigger a sync on an account with real YouTrip mail and confirm the transactions
 now show up with a clean merchant name.
+
+## YouTrip still not recording (Outlook), FX conversion to SGD, Summary total mismatch, more private-hire companies
+
+Follow-up after the human retested the previous fix and reported it still didn't work, plus two new
+issues. Investigated with 3 parallel Explore agents plus a real YouTrip email the human forwarded
+from Outlook.
+
+**1. YouTrip still not recording.** The Outlook screenshot showed the message as
+`noreply=you.co@mail.you.co on behalf of YouTrip <noreply@you.co>` -- Microsoft Graph's `from`
+property reflects the actual From: header (`noreply@you.co`, domain `you.co`), not the Sender:
+header (`mail.you.co`) the previous fix hardcoded. Gmail and Graph disagree about which header they
+surface for the identical message. Fixed by allowlisting the actual registrable domain
+(`bank_senders.py`'s `KNOWN_BANK_SENDERS["youtrip"] = ["@you.co"]`) with proper domain-or-subdomain
+matching (`domain == base or domain.endswith("." + base)`) instead of one hardcoded exact suffix --
+covers both `noreply@you.co` and `noreply=you.co@mail.you.co` regardless of which header a given
+provider exposes. Also had to widen `parser.py`'s bank-dispatch keyword from `"mail.you.co"` to
+`"you.co"` for the same reason (Graph's sender string doesn't contain "mail." at all).
+
+**2. Convert non-SGD YouTrip amounts to SGD.** Confirmed there was no FX/conversion code anywhere in
+this repo. Per the human's answers: compute a true monthly average (not a single day's rate), and
+keep the original foreign amount/currency intact for display, storing the SGD-equivalent separately.
+New `Transaction.amount_sgd` column (nullable, additive migration) + a small `fx_rates` cache table
+(only caches fully-elapsed months, since the current month's average shifts daily) + new
+`backend/app/services/fx.py` using Frankfurter (ECB rates, free, no key -- verified live against the
+real API before committing to it). Never raises; an unsupported currency or network failure just
+leaves `amount_sgd` null, and every aggregate falls back to the raw `amount` via `COALESCE`/
+`spendAmount()`. Wired into `sync.py` (every parsed transaction) and both manual
+create/update routes, so this applies uniformly regardless of transaction source, not just YouTrip.
+
+**3. Summary screen's totals not tallying (screenshotted: pie center said S$178, but its own
+category rows summed to 194.25, matching the six-month trend's S$194).** Traced every number's
+source: the pie's center total bypasses to the backend's `GET /summary` value for the current real
+month, while every other number on the page (category rows, six-month trend) is 100% client-computed
+from the same `transactions` array. These never had to agree -- backend computed "this month" in
+UTC, frontend bucketed by local calendar (SGT for this app's only real users), an up-to-8-hour skew
+at each month boundary. Fixed by switching `/summary`'s month-boundary math to SGT (reusing
+`parser.py`'s existing `SGT` constant) instead of naive UTC, and switching its aggregation query
+(plus every client-side total helper in `derive.ts`, and `Home.web.tsx`/`Budgets.tsx`'s own inline
+sums) from raw `amount` to `amount_sgd` (falling back to `amount`) -- the same currency-mixing bug
+this file's `formatMoney` comment already flagged as a known risk turned out to be live.
+
+**4. Expanded private-hire company detection.** `categorize.py`'s `_PRIVATE_TRANSPORT_PATTERN` had
+Grab/Gojek/Cabcharge/Tada already; added Ryde, CDG (word-bounded, distinct from the existing
+public-transit-topup use of "COMFORTDELGRO"), and TransCab -- flagged unconfirmed against a real bank
+alert, same convention as this file's other researched-not-verified entries.
+
+**Tested:** backend `pytest -q` -- 239 passed (+12: broadened YouTrip domain matching incl. the
+Graph/Gmail header-disagreement case; `test_fx.py`, all `httpx` calls mocked, covering averaging,
+weekend/holiday gaps, caching a fully-elapsed month vs. always refetching the current one, and
+graceful-`None` on failure; the SGT-boundary and `amount_sgd`-COALESCE `/summary` cases; RYDE/CDG/
+TRANSCAB categorization). Frontend `jest --runInBand` -- 21 suites / 164 passed (+5: `spendAmount`/
+`categoryTotals`/`expenseTotal` currency-mixing cases). `tsc --noEmit` clean against my changes (one
+real error caught and fixed: `testUtils.tsx`'s mock transaction factory needed an `amount_sgd`
+field).
+
+**Manual steps for the human:** trigger a sync on the Outlook-linked account with real YouTrip mail
+and confirm the transaction now shows up, with the SGD-converted amount reflected in Summary/Home
+totals while the original foreign amount still displays on the transaction itself. Check the Summary
+screen for a month with transactions near a month boundary and confirm the pie's center total, its
+own category rows, and the six-month trend bar all now agree.
