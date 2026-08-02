@@ -1,5 +1,6 @@
 import {
   allCategories,
+  categoryTotals,
   countriesInTransactions,
   countryForCurrency,
   dailyTotalsForRange,
@@ -10,6 +11,7 @@ import {
   initialsOf,
   previousMonthTransactions,
   relativeTime,
+  spendAmount,
 } from '../src/utils/derive';
 import { CATEGORIES, CREDIT_CATEGORIES } from '../src/theme/tokens';
 import { makeTxn } from '../src/testUtils';
@@ -146,6 +148,41 @@ describe('expenseTotal', () => {
 
   test('returns 0 for an empty list', () => {
     expect(expenseTotal([])).toBe(0);
+  });
+
+  test('sums the SGD-converted amount_sgd for a foreign-currency transaction, not the raw amount', () => {
+    // A CHF 100 transaction with amount_sgd already computed server-side must contribute 158, not
+    // 100, to any total -- this is the bug behind the Summary screen's totals not tallying.
+    const txns = [
+      makeTxn({ id: 1, amount: '10.00', currency: 'SGD', amount_sgd: '10.00' }),
+      makeTxn({ id: 2, amount: '100.00', currency: 'CHF', amount_sgd: '158.00' }),
+    ];
+    expect(expenseTotal(txns)).toBe(168);
+  });
+
+  test('falls back to the raw amount when amount_sgd is null (conversion never happened)', () => {
+    const txns = [makeTxn({ id: 1, amount: '20.00', currency: 'USD', amount_sgd: null })];
+    expect(expenseTotal(txns)).toBe(20);
+  });
+});
+
+describe('spendAmount', () => {
+  test('prefers amount_sgd over amount when present', () => {
+    expect(spendAmount({ amount: '100.00', amount_sgd: '158.00' })).toBe(158);
+  });
+
+  test('falls back to amount when amount_sgd is null', () => {
+    expect(spendAmount({ amount: '20.00', amount_sgd: null })).toBe(20);
+  });
+});
+
+describe('categoryTotals', () => {
+  test('sums amount_sgd per category so mixed-currency months total correctly', () => {
+    const txns = [
+      makeTxn({ id: 1, amount: '10.00', currency: 'SGD', amount_sgd: '10.00', category: 'Food' }),
+      makeTxn({ id: 2, amount: '100.00', currency: 'CHF', amount_sgd: '158.00', category: 'Travel' }),
+    ];
+    expect(categoryTotals(txns)).toEqual({ Food: 10, Travel: 158 });
   });
 });
 

@@ -21,6 +21,7 @@ import {
   formatMoney,
   isExpense,
   isSameMonth,
+  spendAmount,
   startOfWeek,
   subcategoryTotals,
   uncategorized,
@@ -93,7 +94,7 @@ export default function Summary() {
 
   const totals = useMemo(() => categoryTotals(periodTransactions), [periodTransactions]);
   const uncategorizedTotal = useMemo(
-    () => uncategorized(periodTransactions).reduce((sum, t) => sum + Number(t.amount), 0),
+    () => uncategorized(periodTransactions).reduce((sum, t) => sum + spendAmount(t), 0),
     [periodTransactions],
   );
   const isCurrentRealMonth = sumPeriod === "month" && isSameMonth(viewAnchor, now);

@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -22,7 +22,9 @@ from app.services.categorize import (
     remember_category,
     transport_subcategory,
 )
+from app.services.fx import get_amount_in_sgd
 from app.services.grab_reconcile import is_generic_grab_merchant, reconcile_grab_transaction
+from app.services.parser import SGT
 from app.services.sync import MAIL_SERVICES, get_valid_access_token
 
 router = APIRouter()
@@ -146,6 +148,7 @@ def update_transaction_details(
     txn.merchant_raw = merchant
     txn.merchant_clean = merchant
     txn.amount = body.amount
+    txn.amount_sgd = get_amount_in_sgd(db, body.amount, txn.currency, txn.txn_at)
     txn.country = body.country
     db.commit()
     db.refresh(txn)
@@ -169,6 +172,7 @@ def create_manual_transaction(body: TransactionCreateIn, db: Session = Depends(g
         provider=None,
         amount=body.amount,
         currency=body.currency,
+        amount_sgd=get_amount_in_sgd(db, body.amount, body.currency, body.txn_at),
         direction=body.direction,
         merchant_raw=body.merchant_raw,
         merchant_clean=body.merchant_clean,
@@ -188,7 +192,13 @@ def create_manual_transaction(body: TransactionCreateIn, db: Session = Depends(g
 
 @router.get("/summary", response_model=SummaryOut)
 def summary(user_id: int, db: Session = Depends(get_db)):
-    now = datetime.now(timezone.utc)
+    # "This month" must mean Singapore local time, not UTC -- this app is Singapore-only (SGT is
+    # already assumed elsewhere, e.g. services/parser.py's SGT constant), and the frontend buckets
+    # "this month" by the device's local calendar (also SGT for this app's users). Comparing a
+    # UTC calendar-month boundary against an SGT one silently drops/adds up to ~8 hours of
+    # transactions at each month edge, producing a total that disagrees with every other
+    # client-computed number on the Summary/Home screens even though they're meant to match.
+    now = datetime.now(SGT)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     if now.month == 12:
         next_month_start = month_start.replace(year=now.year + 1, month=1)
@@ -196,7 +206,7 @@ def summary(user_id: int, db: Session = Depends(get_db)):
         next_month_start = month_start.replace(month=now.month + 1)
 
     rows = (
-        db.query(Transaction.category, func.sum(Transaction.amount))
+        db.query(Transaction.category, func.sum(func.coalesce(Transaction.amount_sgd, Transaction.amount)))
         .filter(
             Transaction.user_id == user_id,
             Transaction.direction == DirectionEnum.debit,

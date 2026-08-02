@@ -16,6 +16,7 @@ class TransactionOut(BaseModel):
     provider: ProviderEnum | None
     amount: Decimal
     currency: str
+    amount_sgd: Decimal | None
     direction: DirectionEnum
     merchant_raw: str | None
     merchant_clean: str | None

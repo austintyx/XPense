@@ -3,11 +3,26 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from app.models import DirectionEnum, EmailAccount, MerchantCategoryCache, ProviderEnum, Transaction
 from app.security.crypto import encrypt
 from app.services import gmail
 from app.services.categorize import categorize_transaction
 from app.services.grab_reconcile import GRAB_RECEIPT_SENDER
+
+
+@pytest.fixture(autouse=True)
+def _no_real_fx_calls(monkeypatch):
+    # create_manual_transaction/update_transaction_details call get_amount_in_sgd for every
+    # amount/currency they're given (including the CHF fixtures below) -- never hit the real FX
+    # API from this suite. Doubling a foreign amount is an arbitrary, easy-to-assert-on stand-in
+    # for "some conversion happened"; SGD passes through unchanged, matching fx.py's own real
+    # short-circuit behavior.
+    monkeypatch.setattr(
+        "app.routers.transactions.get_amount_in_sgd",
+        lambda db, amount, currency, txn_at: amount if currency == "SGD" else amount * Decimal("2"),
+    )
 
 
 def _make_txn(db_session, user, **overrides):
@@ -172,9 +187,13 @@ def test_update_transaction_details_persists_country_for_a_travel_transaction(cl
     )
     assert response.status_code == 200
     assert response.json()["country"] == "Switzerland"
+    # amount_sgd must be recomputed against the new amount, not left stale from before the edit
+    # (the autouse FX mock above doubles a foreign amount).
+    assert Decimal(str(response.json()["amount_sgd"])) == Decimal("716.00")
 
     db_session.refresh(txn)
     assert txn.country == "Switzerland"
+    assert txn.amount_sgd == Decimal("716.00")
 
 
 def test_update_transaction_details_rejects_blank_merchant_or_non_positive_amount(client, db_session, user):
@@ -283,6 +302,23 @@ def test_manual_add_with_travel_category_stores_country(client, user):
     response = client.post("/transactions", json=payload)
     assert response.status_code == 201
     assert response.json()["country"] == "Switzerland"
+    assert Decimal(str(response.json()["amount_sgd"])) == Decimal("716.00")
+
+
+def test_manual_add_with_sgd_currency_sets_amount_sgd_to_the_same_amount(client, user):
+    payload = {
+        "user_id": user.id,
+        "amount": "19.80",
+        "currency": "SGD",
+        "direction": "debit",
+        "merchant_raw": "Star Western",
+        "category": "Food",
+        "txn_at": datetime.now(timezone.utc).isoformat(),
+        "bank": None,
+    }
+    response = client.post("/transactions", json=payload)
+    assert response.status_code == 201
+    assert Decimal(str(response.json()["amount_sgd"])) == Decimal("19.80")
 
 
 def test_manual_add_accepts_food_subcategory(client, user):
@@ -481,8 +517,64 @@ def test_summary_sums_debit_categories_and_excludes_credit_rows(client, db_sessi
     assert response.status_code == 200
     body = response.json()
     totals = {c["category"]: Decimal(str(c["total"])) for c in body["categories"]}
-
     assert totals["Food"] == Decimal("15.00")
     assert totals["Transport"] == Decimal("2.00")
     assert totals[None] == Decimal("200.00")
     assert Decimal(str(body["total"])) == Decimal("217.00")
+
+
+def test_summary_uses_singapore_local_month_boundary_not_utc(client, db_session, user, monkeypatch):
+    # A timestamp that's still 31 Jul in UTC is already 1 Aug in Singapore (UTC+8) -- the summary
+    # for "this month" must be anchored to SGT (this app's only real users), or a transaction like
+    # this either silently falls out of the current month's total or leaks into the wrong one,
+    # which is exactly the bug that produced a Summary-screen total that didn't tally.
+    fake_now_sgt = datetime(2026, 8, 15, 12, 0, tzinfo=ZoneInfo("Asia/Singapore"))
+
+    class _FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fake_now_sgt
+
+    monkeypatch.setattr("app.routers.transactions.datetime", _FrozenDatetime)
+
+    # 2026-07-31T18:00:00Z = 2026-08-01T02:00:00+08:00 -- August in SGT, still July in UTC.
+    just_after_sgt_midnight = datetime(2026, 7, 31, 18, 0, tzinfo=timezone.utc)
+    _make_txn(db_session, user, category="Food", amount=Decimal("16.25"), txn_at=just_after_sgt_midnight)
+
+    response = client.get("/summary", params={"user_id": user.id})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["month"] == "2026-08"
+    assert Decimal(str(body["total"])) == Decimal("16.25")
+
+
+def test_summary_sums_amount_sgd_not_raw_amount_for_foreign_currency_rows(client, db_session, user):
+    now = datetime.now(timezone.utc)
+    _make_txn(db_session, user, category="Food", amount=Decimal("10.00"), currency="SGD", amount_sgd=Decimal("10.00"), txn_at=now)
+    # Foreign-currency row: raw `amount` is 100 CHF, but amount_sgd (already converted) is what
+    # the summary must sum -- if it summed raw `amount` instead, this would wrongly add 100 to the
+    # total instead of 158.
+    _make_txn(
+        db_session,
+        user,
+        category="Travel",
+        amount=Decimal("100.00"),
+        currency="CHF",
+        amount_sgd=Decimal("158.00"),
+        txn_at=now,
+    )
+    # amount_sgd never got computed (e.g. the FX lookup failed) -- must fall back to raw amount
+    # rather than being silently dropped from the total.
+    _make_txn(
+        db_session,
+        user,
+        category="Travel",
+        amount=Decimal("20.00"),
+        currency="USD",
+        amount_sgd=None,
+        txn_at=now,
+    )
+
+    response = client.get("/summary", params={"user_id": user.id})
+    assert response.status_code == 200
+    assert Decimal(str(response.json()["total"])) == Decimal("188.00")

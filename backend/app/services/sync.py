@@ -7,6 +7,7 @@ from app.security.crypto import decrypt, encrypt
 from app.services import gmail, google_oauth, graph, ms_oauth
 from app.services.bank_senders import GMAIL_SENDER_FILTER, is_allowlisted_sender
 from app.services.categorize import categorize_transaction, subcategory_for
+from app.services.fx import get_amount_in_sgd
 from app.services.grab_reconcile import is_generic_grab_merchant, reconcile_grab_transaction
 from app.services.parser import parse_email, save_parsed_transaction
 
@@ -104,7 +105,8 @@ def sync_email_account(db: Session, account: EmailAccount, since: datetime | Non
                 # still derive a subcategory so parser-hardcoded rows aren't left without one.
                 parsed.subcategory = subcategory_for(parsed.category, parsed.merchant_raw, parsed.txn_at)
 
-            save_parsed_transaction(db, account.user_id, source_email_id, account.provider, parsed)
+            amount_sgd = get_amount_in_sgd(db, parsed.amount, parsed.currency, parsed.txn_at)
+            save_parsed_transaction(db, account.user_id, source_email_id, account.provider, parsed, amount_sgd)
             if not already_exists:
                 inserted += 1
 

@@ -16,6 +16,7 @@ import {
   deriveRecurring,
   formatMoney,
   isExpense,
+  spendAmount,
 } from "../utils/derive";
 
 interface SubscriptionRow {
@@ -201,7 +202,7 @@ export default function Budgets() {
             <Text style={styles.eyebrow}>MONTHLY BUDGETS</Text>
             <View style={styles.headerRight}>
               <Text style={styles.headerMeta}>
-                {formatMoney(monthTxns.reduce((s, t) => (isExpense(t) ? s + Number(t.amount) : s), 0), false)} of{" "}
+                {formatMoney(monthTxns.reduce((s, t) => (isExpense(t) ? s + spendAmount(t) : s), 0), false)} of{" "}
                 {formatMoney(budget.monthly_target, false)}
               </Text>
               {!editMode && (
