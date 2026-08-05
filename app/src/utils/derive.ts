@@ -8,9 +8,9 @@ export function formatMoney(amount: number | string, decimals = true, currency?:
   const sign = value < 0 ? "-" : "";
   const abs = Math.abs(value);
   // Non-SGD amounts are shown in their own currency here, deliberately not converted -- this is
-  // for per-transaction display, where the original foreign figure is what the person expects to
-  // see. The SGD-converted equivalent (spendAmount() below, from the backend's amount_sgd) is only
-  // ever used for totals/aggregates, never for a single transaction's own display.
+  // the original foreign figure a person expects to see for their own transaction. The
+  // SGD-equivalent (from the backend's amount_sgd) is a separate, secondary display -- see
+  // convertedAmountLabel() below for a single transaction, spendAmount() for totals/aggregates.
   const prefix = !currency || currency === "SGD" ? "S$" : `${currency} `;
   if (decimals) {
     return sign + prefix + abs.toLocaleString("en-SG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -78,6 +78,14 @@ export function deriveSource(txn: Pick<Transaction, "provider" | "bank">): strin
  * the original foreign figure is never hidden -- this is only for numbers that are summed. */
 export function spendAmount(txn: Pick<Transaction, "amount" | "amount_sgd">): number {
   return Number(txn.amount_sgd ?? txn.amount);
+}
+
+/** "≈ S$65.20"-style secondary line for a foreign-currency transaction's SGD-equivalent -- null
+ * when there's nothing to add (already SGD, or the conversion never resolved). Callers render this
+ * alongside the transaction's own-currency amount (never in place of it -- see formatMoney above). */
+export function convertedAmountLabel(txn: Pick<Transaction, "currency" | "amount_sgd">): string | null {
+  if (!txn.currency || txn.currency === "SGD" || txn.amount_sgd == null) return null;
+  return `≈ ${formatMoney(txn.amount_sgd)}`;
 }
 
 export function isSameLocalDay(a: Date, b: Date): boolean {

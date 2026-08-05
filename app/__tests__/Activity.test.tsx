@@ -104,7 +104,7 @@ test('categorizing a transaction as a category with no subcategories closes the 
   fireEvent.press(await screen.findByTestId('transaction-1'));
   fireEvent.press(await screen.findByTestId('cat-chip-Shopping'));
 
-  expect(updateSpy).toHaveBeenCalledWith(1, 'Shopping', null);
+  expect(updateSpy).toHaveBeenCalledWith(1, 'Shopping', null, null);
 });
 
 test('categorizing a transaction as Food requires a second subcategory step', async () => {
@@ -120,7 +120,7 @@ test('categorizing a transaction as Food requires a second subcategory step', as
   expect(await screen.findByText('Which kind of food?')).toBeTruthy();
   fireEvent.press(screen.getByTestId('sub-chip-Dinner'));
 
-  expect(updateSpy).toHaveBeenCalledWith(1, 'Food', 'Dinner');
+  expect(updateSpy).toHaveBeenCalledWith(1, 'Food', 'Dinner', null);
 });
 
 test('categorizing a transaction as Transport requires a second subcategory step', async () => {
@@ -136,7 +136,59 @@ test('categorizing a transaction as Transport requires a second subcategory step
   expect(await screen.findByText('Which kind of transport?')).toBeTruthy();
   fireEvent.press(screen.getByTestId('sub-chip-Public'));
 
-  expect(updateSpy).toHaveBeenCalledWith(1, 'Transport', 'Public');
+  expect(updateSpy).toHaveBeenCalledWith(1, 'Transport', 'Public', null);
+});
+
+test('categorizing a transaction as Travel shows a country step before saving, pre-filled from the currency', async () => {
+  mockClientDefaults({
+    transactions: [makeTxn({ id: 1, merchant_raw: 'SBB CFF FFS', currency: 'CHF', category: null })],
+  });
+  const updateSpy = jest
+    .spyOn(client, 'updateTransactionCategory')
+    .mockResolvedValue(makeTxn({ id: 1, merchant_raw: 'SBB CFF FFS', currency: 'CHF', category: 'Travel', subcategory: 'Transport' }));
+
+  renderWithProviders(<Activity />);
+
+  fireEvent.press(await screen.findByTestId('transaction-1'));
+  fireEvent.press(await screen.findByTestId('cat-chip-Travel'));
+  expect(await screen.findByText('Which kind of travel?')).toBeTruthy();
+  fireEvent.press(screen.getByTestId('sub-chip-Transport'));
+
+  // Picking the subcategory must NOT finalize immediately -- a country step appears first,
+  // pre-filled from the transaction's currency, and nothing has been saved yet.
+  expect(await screen.findByText('Which country?')).toBeTruthy();
+  expect(updateSpy).not.toHaveBeenCalled();
+  expect(screen.getByTestId('categorize-travel-country').props.value).toBe('Switzerland');
+
+  fireEvent.press(screen.getByTestId('categorize-travel-save'));
+
+  expect(updateSpy).toHaveBeenCalledWith(1, 'Travel', 'Transport', 'Switzerland');
+});
+
+test('the Travel country step can be edited before saving, and Back returns to subcategory picking without saving', async () => {
+  mockClientDefaults({
+    transactions: [makeTxn({ id: 1, merchant_raw: 'SBB CFF FFS', currency: 'CHF', category: null })],
+  });
+  const updateSpy = jest.spyOn(client, 'updateTransactionCategory').mockResolvedValue(
+    makeTxn({ id: 1, merchant_raw: 'SBB CFF FFS', currency: 'CHF', category: 'Travel', subcategory: 'Transport' }),
+  );
+
+  renderWithProviders(<Activity />);
+
+  fireEvent.press(await screen.findByTestId('transaction-1'));
+  fireEvent.press(await screen.findByTestId('cat-chip-Travel'));
+  fireEvent.press(await screen.findByTestId('sub-chip-Transport'));
+  await screen.findByTestId('categorize-travel-country');
+
+  fireEvent.press(screen.getByTestId('categorize-travel-back'));
+  expect(await screen.findByText('Which kind of travel?')).toBeTruthy();
+  expect(updateSpy).not.toHaveBeenCalled();
+
+  fireEvent.press(screen.getByTestId('sub-chip-Transport'));
+  fireEvent.changeText(await screen.findByTestId('categorize-travel-country'), 'Liechtenstein');
+  fireEvent.press(screen.getByTestId('categorize-travel-save'));
+
+  expect(updateSpy).toHaveBeenCalledWith(1, 'Travel', 'Transport', 'Liechtenstein');
 });
 
 test('the detail sheet for a credit transaction shows credit categories, not expense ones', async () => {
@@ -180,7 +232,7 @@ test('categorizing a credit transaction picks from the credit category list', as
   fireEvent.press(await screen.findByTestId('transaction-1'));
   fireEvent.press(await screen.findByTestId('cat-chip-Transfer Received'));
 
-  expect(updateSpy).toHaveBeenCalledWith(1, 'Transfer Received', null);
+  expect(updateSpy).toHaveBeenCalledWith(1, 'Transfer Received', null, null);
 });
 
 test('the detail sheet shows the transaction time, not just the date', async () => {

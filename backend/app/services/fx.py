@@ -19,6 +19,12 @@ def _month_bounds(year: int, month: int) -> tuple[date, date]:
     return date(year, month, 1), date(year, month, last_day)
 
 
+def _previous_month(year: int, month: int) -> tuple[int, int]:
+    if month == 1:
+        return year - 1, 12
+    return year, month - 1
+
+
 def _fetch_monthly_average(currency: str, year: int, month: int) -> Decimal | None:
     start, end = _month_bounds(year, month)
     # A still-in-progress month can't ask the API for days that haven't happened yet.
@@ -72,11 +78,19 @@ def get_amount_in_sgd(db: Session, amount: Decimal, currency: str, txn_at: datet
     """SGD-equivalent of `amount` for aggregation purposes -- `amount`/`currency` on the
     Transaction itself are never touched, this just fills the separate `amount_sgd` column. SGD
     input short-circuits (rate 1, no network call). Never raises; None means "couldn't convert",
-    and callers should fall back to the raw amount rather than dropping the transaction."""
+    and callers should fall back to the raw amount rather than dropping the transaction.
+
+    Uses the *previous* calendar month's average rate, not the transaction's own month -- e.g. a
+    transaction on 3 Aug converts using July's average. The previous month is always fully elapsed
+    by construction, so this is immediately cacheable (via get_monthly_average_rate's
+    already-elapsed-month branch) with no partial-month averaging ever needed, and gives a rate
+    that's stable for the whole month rather than shifting transaction to transaction as more of
+    the current month's days publish."""
     if currency.upper() == "SGD":
         return amount
 
-    rate = get_monthly_average_rate(db, currency, txn_at.year, txn_at.month)
+    year, month = _previous_month(txn_at.year, txn_at.month)
+    rate = get_monthly_average_rate(db, currency, year, month)
     if rate is None:
         return None
     return amount * rate

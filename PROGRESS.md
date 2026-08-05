@@ -2608,3 +2608,63 @@ and confirm the transaction now shows up, with the SGD-converted amount reflecte
 totals while the original foreign amount still displays on the transaction itself. Check the Summary
 screen for a month with transactions near a month boundary and confirm the pie's center total, its
 own category rows, and the six-month trend bar all now agree.
+
+## Dual-currency display, prior-month FX rate locking, country picker during categorization
+
+Three follow-up requests once the FX-conversion foundation above had landed. Confirmed the exact
+scope of each against the actual code first (2 Explore agents), rather than assuming what was
+already built vs. missing.
+
+**1. Show the SGD-equivalent alongside a foreign amount, not just the foreign currency alone.**
+Confirmed `formatMoney()` and every per-transaction call site (`Activity.tsx`, `CategorizeSheet.tsx`)
+only ever rendered one currency; `amount_sgd` was fetched but never displayed next to it. Also found
+and fixed a related latent bug while in there: `QuickSort.tsx` called `formatMoney(txn.amount)` with
+**no currency argument at all**, so a foreign-currency transaction in Quick Sort was mislabeled with
+"S$" instead of its real currency. Added `derive.ts`'s `convertedAmountLabel()` ("≈ S$65.20", or
+`null` when there's nothing to add -- already SGD, or the conversion never resolved) and wired it as
+a secondary line under the existing amount in `Activity.tsx`, `QuickSort.tsx`, and
+`CategorizeSheet.tsx`'s detail header. Purely additive -- the original per-transaction currency
+display is untouched, this only adds a second line beside it.
+
+**2. Lock FX conversion to the *previous* calendar month's average rate, not the transaction's own
+(possibly still-in-progress) month.** Per the user: "at the start of each month it will get the
+average exchange rate from the past month." Confirmed with the user this means a lazy, on-first-use
+lookup -- no new scheduled job (this app's only existing background job, `scheduler.py`'s 10-minute
+email-sync interval, has no cron-style trigger to model one on anyway). `fx.py`'s `get_amount_in_sgd`
+now resolves month-1 from `txn_at` (handling the December→January rollover via a new
+`_previous_month()` helper) before calling `get_monthly_average_rate` -- since a transaction's
+previous month is by definition always fully elapsed, this rate is immediately cacheable and stable
+for the whole month, unlike the transaction's own (possibly partial) month. Deliberately did **not**
+delete `get_monthly_average_rate`'s own "don't cache an in-progress month" branch as the initial plan
+suggested -- while unreachable from this one real caller now, the function stays directly unit-tested
+and generically correct, so removing tested behavior for no functional gain seemed like the wrong
+trade.
+
+**3. Let the user pick a country while categorizing a transaction as Travel, not only afterward.**
+Confirmed `AddTransactionSheet.tsx` (manual entry) already had a complete country+currency picker --
+no changes needed there. But `CategorizeSheet.tsx`'s country field only appeared in the post-hoc
+**Edit** flow on an already-categorized transaction; picking "Travel" for the first time committed
+and closed the sheet immediately with no country prompt. `CategoryUpdateIn` gained an optional
+`country` field -- set on the transaction **only when truthy**, not on every call, since this
+endpoint is hit by every category pick including unrelated re-categorizations, and a blind overwrite
+of the default `None` would silently wipe an already-set country. `CategorizeSheet.tsx` gained a
+`pickedSubcategory` state: picking a Travel subcategory no longer finalizes immediately -- it reveals
+a country `TextInput` (pre-filled via `countryForCurrency`, same convention `AddTransactionSheet.tsx`
+already uses, freely editable, optional) plus Back/Save actions, and only calls `categorize()` (now
+threading `country` through end to end: `client.ts` → `TransactionsProvider.tsx` → the endpoint) once
+Save is tapped. Every non-Travel category pick is completely unchanged -- still instant categorize +
+close.
+
+**Tested:** backend `pytest -q` -- 243 passed (+4: `update_category` setting country only when
+provided and never wiping an existing one on an unrelated recategorize; `fx.py`'s month-1 resolution
+including the year-rollover case, replacing the old same-month-keyed test). Frontend
+`jest --runInBand` -- 21 suites / 169 passed (+5: `convertedAmountLabel`'s three cases; the Travel
+country step appearing pre-filled and not saving until Save is tapped, and Back returning to
+subcategory picking without saving). `tsc --noEmit` clean against these changes (only pre-existing,
+unrelated `testUtils.tsx` jest-namespace noise remains, same as last session).
+
+**Manual steps for the human:** categorize a foreign-currency transaction as Travel and confirm the
+country prompt appears before it saves. Check Activity/QuickSort/CategorizeSheet all show the
+SGD-equivalent under a foreign amount. Confirm a transaction dated early in a new month converts
+using last month's rate (stable immediately, not shifting as the current month accumulates more
+days).

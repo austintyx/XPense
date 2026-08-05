@@ -49,6 +49,12 @@ def update_category(transaction_id: int, body: CategoryUpdateIn, db: Session = D
         raise HTTPException(status_code=404, detail="Transaction not found")
     txn.category = body.category
     txn.subcategory = body.subcategory
+    # Only set when truthy, not on every call -- this endpoint is hit by every category pick
+    # (including non-Travel ones and later re-categorizations), so unconditionally writing
+    # body.country's default None would silently wipe an already-set country on an unrelated
+    # call. Clearing one deliberately stays the dedicated Edit flow's job (update_transaction_details).
+    if body.country:
+        txn.country = body.country
     # A manual (re)categorization is a stronger signal than any prior guess -- remember it so
     # every future transaction from this merchant is categorized the same way with no AI call.
     if txn.merchant_raw:

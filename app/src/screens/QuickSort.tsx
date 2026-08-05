@@ -6,7 +6,15 @@ import { CategoryChip } from "../components/CategoryChip";
 import { useToast } from "../components/Toast";
 import { useAppData } from "../store/TransactionsProvider";
 import { categoryColor, colors, radii, shadow, spacing, typography } from "../theme/tokens";
-import { allCategories, deriveSource, formatDateTime, formatMoney, mergedSubcategories, uncategorized } from "../utils/derive";
+import {
+  allCategories,
+  convertedAmountLabel,
+  deriveSource,
+  formatDateTime,
+  formatMoney,
+  mergedSubcategories,
+  uncategorized,
+} from "../utils/derive";
 import type { Transaction } from "../api/client";
 
 const REASON_HINT = "We couldn't confidently match this merchant — pick a category to help us learn.";
@@ -57,7 +65,8 @@ function CardContent({ txn, editing, editValue, onStartEdit, onChangeEdit, onSav
         </View>
       )}
       <Text style={styles.cardWhen}>{formatDateTime(txn.txn_at)}</Text>
-      <Text style={styles.cardAmount}>{formatMoney(txn.amount)}</Text>
+      <Text style={styles.cardAmount}>{formatMoney(txn.amount, true, txn.currency)}</Text>
+      {convertedAmountLabel(txn) && <Text style={styles.cardConverted}>{convertedAmountLabel(txn)}</Text>}
       <Text style={styles.cardHint}>{REASON_HINT}</Text>
     </>
   );
@@ -305,6 +314,7 @@ const styles = StyleSheet.create({
   editMerchantCancel: { color: colors.ink45 },
   cardWhen: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.base, color: colors.ink50, marginBottom: 20 },
   cardAmount: { fontFamily: typography.fontFamily.serif, fontSize: typography.size.numberXl, color: colors.ink },
+  cardConverted: { fontFamily: typography.fontFamily.mono, fontSize: typography.size.xs, color: colors.ink35, marginTop: 3 },
   cardHint: { marginTop: "auto", fontFamily: typography.fontFamily.sans, fontSize: typography.size.sm5, color: colors.ink42 },
   doneCard: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: colors.surface, borderRadius: radii.quickSort, alignItems: "center", justifyContent: "center", padding: 30 },
   doneCircle: { width: 54, height: 54, borderRadius: 27, backgroundColor: colors.successDoneCircle, marginBottom: 16 },

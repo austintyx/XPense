@@ -54,7 +54,7 @@ interface AppDataState {
 
 interface AppDataActions {
   refetch: () => Promise<void>;
-  categorize: (id: number, category: string, subcategory?: string | null) => Promise<void>;
+  categorize: (id: number, category: string, subcategory?: string | null, country?: string | null) => Promise<void>;
   addTransaction: (draft: TransactionDraft) => Promise<void>;
   editTransaction: (id: number, merchant: string, amount: string, country?: string | null) => Promise<void>;
   removeTransaction: (id: number) => Promise<void>;
@@ -150,8 +150,8 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
   }, [refetch]);
 
   const categorize = useCallback(
-    async (id: number, category: string, subcategory: string | null = null) => {
-      const updated = await updateTransactionCategory(id, category, subcategory);
+    async (id: number, category: string, subcategory: string | null = null, country: string | null = null) => {
+      const updated = await updateTransactionCategory(id, category, subcategory, country);
       setState((s) => ({
         ...s,
         transactions: s.transactions.map((t) => (t.id === updated.id ? updated : t)),

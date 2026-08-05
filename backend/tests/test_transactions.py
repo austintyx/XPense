@@ -119,6 +119,34 @@ def test_category_update_without_subcategory_clears_it(client, db_session, user)
     assert body["subcategory"] is None
 
 
+def test_category_update_with_country_sets_it_for_a_travel_categorization(client, db_session, user):
+    txn = _make_txn(db_session, user, category=None, currency="CHF", country=None)
+
+    response = client.post(
+        f"/transactions/{txn.id}/category",
+        json={"category": "Travel", "subcategory": "Transport", "country": "Switzerland"},
+    )
+    assert response.status_code == 200
+    assert response.json()["country"] == "Switzerland"
+
+    db_session.refresh(txn)
+    assert txn.country == "Switzerland"
+
+
+def test_category_update_without_country_never_wipes_an_already_set_one(client, db_session, user):
+    """The categorize endpoint is hit by every category pick, including plain re-categorizations
+    that never mention country at all -- CategoryUpdateIn.country defaults to None, so this must
+    not be treated as "clear the country" or every unrelated recategorize would silently wipe it."""
+    txn = _make_txn(db_session, user, category="Travel", currency="CHF", country="Switzerland")
+
+    response = client.post(f"/transactions/{txn.id}/category", json={"category": "Travel", "subcategory": "Food"})
+    assert response.status_code == 200
+    assert response.json()["country"] == "Switzerland"
+
+    db_session.refresh(txn)
+    assert txn.country == "Switzerland"
+
+
 def test_category_update_remembers_the_category_for_future_transactions_from_the_same_merchant(
     monkeypatch, client, db_session, user
 ):

@@ -7,7 +7,16 @@ import { useToast } from "../components/Toast";
 import { useAppData } from "../store/TransactionsProvider";
 import { categoryColorChip, colors, typography } from "../theme/tokens";
 import { confirmDestructive } from "../utils/confirm";
-import { allCategories, deriveSource, effectiveCountry, formatDateTime, formatMoney, mergedSubcategories } from "../utils/derive";
+import {
+  allCategories,
+  convertedAmountLabel,
+  countryForCurrency,
+  deriveSource,
+  effectiveCountry,
+  formatDateTime,
+  formatMoney,
+  mergedSubcategories,
+} from "../utils/derive";
 import type { Transaction } from "../api/client";
 
 interface CategorizeSheetProps {
@@ -19,6 +28,10 @@ export function CategorizeSheet({ transaction, onClose }: CategorizeSheetProps) 
   const { categorize, editTransaction, removeTransaction, customCategories, customSubcategories } = useAppData();
   const { showToast } = useToast();
   const [pickedCategory, setPickedCategory] = useState<string | null>(null);
+  // Travel-only: chooseSubcategory captures the pick here instead of finalizing immediately, so a
+  // country step can be shown before the categorization is actually saved.
+  const [pickedSubcategory, setPickedSubcategory] = useState<string | null>(null);
+  const [travelCountry, setTravelCountry] = useState("");
   const [editing, setEditing] = useState(false);
   const [editMerchant, setEditMerchant] = useState("");
   const [editAmount, setEditAmount] = useState("");
@@ -32,6 +45,8 @@ export function CategorizeSheet({ transaction, onClose }: CategorizeSheetProps) 
   useEffect(() => {
     if (transaction) {
       setPickedCategory(transaction.category ?? null);
+      setPickedSubcategory(null);
+      setTravelCountry("");
       setEditing(false);
     }
   }, [transaction]);
@@ -59,8 +74,23 @@ export function CategorizeSheet({ transaction, onClose }: CategorizeSheetProps) 
 
   const chooseSubcategory = async (subcategory: string) => {
     if (!pickedCategory) return;
+    if (pickedCategory === "Travel") {
+      // Don't finalize yet -- reveal a country step first, pre-filled with the currency-derived
+      // guess (same convention AddTransactionSheet already uses for manual entry), freely
+      // editable, optional.
+      setPickedSubcategory(subcategory);
+      setTravelCountry(countryForCurrency(transaction.currency));
+      return;
+    }
     await categorize(transaction.id, pickedCategory, subcategory);
     showToast(`Filed under ${pickedCategory} · ${subcategory}`);
+    onClose();
+  };
+
+  const saveTravelCategorization = async () => {
+    if (!pickedCategory || !pickedSubcategory) return;
+    await categorize(transaction.id, pickedCategory, pickedSubcategory, travelCountry.trim() || null);
+    showToast(`Filed under ${pickedCategory} · ${pickedSubcategory}`);
     onClose();
   };
 
@@ -159,9 +189,12 @@ export function CategorizeSheet({ transaction, onClose }: CategorizeSheetProps) 
           <Text style={[styles.headerText, styles.merchantText]} numberOfLines={2}>
             {transaction.merchant_clean ?? transaction.merchant_raw ?? "Unknown"}
           </Text>
-          <Text style={[styles.headerText, styles.amountText]}>
-            {formatMoney(transaction.amount, true, transaction.currency)}
-          </Text>
+          <View style={styles.amountText}>
+            <Text style={styles.headerText}>{formatMoney(transaction.amount, true, transaction.currency)}</Text>
+            {convertedAmountLabel(transaction) && (
+              <Text style={styles.convertedText}>{convertedAmountLabel(transaction)}</Text>
+            )}
+          </View>
         </View>
       )}
       <View style={styles.metaRow}>
@@ -174,29 +207,60 @@ export function CategorizeSheet({ transaction, onClose }: CategorizeSheetProps) 
           </Text>
         )}
       </View>
-      <Text style={styles.stepLabel}>
-        {isSubcategoryStep ? `Which kind of ${pickedCategory!.toLowerCase()}?` : "Pick a category"}
-      </Text>
-      <View style={styles.chipsRow}>
-        {isSubcategoryStep
-          ? subcategories.map((sub) => (
-              <CategoryChip key={sub} label={sub} active={false} onPress={() => chooseSubcategory(sub)} testID={`sub-chip-${sub}`} />
-            ))
-          : categories.map((category) => (
-              <CategoryChip
-                key={category}
-                label={category}
-                active={pickedCategory === category}
-                activeColor={categoryColorChip(category)}
-                onPress={() => chooseCategory(category)}
-                testID={`cat-chip-${category}`}
-              />
-            ))}
-      </View>
-      {isSubcategoryStep && (
-        <Text style={styles.backLink} onPress={() => setPickedCategory(null)} testID="back-to-categories">
-          ‹ Back to categories
-        </Text>
+      {pickedSubcategory ? (
+        <>
+          <Text style={styles.stepLabel}>Which country?</Text>
+          <TextInput
+            value={travelCountry}
+            onChangeText={setTravelCountry}
+            placeholder="e.g. Japan"
+            style={styles.textInput}
+            testID="categorize-travel-country"
+          />
+          <View style={styles.editActionsRow}>
+            <Pressable
+              onPress={() => setPickedSubcategory(null)}
+              style={styles.editCancelButton}
+              testID="categorize-travel-back"
+            >
+              <Text style={styles.editCancelText}>Back</Text>
+            </Pressable>
+            <Pressable
+              onPress={saveTravelCategorization}
+              style={[styles.editSaveButton, styles.editSaveButtonEnabled]}
+              testID="categorize-travel-save"
+            >
+              <Text style={[styles.editSaveText, styles.editSaveTextEnabled]}>Save</Text>
+            </Pressable>
+          </View>
+        </>
+      ) : (
+        <>
+          <Text style={styles.stepLabel}>
+            {isSubcategoryStep ? `Which kind of ${pickedCategory!.toLowerCase()}?` : "Pick a category"}
+          </Text>
+          <View style={styles.chipsRow}>
+            {isSubcategoryStep
+              ? subcategories.map((sub) => (
+                  <CategoryChip key={sub} label={sub} active={false} onPress={() => chooseSubcategory(sub)} testID={`sub-chip-${sub}`} />
+                ))
+              : categories.map((category) => (
+                  <CategoryChip
+                    key={category}
+                    label={category}
+                    active={pickedCategory === category}
+                    activeColor={categoryColorChip(category)}
+                    onPress={() => chooseCategory(category)}
+                    testID={`cat-chip-${category}`}
+                  />
+                ))}
+          </View>
+          {isSubcategoryStep && (
+            <Text style={styles.backLink} onPress={() => setPickedCategory(null)} testID="back-to-categories">
+              ‹ Back to categories
+            </Text>
+          )}
+        </>
       )}
       <Text style={styles.deleteLink} onPress={confirmDelete} testID="delete-transaction">
         Delete transaction
@@ -209,7 +273,13 @@ const styles = StyleSheet.create({
   headerRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 },
   headerText: { fontFamily: typography.fontFamily.serif, fontSize: typography.size.displayXl, color: colors.ink },
   merchantText: { flex: 1, flexShrink: 1, minWidth: 0 },
-  amountText: { flexShrink: 0, marginLeft: 10 },
+  amountText: { flexShrink: 0, marginLeft: 10, alignItems: "flex-end" },
+  convertedText: {
+    fontFamily: typography.fontFamily.mono,
+    fontSize: typography.size.xs,
+    color: colors.ink35,
+    marginTop: 3,
+  },
   metaRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 18 },
   meta: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.sm, color: colors.ink50 },
   editLink: { fontFamily: typography.fontFamily.sansMedium, fontSize: typography.size.sm, color: colors.ink },
