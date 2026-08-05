@@ -11,6 +11,7 @@ import { categoryColor, colors, radii, shadow, spacing, typography, type Categor
 import {
   allCategories,
   countriesInTransactions,
+  convertedAmountLabel,
   effectiveCountry,
   deriveSource,
   formatMoney,
@@ -230,6 +231,7 @@ export default function Activity() {
                         {txn.direction === "credit" ? "+" : ""}
                         {formatMoney(txn.amount, true, txn.currency)}
                       </Text>
+                      {convertedAmountLabel(txn) && <Text style={styles.source}>{convertedAmountLabel(txn)}</Text>}
                       <Text style={styles.source}>{deriveSource(txn)}</Text>
                     </View>
                   </Pressable>

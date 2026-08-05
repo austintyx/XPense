@@ -42,6 +42,9 @@ class EmailAccountOut(BaseModel):
 class CategoryUpdateIn(BaseModel):
     category: str
     subcategory: str | None = None
+    # Optional -- only set on the transaction when truthy (see update_category), so a plain
+    # re-categorization that doesn't mention country at all can never silently wipe one already set.
+    country: str | None = None
 
 
 class CategoryOut(BaseModel):

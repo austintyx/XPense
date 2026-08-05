@@ -89,10 +89,41 @@ def test_get_monthly_average_rate_never_caches_the_current_in_progress_month(db_
     assert db_session.query(FxRate).filter_by(currency="MYR", year=now.year, month=now.month).count() == 0
 
 
-def test_get_amount_in_sgd_converts_using_the_monthly_average_rate(db_session, monkeypatch):
-    monkeypatch.setattr(httpx, "get", lambda *a, **k: _fake_response({"2026-07-01": 0.32}))
+def test_get_amount_in_sgd_uses_the_previous_calendar_month_not_the_transactions_own_month(db_session, monkeypatch):
+    # A transaction dated 15 Jul must convert using JUNE's average rate, not July's -- the
+    # previous month is always fully elapsed by construction, so it's immediately stable/cacheable
+    # with no partial-month averaging ever needed, unlike using the transaction's own month.
+    calls = []
+
+    def capturing_get(url, **kwargs):
+        calls.append(url)
+        return _fake_response({"2026-06-01": 0.32})
+
+    monkeypatch.setattr(httpx, "get", capturing_get)
     result = fx.get_amount_in_sgd(db_session, Decimal("100.00"), "myr", datetime(2026, 7, 15, tzinfo=timezone.utc))
+
     assert result == Decimal("32.00")
+    assert len(calls) == 1
+    assert "2026-06-01..2026-06-30" in calls[0]
+
+
+def test_get_amount_in_sgd_resolves_january_to_december_of_the_prior_year(db_session, monkeypatch):
+    calls = []
+
+    def capturing_get(url, **kwargs):
+        calls.append(url)
+        return _fake_response({"2025-12-01": 0.55})
+
+    monkeypatch.setattr(httpx, "get", capturing_get)
+    result = fx.get_amount_in_sgd(db_session, Decimal("10.00"), "USD", datetime(2026, 1, 10, tzinfo=timezone.utc))
+
+    assert result == Decimal("5.50")
+    assert "2025-12-01..2025-12-31" in calls[0]
+
+
+def test_previous_month_handles_the_year_rollover():
+    assert fx._previous_month(2026, 7) == (2026, 6)
+    assert fx._previous_month(2026, 1) == (2025, 12)
 
 
 def test_get_amount_in_sgd_returns_none_when_conversion_fails(db_session, monkeypatch):

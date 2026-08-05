@@ -118,11 +118,12 @@ export async function updateTransactionCategory(
   transactionId: number,
   category: string,
   subcategory: string | null = null,
+  country: string | null = null,
 ): Promise<Transaction> {
   const response = await fetch(`${API_BASE_URL}/transactions/${transactionId}/category`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ category, subcategory }),
+    body: JSON.stringify({ category, subcategory, country }),
   });
   if (!response.ok) {
     throw new Error(`Failed to update category (${response.status})`);

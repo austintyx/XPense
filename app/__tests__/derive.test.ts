@@ -1,6 +1,7 @@
 import {
   allCategories,
   categoryTotals,
+  convertedAmountLabel,
   countriesInTransactions,
   countryForCurrency,
   dailyTotalsForRange,
@@ -173,6 +174,20 @@ describe('spendAmount', () => {
 
   test('falls back to amount when amount_sgd is null', () => {
     expect(spendAmount({ amount: '20.00', amount_sgd: null })).toBe(20);
+  });
+});
+
+describe('convertedAmountLabel', () => {
+  test('returns an approx-SGD label for a foreign-currency transaction', () => {
+    expect(convertedAmountLabel({ currency: 'CHF', amount_sgd: '158.00' })).toBe('≈ S$158.00');
+  });
+
+  test('returns null for an SGD transaction -- nothing extra to show', () => {
+    expect(convertedAmountLabel({ currency: 'SGD', amount_sgd: '10.00' })).toBeNull();
+  });
+
+  test('returns null when the conversion never resolved', () => {
+    expect(convertedAmountLabel({ currency: 'CHF', amount_sgd: null })).toBeNull();
   });
 });
 

@@ -45,7 +45,7 @@ test('picking a category with no subcategories sorts the card and advances the q
   await screen.findByText('SHOPEE');
   fireEvent.press(screen.getByTestId('qs-cat-Shopping'));
 
-  expect(updateSpy).toHaveBeenCalledWith(1, 'Shopping', null);
+  expect(updateSpy).toHaveBeenCalledWith(1, 'Shopping', null, null);
   expect(await screen.findByText('NETFLIX')).toBeTruthy();
 });
 
@@ -83,7 +83,7 @@ test('picking Food shows a subcategory step before sorting', async () => {
   expect(await screen.findByText('Which kind of food?')).toBeTruthy();
   fireEvent.press(screen.getByTestId('qs-sub-Dinner'));
 
-  expect(updateSpy).toHaveBeenCalledWith(1, 'Food', 'Dinner');
+  expect(updateSpy).toHaveBeenCalledWith(1, 'Food', 'Dinner', null);
 });
 
 test('picking Transport shows a subcategory step before sorting', async () => {
@@ -99,7 +99,7 @@ test('picking Transport shows a subcategory step before sorting', async () => {
   expect(await screen.findByText('Which kind of transport?')).toBeTruthy();
   fireEvent.press(screen.getByTestId('qs-sub-Private'));
 
-  expect(updateSpy).toHaveBeenCalledWith(1, 'Transport', 'Private');
+  expect(updateSpy).toHaveBeenCalledWith(1, 'Transport', 'Private', null);
 });
 
 test('skip removes the card from this session without categorizing it', async () => {
