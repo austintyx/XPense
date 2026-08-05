@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Animated, Easing, Modal, Pressable, StyleSheet, View } from "react-native";
+import { Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import { colors, radii, spacing } from "../theme/tokens";
 
@@ -40,7 +40,12 @@ export function BottomSheet({ visible, onClose, children, testID }: BottomSheetP
         {/* Rendered after the scrim Pressable, so taps inside the card don't bubble to it and
             close the dialog -- same sibling-order trick the native slide-up sheet already relies on. */}
         <Animated.View style={[styles.card, { opacity: cardOpacity, transform: [{ translateY: cardTranslateY }] }]}>
-          {children}
+          {/* Same overflow fix as the native sheet: `card`'s maxHeight caps the box itself but
+              doesn't clip/scroll children on its own -- wrap in a ScrollView so tall content (e.g.
+              every chip row expanded) never pushes a trailing button below the visible dialog. */}
+          <ScrollView style={styles.scrollArea} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+            {children}
+          </ScrollView>
         </Animated.View>
       </View>
     </Modal>
@@ -56,7 +61,8 @@ const styles = StyleSheet.create({
     maxHeight: "86%",
     backgroundColor: colors.surfaceSheet,
     borderRadius: radii.sheet,
-    padding: spacing.xxl,
+    // Clips the ScrollView's content to the rounded corners while scrolling.
+    overflow: "hidden",
     marginHorizontal: spacing.xxl,
     shadowColor: "#1B1A17",
     shadowOffset: { width: 0, height: 18 },
@@ -64,4 +70,6 @@ const styles = StyleSheet.create({
     shadowRadius: 40,
     elevation: 12,
   },
+  scrollArea: { flex: 1 },
+  scrollContent: { padding: spacing.xxl },
 });
