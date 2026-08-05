@@ -350,6 +350,36 @@ test('add transaction sheet requires amount, merchant and category before Save i
   );
 });
 
+test('a manually added transaction is inserted in chronological order, not always pinned to the top', async () => {
+  const today = new Date();
+  const lastWeek = new Date(today);
+  lastWeek.setDate(today.getDate() - 7);
+
+  mockClientDefaults({
+    transactions: [makeTxn({ id: 1, merchant_raw: 'TODAY TXN', txn_at: today.toISOString() })],
+  });
+  // The provider inserts whatever the backend returns (`created`) into state -- its txn_at is
+  // what determines sort position, regardless of what was typed into the draft form.
+  jest.spyOn(client, 'createTransaction').mockResolvedValue(
+    makeTxn({ id: 2, merchant_raw: 'LAST WEEK TXN', txn_at: lastWeek.toISOString() }),
+  );
+
+  renderWithProviders(<Activity />);
+  await screen.findByTestId('transaction-1');
+
+  fireEvent.press(await screen.findByTestId('add-transaction-button'));
+  fireEvent.changeText(screen.getByTestId('draft-amount'), '5.00');
+  fireEvent.changeText(screen.getByTestId('draft-merchant'), 'Last Week Txn');
+  fireEvent.press(screen.getByTestId('draft-cat-Food'));
+  fireEvent.press(screen.getByTestId('save-draft'));
+
+  await screen.findByTestId('transaction-2');
+  const rows = screen.getAllByTestId(/^transaction-\d+$/);
+  // Newer (today) first, older (last week) second -- a naive prepend would put the just-added
+  // row first regardless of its actual date.
+  expect(rows.map((r) => r.props.testID)).toEqual(['transaction-1', 'transaction-2']);
+});
+
 test('toggling Add Transaction to Income swaps the category list and clears a previous pick', async () => {
   mockClientDefaults({ transactions: [] });
 

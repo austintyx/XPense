@@ -164,7 +164,16 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
 
   const addTransaction = useCallback(async (draft: TransactionDraft) => {
     const created = await createTransaction(draft);
-    setState((s) => ({ ...s, transactions: [created, ...s.transactions] }));
+    setState((s) => ({
+      ...s,
+      // Insert in txn_at-desc order (matching GET /transactions' own ORDER BY) rather than a
+      // naive prepend -- a backdated manual entry must land in its correct chronological slot,
+      // not always jump to the top. Every consumer of this array (Activity's groupByDay,
+      // QuickSort's queue) assumes it's already sorted this way and doesn't re-sort itself.
+      transactions: [created, ...s.transactions].sort(
+        (a, b) => new Date(b.txn_at).getTime() - new Date(a.txn_at).getTime(),
+      ),
+    }));
     const summary = await getSummary();
     setState((s) => ({ ...s, summary }));
   }, []);
