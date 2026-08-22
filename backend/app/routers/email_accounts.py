@@ -18,7 +18,8 @@ def unlink_email_account(account_id: int, user_id: int, db: Session = Depends(ge
     account = db.query(EmailAccount).filter_by(id=account_id, user_id=user_id).one_or_none()
     if account is None:
         raise HTTPException(status_code=404, detail="Email account not found")
-    # Unlinking only removes the credential/connection -- transactions already synced from this
-    # account are left untouched as normal history.
+    # Transaction.account_id has ondelete="CASCADE" (see models.py), so Postgres itself deletes
+    # every transaction synced from this account the moment the row below is removed -- no
+    # separate delete query needed here.
     db.delete(account)
     db.commit()

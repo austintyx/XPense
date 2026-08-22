@@ -106,7 +106,9 @@ def sync_email_account(db: Session, account: EmailAccount, since: datetime | Non
                 parsed.subcategory = subcategory_for(parsed.category, parsed.merchant_raw, parsed.txn_at)
 
             amount_sgd = get_amount_in_sgd(db, parsed.amount, parsed.currency, parsed.txn_at)
-            save_parsed_transaction(db, account.user_id, source_email_id, account.provider, parsed, amount_sgd)
+            save_parsed_transaction(
+                db, account.user_id, account.id, source_email_id, account.provider, parsed, amount_sgd
+            )
             if not already_exists:
                 inserted += 1
 

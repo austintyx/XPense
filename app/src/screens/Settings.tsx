@@ -82,7 +82,7 @@ export default function Settings() {
   const confirmRemoveAccount = (accountId: number, email: string) => {
     confirmDestructive({
       title: "Unlink account?",
-      message: `Unlink ${email}? Your past transactions from this account will stay.`,
+      message: `Unlink ${email}? All transactions synced from this account will be permanently deleted.`,
       confirmLabel: "Unlink",
       onConfirm: async () => {
         await removeAccount(accountId);

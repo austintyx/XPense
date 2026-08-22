@@ -183,8 +183,8 @@ def test_dedup_on_source_email_id(db_session, user):
     assert len(results) == 1
     parsed = results[0]
 
-    first = save_parsed_transaction(db_session, user.id, "msg-123", ProviderEnum.google, parsed)
-    second = save_parsed_transaction(db_session, user.id, "msg-123", ProviderEnum.google, parsed)
+    first = save_parsed_transaction(db_session, user.id, None, "msg-123", ProviderEnum.google, parsed)
+    second = save_parsed_transaction(db_session, user.id, None, "msg-123", ProviderEnum.google, parsed)
 
     assert first.id == second.id
     count = db_session.query(Transaction).filter_by(source_email_id="msg-123").count()

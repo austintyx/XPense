@@ -72,6 +72,13 @@ class Transaction(Base):
     provider: Mapped[ProviderEnum | None] = mapped_column(
         SAEnum(ProviderEnum, name="provider_enum"), nullable=True
     )
+    # Which linked EmailAccount this was synced from. Nullable because manually-added transactions
+    # (POST /transactions) have no source account. ondelete="CASCADE" means unlinking an account
+    # (DELETE /email-accounts/{id}) automatically deletes every transaction it produced -- enforced
+    # by Postgres itself, not application code, so it can't be accidentally skipped.
+    account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("email_accounts.id", ondelete="CASCADE"), nullable=True
+    )
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False)
     direction: Mapped[DirectionEnum] = mapped_column(SAEnum(DirectionEnum, name="direction_enum"), nullable=False)

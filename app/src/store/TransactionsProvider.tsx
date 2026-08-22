@@ -213,10 +213,16 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     setState((s) => ({ ...s, user }));
   }, []);
 
-  const removeAccount = useCallback(async (accountId: number) => {
-    await deleteEmailAccount(accountId);
-    setState((s) => ({ ...s, accounts: s.accounts.filter((a) => a.id !== accountId) }));
-  }, []);
+  const removeAccount = useCallback(
+    async (accountId: number) => {
+      await deleteEmailAccount(accountId);
+      // Unlinking cascade-deletes every transaction synced from this account server-side. The
+      // frontend has no client-side signal for which entries in `transactions` those were, so
+      // refetch the authoritative post-delete state rather than trying to guess locally.
+      await refetch();
+    },
+    [refetch],
+  );
 
   const addCategory = useCallback(async (name: string) => {
     const category = await createCategory(name);
