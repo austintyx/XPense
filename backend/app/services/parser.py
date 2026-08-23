@@ -315,6 +315,7 @@ def parse_email(text: str, sender: str, received_at: datetime) -> list[ParsedTxn
 def save_parsed_transaction(
     db: Session,
     user_id: int,
+    account_id: int,
     source_email_id: str,
     provider: ProviderEnum,
     parsed: ParsedTxn,
@@ -329,6 +330,7 @@ def save_parsed_transaction(
 
     txn = Transaction(
         user_id=user_id,
+        account_id=account_id,
         source_email_id=source_email_id,
         provider=provider,
         amount=parsed.amount,

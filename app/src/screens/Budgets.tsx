@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 
-import { getCategoryBudgets, updateCategoryBudget, type CategoryBudget, type Frequency } from "../api/client";
+import { getCategoryBudgets, updateCategoryBudget, type CategoryBudget, type Frequency, type Subscription } from "../api/client";
 import { AddSubscriptionSheet } from "./AddSubscriptionSheet";
 import { useToast } from "../components/Toast";
 import { useIsMobileWeb } from "../hooks/useIsMobileWeb";
@@ -80,6 +80,7 @@ export default function Budgets() {
   const [editMode, setEditMode] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [addSubscriptionVisible, setAddSubscriptionVisible] = useState(false);
+  const [editingSubscription, setEditingSubscription] = useState<Subscription | undefined>(undefined);
 
   const [editingBudget, setEditingBudget] = useState(false);
   const [budgetDraft, setBudgetDraft] = useState("");
@@ -394,9 +395,20 @@ export default function Budgets() {
                   </Text>
                   <Text style={styles.subAmount}>{formatMoney(r.amount)}</Text>
                   {r.source === "manual" && r.id !== undefined && (
-                    <Pressable onPress={() => confirmDeleteSubscription(r.id!, r.name)} testID={`delete-sub-${r.id}`}>
-                      <Text style={styles.subDelete}>×</Text>
-                    </Pressable>
+                    <>
+                      <Pressable
+                        onPress={() => {
+                          const full = subscriptions.find((s) => s.id === r.id);
+                          if (full) setEditingSubscription(full);
+                        }}
+                        testID={`edit-sub-${r.id}`}
+                      >
+                        <Text style={styles.subEdit}>✎</Text>
+                      </Pressable>
+                      <Pressable onPress={() => confirmDeleteSubscription(r.id!, r.name)} testID={`delete-sub-${r.id}`}>
+                        <Text style={styles.subDelete}>×</Text>
+                      </Pressable>
+                    </>
                   )}
                 </View>
               ))
@@ -404,7 +416,14 @@ export default function Budgets() {
           </View>
         </View>
       </View>
-      <AddSubscriptionSheet visible={addSubscriptionVisible} onClose={() => setAddSubscriptionVisible(false)} />
+      <AddSubscriptionSheet
+        visible={addSubscriptionVisible || editingSubscription !== undefined}
+        onClose={() => {
+          setAddSubscriptionVisible(false);
+          setEditingSubscription(undefined);
+        }}
+        subscription={editingSubscription}
+      />
     </ScrollView>
   );
 }
@@ -459,5 +478,6 @@ const styles = StyleSheet.create({
   subRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 10, paddingVertical: 11, borderTopWidth: 1, borderTopColor: colors.ink06 },
   subName: { flex: 1, fontFamily: typography.fontFamily.sans, fontSize: typography.size.base5 },
   subAmount: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.base5 },
+  subEdit: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.base5, color: colors.ink38, marginLeft: 4 },
   subDelete: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.lg, color: colors.ink38, marginLeft: 4 },
 });

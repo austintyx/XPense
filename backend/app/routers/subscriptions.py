@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import Subscription
-from app.schemas import SubscriptionCreateIn, SubscriptionOut
+from app.schemas import SubscriptionCreateIn, SubscriptionOut, SubscriptionUpdateIn
 
 router = APIRouter()
 
@@ -23,6 +23,20 @@ def create_subscription(user_id: int, body: SubscriptionCreateIn, db: Session = 
         next_due=body.next_due,
     )
     db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.patch("/subscriptions/{subscription_id}", response_model=SubscriptionOut)
+def update_subscription(subscription_id: int, user_id: int, body: SubscriptionUpdateIn, db: Session = Depends(get_db)):
+    row = db.query(Subscription).filter_by(id=subscription_id, user_id=user_id).one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+    row.name = body.name
+    row.amount = body.amount
+    row.frequency = body.frequency
+    row.next_due = body.next_due
     db.commit()
     db.refresh(row)
     return row

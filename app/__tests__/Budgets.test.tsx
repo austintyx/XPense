@@ -21,9 +21,9 @@ test('shows manually-added subscriptions alongside auto-detected recurring charg
   mockClientDefaults({
     subscriptions: [makeSubscription({ id: 1, name: 'Netflix', amount: '14.98', frequency: 'monthly' })],
     transactions: [
-      makeTxn({ id: 1, merchant_raw: 'GYM', category: 'Health', amount: '50.00', txn_at: '2026-05-15T10:00:00Z' }),
-      makeTxn({ id: 2, merchant_raw: 'GYM', category: 'Health', amount: '50.00', txn_at: '2026-06-15T10:00:00Z' }),
-      makeTxn({ id: 3, merchant_raw: 'GYM', category: 'Health', amount: '50.00', txn_at: '2026-07-15T10:00:00Z' }),
+      makeTxn({ id: 1, merchant_raw: 'GYM', category: 'Bills', amount: '50.00', txn_at: '2026-05-15T10:00:00Z' }),
+      makeTxn({ id: 2, merchant_raw: 'GYM', category: 'Bills', amount: '50.00', txn_at: '2026-06-15T10:00:00Z' }),
+      makeTxn({ id: 3, merchant_raw: 'GYM', category: 'Bills', amount: '50.00', txn_at: '2026-07-15T10:00:00Z' }),
     ],
   });
 
@@ -31,6 +31,20 @@ test('shows manually-added subscriptions alongside auto-detected recurring charg
 
   expect(await screen.findByText('Netflix')).toBeTruthy();
   expect(screen.getByText('GYM')).toBeTruthy();
+});
+
+test('a recurring merchant outside the Bills category is not listed as a subscription', async () => {
+  mockClientDefaults({
+    transactions: [
+      makeTxn({ id: 1, merchant_raw: 'NTUC FAIRPRICE', category: 'Groceries', amount: '85.00', txn_at: '2026-06-15T10:00:00Z' }),
+      makeTxn({ id: 2, merchant_raw: 'NTUC FAIRPRICE', category: 'Groceries', amount: '85.00', txn_at: '2026-07-15T10:00:00Z' }),
+    ],
+  });
+
+  renderWithProviders(<Budgets />);
+
+  expect(await screen.findByText('Nothing recurring detected yet.')).toBeTruthy();
+  expect(screen.queryByText('NTUC FAIRPRICE')).toBeNull();
 });
 
 test('adding a subscription calls createSubscription and shows it in the list', async () => {
@@ -66,6 +80,30 @@ test('deleting a manual subscription calls removeSubscription and removes it fro
 
   expect(deleteSpy).toHaveBeenCalledWith(3);
   expect(await screen.findByText('Nothing recurring detected yet.')).toBeTruthy();
+});
+
+test('editing a manual subscription prefills the sheet and saves via updateSubscription', async () => {
+  mockClientDefaults({
+    subscriptions: [makeSubscription({ id: 5, name: 'Disney+', amount: '11.98', frequency: 'monthly', next_due: '2026-08-01T00:00:00Z' })],
+  });
+  const updateSpy = jest
+    .spyOn(client, 'updateSubscription')
+    .mockResolvedValue(makeSubscription({ id: 5, name: 'Disney+ Premium', amount: '15.98', frequency: 'monthly', next_due: '2026-08-01T00:00:00Z' }));
+
+  renderWithProviders(<Budgets />);
+
+  await screen.findByText('Disney+');
+  fireEvent.press(screen.getByTestId('edit-sub-5'));
+
+  expect(await screen.findByDisplayValue('Disney+')).toBeTruthy();
+  expect(screen.getByDisplayValue('11.98')).toBeTruthy();
+
+  fireEvent.changeText(screen.getByTestId('sub-name'), 'Disney+ Premium');
+  fireEvent.changeText(screen.getByTestId('sub-amount'), '15.98');
+  fireEvent.press(screen.getByTestId('save-subscription'));
+
+  expect(updateSpy).toHaveBeenCalledWith(5, 'Disney+ Premium', '15.98', 'monthly', expect.any(String));
+  expect(await screen.findByText('Disney+ Premium')).toBeTruthy();
 });
 
 test('normalizes a yearly manual subscription to its monthly-equivalent share of the total', async () => {

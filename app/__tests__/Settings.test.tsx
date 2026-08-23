@@ -76,6 +76,15 @@ test('removing a linked account confirms, then unlinks it while keeping the app 
     ],
   });
   const deleteSpy = jest.spyOn(client, 'deleteEmailAccount').mockResolvedValue(undefined);
+  // removeAccount now refetches from the server after deleting (the backend cascade-deletes the
+  // account's transactions, so the frontend can no longer just locally filter state) -- simulate
+  // that server-side removal by having the mock's second call reflect the account being gone.
+  jest
+    .spyOn(client, 'getLinkedAccounts')
+    .mockResolvedValueOnce([
+      { id: 7, provider: 'google', provider_email: 'weiling@gmail.com', last_synced_at: null, created_at: '2026-01-01T00:00:00Z' },
+    ])
+    .mockResolvedValue([]);
   jest.spyOn(Alert, 'alert').mockImplementation((_title, _message, buttons) => {
     buttons?.find((b) => b.text === 'Unlink')?.onPress?.();
   });

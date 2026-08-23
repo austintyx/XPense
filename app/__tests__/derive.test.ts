@@ -202,10 +202,10 @@ describe('categoryTotals', () => {
 });
 
 describe('deriveRecurring', () => {
-  test('flags a merchant appearing in 2+ months with consistent amounts', () => {
+  test('flags a Bills-category merchant appearing in 2+ months with consistent amounts', () => {
     const txns = [
-      makeTxn({ id: 1, merchant_clean: 'Spotify', amount: '11.98', txn_at: new Date(2026, 4, 25).toISOString() }),
-      makeTxn({ id: 2, merchant_clean: 'Spotify', amount: '11.98', txn_at: new Date(2026, 5, 25).toISOString() }),
+      makeTxn({ id: 1, merchant_clean: 'Spotify', amount: '11.98', category: 'Bills', txn_at: new Date(2026, 4, 25).toISOString() }),
+      makeTxn({ id: 2, merchant_clean: 'Spotify', amount: '11.98', category: 'Bills', txn_at: new Date(2026, 5, 25).toISOString() }),
     ];
     const result = deriveRecurring(txns);
     expect(result).toHaveLength(1);
@@ -214,14 +214,22 @@ describe('deriveRecurring', () => {
   });
 
   test('does not flag a merchant seen in only one month', () => {
-    const txns = [makeTxn({ id: 1, merchant_clean: 'Uniqlo', amount: '79.90' })];
+    const txns = [makeTxn({ id: 1, merchant_clean: 'Uniqlo', amount: '79.90', category: 'Bills' })];
     expect(deriveRecurring(txns)).toEqual([]);
   });
 
   test('does not flag a merchant whose amounts vary too much month to month', () => {
     const txns = [
-      makeTxn({ id: 1, merchant_clean: 'Grab', amount: '10.00', txn_at: new Date(2026, 4, 5).toISOString() }),
-      makeTxn({ id: 2, merchant_clean: 'Grab', amount: '40.00', txn_at: new Date(2026, 5, 5).toISOString() }),
+      makeTxn({ id: 1, merchant_clean: 'Grab', amount: '10.00', category: 'Bills', txn_at: new Date(2026, 4, 5).toISOString() }),
+      makeTxn({ id: 2, merchant_clean: 'Grab', amount: '40.00', category: 'Bills', txn_at: new Date(2026, 5, 5).toISOString() }),
+    ];
+    expect(deriveRecurring(txns)).toEqual([]);
+  });
+
+  test('does not flag a recurring merchant outside the Bills category, e.g. a routine grocery run', () => {
+    const txns = [
+      makeTxn({ id: 1, merchant_clean: 'NTUC FairPrice', amount: '85.00', category: 'Groceries', txn_at: new Date(2026, 4, 10).toISOString() }),
+      makeTxn({ id: 2, merchant_clean: 'NTUC FairPrice', amount: '85.00', category: 'Groceries', txn_at: new Date(2026, 5, 10).toISOString() }),
     ];
     expect(deriveRecurring(txns)).toEqual([]);
   });

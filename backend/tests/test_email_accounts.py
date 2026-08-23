@@ -32,7 +32,7 @@ def test_list_email_accounts_empty_when_none_linked(client, user):
     assert response.json() == []
 
 
-def test_unlink_removes_the_account_but_keeps_its_transactions(client, db_session, user):
+def test_unlink_deletes_the_accounts_transactions(client, db_session, user):
     account = EmailAccount(
         user_id=user.id,
         provider=ProviderEnum.google,
@@ -44,6 +44,7 @@ def test_unlink_removes_the_account_but_keeps_its_transactions(client, db_sessio
     db_session.commit()
     txn = Transaction(
         user_id=user.id,
+        account_id=account.id,
         source_email_id="msg-1",
         provider=ProviderEnum.google,
         amount=Decimal("10.00"),
@@ -62,7 +63,58 @@ def test_unlink_removes_the_account_but_keeps_its_transactions(client, db_sessio
     assert listing.json() == []
 
     remaining = client.get("/transactions", params={"user_id": user.id})
-    assert any(r["id"] == txn.id for r in remaining.json())
+    assert all(r["id"] != txn.id for r in remaining.json())
+
+
+def test_unlink_does_not_delete_other_accounts_or_manual_transactions(client, db_session, user):
+    kept_account = EmailAccount(
+        user_id=user.id,
+        provider=ProviderEnum.google,
+        provider_email="keep@gmail.com",
+        access_token_enc=encrypt("fake-access-token"),
+        refresh_token_enc=encrypt("fake-refresh-token"),
+    )
+    removed_account = EmailAccount(
+        user_id=user.id,
+        provider=ProviderEnum.microsoft,
+        provider_email="remove@outlook.com",
+        access_token_enc=encrypt("fake-access-token"),
+        refresh_token_enc=encrypt("fake-refresh-token"),
+    )
+    db_session.add_all([kept_account, removed_account])
+    db_session.commit()
+
+    other_account_txn = Transaction(
+        user_id=user.id,
+        account_id=kept_account.id,
+        source_email_id="msg-kept",
+        provider=ProviderEnum.google,
+        amount=Decimal("5.00"),
+        currency="SGD",
+        direction=DirectionEnum.debit,
+        merchant_raw="KOPI",
+        txn_at=datetime.now(timezone.utc),
+    )
+    manual_txn = Transaction(
+        user_id=user.id,
+        account_id=None,
+        source_email_id="manual-1",
+        provider=None,
+        amount=Decimal("20.00"),
+        currency="SGD",
+        direction=DirectionEnum.debit,
+        merchant_raw="Manual entry",
+        txn_at=datetime.now(timezone.utc),
+    )
+    db_session.add_all([other_account_txn, manual_txn])
+    db_session.commit()
+
+    response = client.delete(f"/email-accounts/{removed_account.id}", params={"user_id": user.id})
+    assert response.status_code == 204
+
+    remaining_ids = {r["id"] for r in client.get("/transactions", params={"user_id": user.id}).json()}
+    assert other_account_txn.id in remaining_ids
+    assert manual_txn.id in remaining_ids
 
 
 def test_unlink_is_scoped_to_the_owning_user(client, db_session, user):

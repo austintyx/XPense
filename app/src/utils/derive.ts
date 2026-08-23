@@ -231,6 +231,12 @@ export function categoryTransactions(transactions: Transaction[], category: stri
   return matches.sort((a, b) => new Date(b.txn_at).getTime() - new Date(a.txn_at).getTime());
 }
 
+export function subcategoryTransactions(transactions: Transaction[], category: string, subcategory: string): Transaction[] {
+  return transactions
+    .filter((t) => isExpense(t) && t.category === category && t.subcategory === subcategory)
+    .sort((a, b) => new Date(b.txn_at).getTime() - new Date(a.txn_at).getTime());
+}
+
 export function weekRangeTransactions(transactions: Transaction[], now: Date = new Date()): Transaction[] {
   const weekAgo = new Date(now);
   weekAgo.setDate(now.getDate() - 6);
@@ -290,11 +296,12 @@ export interface RecurringCharge {
 
 /** Heuristic, not real subscription/billing data: flags a merchant as recurring when it appears
  * in 2+ distinct months with amounts within ~10% of each other, and estimates the next charge as
- * roughly 30 days after the most recent occurrence. */
+ * roughly 30 days after the most recent occurrence. Restricted to the Bills category -- otherwise
+ * a routine grocery run or a habitual Grab ride reads as a "subscription" alongside real bills. */
 export function deriveRecurring(transactions: Transaction[]): RecurringCharge[] {
   const groups = new Map<string, { display: string; date: Date; amount: number }[]>();
   for (const t of transactions) {
-    if (!isExpense(t)) continue;
+    if (!isExpense(t) || t.category !== "Bills") continue;
     const display = t.merchant_clean ?? t.merchant_raw;
     if (!display) continue;
     const key = display.trim().toLowerCase();

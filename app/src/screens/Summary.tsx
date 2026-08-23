@@ -11,6 +11,7 @@ import {
   calendarWeeks,
   categoryTotals,
   categoryTransactions,
+  subcategoryTransactions,
   countriesInTransactions,
   effectiveCountry,
   currentMonthTransactions,
@@ -40,6 +41,7 @@ export default function Summary() {
   const [countryFilter, setCountryFilter] = useState<string>("all");
   const [sumView, setSumView] = useState<SumView>("chart");
   const [openCat, setOpenCat] = useState<CategoryId | null>(null);
+  const [openSub, setOpenSub] = useState<string | null>(null);
   const now = useMemo(() => new Date(), []);
   const [viewAnchor, setViewAnchor] = useState<Date>(now);
   const [calendarAnchor, setCalendarAnchor] = useState<Date>(now);
@@ -236,12 +238,19 @@ export default function Summary() {
                       ? subcategoryTotals(periodTransactions, cat)
                       : [];
                   const maxSub = Math.max(1, ...subs.map(([, v]) => v));
-                  const catTxns = expanded ? categoryTransactions(periodTransactions, cat) : [];
+                  const catTxns = expanded
+                    ? openSub
+                      ? subcategoryTransactions(periodTransactions, cat, openSub)
+                      : categoryTransactions(periodTransactions, cat)
+                    : [];
                   return (
                     <View key={cat} style={[styles.catRowCard, shadow.card]}>
                       <Pressable
                         style={styles.catRowHeader}
-                        onPress={() => setOpenCat(expanded ? null : cat)}
+                        onPress={() => {
+                          setOpenSub(null);
+                          setOpenCat(expanded ? null : cat);
+                        }}
                         testID={`cat-row-${cat}`}
                       >
                         <View style={[styles.dot, { backgroundColor: categoryColor(cat) }]} />
@@ -252,20 +261,28 @@ export default function Summary() {
                       </Pressable>
                       {expanded && subs.length > 0 && (
                         <View style={styles.subList}>
-                          {subs.map(([name, value]) => (
-                            <View key={name} style={styles.subRow}>
-                              <Text style={styles.subName}>{name}</Text>
-                              <View style={styles.subBarTrack}>
-                                <View
-                                  style={[
-                                    styles.subBar,
-                                    { width: `${(value / maxSub) * 100}%`, backgroundColor: categoryColorBar(cat) },
-                                  ]}
-                                />
-                              </View>
-                              <Text style={styles.subAmount}>{formatMoney(value)}</Text>
-                            </View>
-                          ))}
+                          {subs.map(([name, value]) => {
+                            const subActive = openSub === name;
+                            return (
+                              <Pressable
+                                key={name}
+                                style={styles.subRow}
+                                onPress={() => setOpenSub(subActive ? null : name)}
+                                testID={`sub-row-${cat}-${name}`}
+                              >
+                                <Text style={[styles.subName, subActive && styles.subNameActive]}>{name}</Text>
+                                <View style={styles.subBarTrack}>
+                                  <View
+                                    style={[
+                                      styles.subBar,
+                                      { width: `${(value / maxSub) * 100}%`, backgroundColor: categoryColorBar(cat) },
+                                    ]}
+                                  />
+                                </View>
+                                <Text style={[styles.subAmount, subActive && styles.subNameActive]}>{formatMoney(value)}</Text>
+                              </Pressable>
+                            );
+                          })}
                         </View>
                       )}
                       {expanded && (
@@ -405,6 +422,7 @@ const styles = StyleSheet.create({
   subList: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.ink07, gap: 9 },
   subRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingLeft: 26 },
   subName: { flex: 1, fontFamily: typography.fontFamily.sans, fontSize: typography.size.base, color: colors.ink70 },
+  subNameActive: { fontFamily: typography.fontFamily.sansMedium, color: colors.ink },
   subBarTrack: { width: 84, height: 4, borderRadius: 2, backgroundColor: colors.ink06, overflow: "hidden" },
   subBar: { height: 4, borderRadius: 2 },
   subAmount: { fontFamily: typography.fontFamily.sans, fontSize: typography.size.base, minWidth: 64, textAlign: "right", color: colors.ink70 },
