@@ -33,6 +33,7 @@ import {
   syncTransactions,
   updateBudget as apiUpdateBudget,
   updateGoal as apiUpdateGoal,
+  updateSubscription,
   updateTransactionCategory,
   updateTransactionDetails,
   updateUserName as apiUpdateUserName,
@@ -67,6 +68,13 @@ interface AppDataActions {
   addSubcategory: (category: string, name: string) => Promise<void>;
   removeSubcategory: (subcategoryId: number) => Promise<void>;
   addSubscription: (name: string, amount: string, frequency: Frequency, nextDue: string) => Promise<void>;
+  editSubscription: (
+    subscriptionId: number,
+    name: string,
+    amount: string,
+    frequency: Frequency,
+    nextDue: string,
+  ) => Promise<void>;
   removeSubscription: (subscriptionId: number) => Promise<void>;
 }
 
@@ -252,6 +260,17 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
     setState((s) => ({ ...s, subscriptions: [...s.subscriptions, subscription] }));
   }, []);
 
+  const editSubscription = useCallback(
+    async (subscriptionId: number, name: string, amount: string, frequency: Frequency, nextDue: string) => {
+      const updated = await updateSubscription(subscriptionId, name, amount, frequency, nextDue);
+      setState((s) => ({
+        ...s,
+        subscriptions: s.subscriptions.map((sub) => (sub.id === updated.id ? updated : sub)),
+      }));
+    },
+    [],
+  );
+
   const removeSubscription = useCallback(async (subscriptionId: number) => {
     await deleteSubscription(subscriptionId);
     setState((s) => ({
@@ -277,6 +296,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       addSubcategory,
       removeSubcategory,
       addSubscription,
+      editSubscription,
       removeSubscription,
     }),
     [
@@ -295,6 +315,7 @@ export function TransactionsProvider({ children }: { children: React.ReactNode }
       addSubcategory,
       removeSubcategory,
       addSubscription,
+      editSubscription,
       removeSubscription,
     ],
   );

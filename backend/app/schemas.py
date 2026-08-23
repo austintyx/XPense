@@ -146,6 +146,13 @@ class SubscriptionCreateIn(BaseModel):
     next_due: datetime
 
 
+class SubscriptionUpdateIn(BaseModel):
+    name: str
+    amount: Decimal
+    frequency: FrequencyEnum
+    next_due: datetime
+
+
 class SavingsGoalOut(BaseModel):
     user_id: int
     name: str

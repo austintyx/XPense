@@ -2,6 +2,7 @@ import { fireEvent, screen } from '@testing-library/react-native';
 
 import Summary from '../src/screens/Summary.web';
 import { makeTxn, mockClientDefaults, renderWithProviders } from '../src/testUtils';
+import { colors } from '../src/theme/tokens';
 
 jest.mock('../src/hooks/useIsMobileWeb', () => ({ useIsMobileWeb: jest.fn(() => false) }));
 import { useIsMobileWeb } from '../src/hooks/useIsMobileWeb';
@@ -68,4 +69,23 @@ test('selecting a country filter recomputes the total instead of using the unfil
   fireEvent.press(screen.getByTestId('sum-country-Switzerland'));
 
   expect(await screen.findByTestId('donut-total')).toHaveTextContent('S$358');
+});
+
+test('the calendar zoom-out button steps the view back up one level after drilling in', async () => {
+  mockClientDefaults();
+
+  renderWithProviders(<Summary />);
+
+  fireEvent.press(await screen.findByTestId('toggle-view'));
+
+  fireEvent.press(await screen.findByTestId('cal-day-15'));
+  expect(screen.getByTestId('sum-period-week').props.style).toEqual(
+    expect.arrayContaining([expect.objectContaining({ backgroundColor: colors.ink })]),
+  );
+
+  fireEvent.press(await screen.findByTestId('cal-zoom-out'));
+
+  expect(screen.getByTestId('sum-period-month').props.style).toEqual(
+    expect.arrayContaining([expect.objectContaining({ backgroundColor: colors.ink })]),
+  );
 });

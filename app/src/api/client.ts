@@ -320,6 +320,25 @@ export async function createSubscription(
   return response.json();
 }
 
+export async function updateSubscription(
+  subscriptionId: number,
+  name: string,
+  amount: string,
+  frequency: Frequency,
+  nextDue: string,
+  userId: number = CURRENT_USER_ID,
+): Promise<Subscription> {
+  const response = await fetch(`${API_BASE_URL}/subscriptions/${subscriptionId}?user_id=${userId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, amount, frequency, next_due: nextDue }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to update subscription (${response.status})`);
+  }
+  return response.json();
+}
+
 export async function deleteSubscription(subscriptionId: number, userId: number = CURRENT_USER_ID): Promise<void> {
   const response = await fetch(`${API_BASE_URL}/subscriptions/${subscriptionId}?user_id=${userId}`, {
     method: "DELETE",

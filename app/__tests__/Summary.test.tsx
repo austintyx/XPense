@@ -80,6 +80,32 @@ test('expanding the Transport category row lists its transactions and its subcat
   expect(screen.getByText('Public')).toBeTruthy();
 });
 
+test('clicking a subcategory row narrows the transaction list to just that subcategory', async () => {
+  mockClientDefaults({
+    summary: { user_id: 1, month: '2026-07', categories: [{ category: 'Transport', total: '18.20' }], total: '18.20' },
+    transactions: [
+      makeTxn({ id: 1, category: 'Transport', subcategory: 'Private', amount: '11.80', txn_at: '2026-07-15T08:15:00Z', merchant_raw: 'GRAB' }),
+      makeTxn({ id: 2, category: 'Transport', subcategory: 'Public', amount: '6.40', txn_at: '2026-07-14T18:00:00Z', merchant_raw: 'BUS/MRT' }),
+    ],
+  });
+
+  renderWithProviders(<Summary />);
+
+  fireEvent.press(await screen.findByTestId('cat-row-Transport'));
+  expect(await screen.findByTestId('cat-tx-list-Transport')).toBeTruthy();
+  expect(screen.getByText('GRAB')).toBeTruthy();
+  expect(screen.getByText('BUS/MRT')).toBeTruthy();
+
+  fireEvent.press(screen.getByTestId('sub-row-Transport-Private'));
+  expect(screen.getByText('GRAB')).toBeTruthy();
+  expect(screen.queryByText('BUS/MRT')).toBeNull();
+
+  // Pressing the same subcategory again clears the narrowing back to the full category list.
+  fireEvent.press(screen.getByTestId('sub-row-Transport-Private'));
+  expect(screen.getByText('GRAB')).toBeTruthy();
+  expect(screen.getByText('BUS/MRT')).toBeTruthy();
+});
+
 test('paging the month chart view back a month shows that month\'s own total, not the current-month summary total', async () => {
   mockClientDefaults({
     summary: { user_id: 1, month: '2026-07', categories: [{ category: 'Food', total: '40.00' }], total: '40.00' },

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { BottomSheet } from "../components/BottomSheet";
@@ -7,11 +7,14 @@ import { DateField } from "../components/DateField";
 import { useToast } from "../components/Toast";
 import { useAppData } from "../store/TransactionsProvider";
 import { colors, typography } from "../theme/tokens";
-import type { Frequency } from "../api/client";
+import type { Frequency, Subscription } from "../api/client";
 
 interface AddSubscriptionSheetProps {
   visible: boolean;
   onClose: () => void;
+  // When present, the sheet edits this subscription instead of creating a new one -- same fields,
+  // just prefilled and saved via editSubscription rather than addSubscription.
+  subscription?: Subscription;
 }
 
 const FREQUENCY_OPTIONS: { value: Frequency; label: string }[] = [
@@ -21,20 +24,29 @@ const FREQUENCY_OPTIONS: { value: Frequency; label: string }[] = [
   { value: "yearly", label: "Yearly" },
 ];
 
-export function AddSubscriptionSheet({ visible, onClose }: AddSubscriptionSheetProps) {
-  const { addSubscription } = useAppData();
+export function AddSubscriptionSheet({ visible, onClose, subscription }: AddSubscriptionSheetProps) {
+  const { addSubscription, editSubscription } = useAppData();
   const { showToast } = useToast();
+  const isEditing = subscription != null;
   const [name, setName] = useState("");
   const [amount, setAmount] = useState("");
   const [frequency, setFrequency] = useState<Frequency>("monthly");
   const [nextDue, setNextDue] = useState(new Date());
 
   const reset = () => {
-    setName("");
-    setAmount("");
-    setFrequency("monthly");
-    setNextDue(new Date());
+    setName(subscription?.name ?? "");
+    setAmount(subscription?.amount ?? "");
+    setFrequency(subscription?.frequency ?? "monthly");
+    setNextDue(subscription ? new Date(subscription.next_due) : new Date());
   };
+
+  // Re-prefill whenever a different subscription is opened for editing (or the sheet is reopened
+  // in "add" mode) -- visible alone isn't enough since the sheet instance stays mounted between
+  // opens.
+  useEffect(() => {
+    if (visible) reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, subscription]);
 
   const handleClose = () => {
     reset();
@@ -45,15 +57,20 @@ export function AddSubscriptionSheet({ visible, onClose }: AddSubscriptionSheetP
 
   const save = async () => {
     if (!canSave) return;
-    await addSubscription(name.trim(), amount.trim(), frequency, nextDue.toISOString());
-    showToast(`Added ${name.trim()}`);
+    if (isEditing) {
+      await editSubscription(subscription.id, name.trim(), amount.trim(), frequency, nextDue.toISOString());
+      showToast(`Updated ${name.trim()}`);
+    } else {
+      await addSubscription(name.trim(), amount.trim(), frequency, nextDue.toISOString());
+      showToast(`Added ${name.trim()}`);
+    }
     reset();
     onClose();
   };
 
   return (
     <BottomSheet visible={visible} onClose={handleClose} testID="add-subscription-sheet">
-      <Text style={styles.title}>Add a subscription</Text>
+      <Text style={styles.title}>{isEditing ? "Edit subscription" : "Add a subscription"}</Text>
 
       <Text style={styles.label}>Name</Text>
       <TextInput
@@ -102,7 +119,7 @@ export function AddSubscriptionSheet({ visible, onClose }: AddSubscriptionSheetP
         testID="save-subscription"
       >
         <Text style={[styles.saveButtonText, canSave ? styles.saveButtonTextEnabled : styles.saveButtonTextDisabled]}>
-          Add subscription
+          {isEditing ? "Save changes" : "Add subscription"}
         </Text>
       </Pressable>
     </BottomSheet>
